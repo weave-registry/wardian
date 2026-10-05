@@ -5,3 +5,8 @@ service-account.json
 /apps/*
 !/apps/adder/
 !/apps/usl-lab/
+!/apps/mandelbrot/
+!/apps/loan-planner/
+/apps/*/target
+/apps/*/Cargo.lock
+/templates/*/target

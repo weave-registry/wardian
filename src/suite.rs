@@ -21,9 +21,11 @@ pub const FONT_CSS: &str = "https://fonts.googleapis.com/";
 
 /// The rules a frame runs under. `sandbox` gives it a throwaway origin (no
 /// cookies, storage, or access to the host page). The rest blocks every
-/// network request: anything an app needs comes from the kernel.
+/// network request: anything an app needs comes from the kernel. 'wasm-unsafe-eval'
+/// lets an app compile WebAssembly (not JavaScript eval) from bytes it got
+/// through ctx.asset.
 pub const FRAME_CSP: &str = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads; \
-    default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; \
+    default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob:; worker-src blob:; \
     style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; \
     img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'";
 

@@ -65,6 +65,8 @@ const Kernel = (() => {
       return out;
     }
     function observe(el, cb){ if (typeof ResizeObserver !== 'undefined') new ResizeObserver(cb).observe(el); }
+    // The bytes of a file in this suite's package, fetched by the kernel (the frame itself has no network).
+    function asset(path){ allow('asset'); return request({k: 'asset', path}); }
     function source(id){ allow('source'); const el = document.getElementById(id); return el ? el.textContent : ''; }
     function spawn(code){
       allow('worker');
@@ -74,7 +76,7 @@ const Kernel = (() => {
       name: def.name, root,
       $: s => root.querySelector(s), $$: s => Array.from(root.querySelectorAll(s)),
       el: tag => document.createElement(tag), text: s => document.createTextNode(s),
-      emit, on, provide, call, store, cap, observe, source, spawn
+      emit, on, provide, call, store, cap, asset, observe, source, spawn
     });
   }
 

@@ -1,0 +1,29 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json",
+  "format": 1,
+  "title": "{{name}}",
+  "description": "Three sealed apps: one takes text, one analyses it in WebAssembly, one shows the result.",
+  "styles": ["style.css"],
+  "header": "header.html",
+  "apps": [
+    {
+      "name": "text",
+      "provides": ["analyze"],
+      "caps": ["asset"]
+    },
+    {
+      "name": "input",
+      "slot": "aside",
+      "wrap": "<aside class=\"panel\">",
+      "emits": { "text:changed": { "retain": true } },
+      "caps": ["storage"]
+    },
+    {
+      "name": "output",
+      "slot": "main",
+      "wrap": "<section class=\"panel\">",
+      "listens": ["text:changed"],
+      "needs": ["text.analyze"]
+    }
+  ]
+}

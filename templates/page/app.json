@@ -1,0 +1,7 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 1,
+  "title": "{{name}}",
+  "description": "A page that passes text to WebAssembly and back.",
+  "page": "index.html"
+}

@@ -44,6 +44,8 @@
   .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); flex: none; }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
   header .spacer { flex: 1; }
+  .docslink { color: var(--muted); text-decoration: none; }
+  .docslink:hover { color: var(--accent); }
 
   main { display: grid; grid-template-columns: 15rem 1fr; min-height: calc(100vh - 3rem); }
   aside { border-right: 1px solid var(--line); padding: .75rem; background: var(--panel); }
@@ -91,6 +93,12 @@
   #folders li.sel { background: var(--hover); }
   #folders li .name { flex: 1; cursor: pointer; }
   .hidden { display: none !important; }
+  .apphead { justify-content: space-between; } .apphead h2 { margin: 0; }
+  .removebox button { font-size: .85rem; }
+  button.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+  ul.trash { list-style: none; margin: 0 0 .5rem; padding: 0; }
+  ul.trash li { display: flex; gap: .75rem; align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--line); }
+  ul.trash li .name { font-weight: 600; flex: 1; }
   .suiteframe { height: 85vh !important; }
   .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 1rem; }
   details summary { cursor: pointer; font-weight: 600; margin-bottom: .5rem; }
@@ -106,6 +114,7 @@
   <h1>WASM apps</h1>
   <span class="badge" id="badge"><span class="dot"></span><span>…</span></span>
   <span class="spacer"></span>
+  <a href="/docs" target="_blank" rel="noopener" class="docslink">Docs</a>
   <button id="refreshBtn" title="Re-read the app list now">Refresh</button>
   <button id="settingsBtn">Settings</button>
 </header>
@@ -196,6 +205,14 @@
         </div>
       </div>
       <p id="sourceMsg"></p>
+    </div>
+
+    <div class="card" id="trashCard">
+      <h2>Removed apps</h2>
+      <p id="trashEmpty" class="muted">Nothing removed.</p>
+      <ul id="trashList" class="trash"></ul>
+      <p class="muted" style="font-size:.85rem">Removed apps wait in <code id="trashFolder"></code>. To delete them for good, empty that folder.</p>
+      <p id="trashMsg" class="err"></p>
     </div>
 
     <div class="card" id="importCard">
@@ -289,6 +306,7 @@ function renderStatus() {
   $('localRoot').textContent = s.local_root || '';
   document.querySelectorAll('.localRootName').forEach((n) => (n.textContent = s.local_root || ''));
   $('importCard').classList.toggle('hidden', !s.admin);
+  $('trashCard').classList.toggle('hidden', !s.admin || s.source !== 'local');
   $('lockedCard').classList.toggle('hidden', !!s.admin);
   $('sourceCard').classList.toggle('hidden', !s.admin);
   $('refreshNow').disabled = !s.admin;
@@ -371,7 +389,7 @@ async function openApp(app) {
   const { name } = app;
   current = name;
   renderApps();
-  const head = [el('h2', { textContent: app.title || name })];
+  const head = [el('div', { className: 'row apphead' }, el('h2', { textContent: app.title || name }), removeControl(name))];
   if (app.description) head.push(el('p', { className: 'muted', textContent: app.description }));
   if (app.error) {
     $('runner').replaceChildren(...head, el('p', { className: 'err', textContent: app.error }));
@@ -477,11 +495,63 @@ function functionTable(name, instance, size, missing) {
 }
 
 // ---------- settings dialog ----------
+// ---------- removing apps ----------
+// Removal moves the app to apps/.trash on the server; Undo and Settings → Removed apps put it back.
+function removeControl(name) {
+  const box = el('span', { className: 'row removebox' });
+  if (!status.admin || status.source !== 'local') return box;   // Drive apps are removed in Drive
+  const ask = () => box.replaceChildren(
+    el('span', { className: 'muted', textContent: `Remove ${name}?` }),
+    el('button', { className: 'danger', textContent: 'Remove', onclick: () => removeApp(name) }),
+    el('button', { textContent: 'Cancel', onclick: idle }));
+  const idle = () => box.replaceChildren(el('button', { className: 'link', textContent: 'Remove app', onclick: ask }));
+  idle();
+  return box;
+}
+
+async function removeApp(name) {
+  try {
+    const { id } = await api('/api/apps/remove', { name });
+    log(`removed ${name} (kept in the trash)`, 'a');
+    current = null;
+    await loadApps(); await loadStatus();
+    $('runner').replaceChildren(
+      el('h2', { textContent: `Removed ${name}` }),
+      el('p', { className: 'muted', textContent: 'The app is in the trash, not deleted. You can also restore it later in Settings → Removed apps.' }),
+      el('button', { className: 'primary', textContent: 'Undo', onclick: () => restoreApp(id, name) }));
+  } catch (e) { log(`remove ${name}: ${e.message}`, 'e'); $('runner').append(el('p', { className: 'err', textContent: e.message })); }
+}
+
+async function restoreApp(id, name) {
+  try {
+    await api('/api/apps/restore', { id });
+    log(`restored ${name}`, 'a');
+    await loadApps(); await loadStatus(); await loadTrash();
+    const app = apps.find(a => a.name === name);
+    if (app) openApp(app);
+  } catch (e) { log(`restore ${name}: ${e.message}`, 'e'); $('trashMsg').textContent = e.message; }
+}
+
+async function loadTrash() {
+  if (!status.admin) return;
+  try {
+    const { items, folder } = await api('/api/trash');
+    $('trashList').replaceChildren(...items.map(t => el('li', {},
+      el('span', { className: 'name', textContent: t.name }),
+      el('span', { className: 'muted', textContent: new Date(t.removed_at * 1000).toLocaleString() }),
+      el('button', { textContent: 'Restore', onclick: () => restoreApp(t.id, t.name) }))));
+    $('trashEmpty').hidden = items.length > 0;
+    $('trashFolder').textContent = folder;
+  } catch (e) { $('trashMsg').textContent = e.message; }
+}
+
 $('settingsBtn').onclick = async () => {
   await loadStatus();
   showTab(status.source === 'drive' ? 'drive' : 'local');
   $('sourceMsg').textContent = '';
   $('settings').showModal();
+  $('trashMsg').textContent = '';
+  loadTrash();
   if (status.admin && status.client_email && !folderStack.length) browse(null, 'Shared with the service account');
 };
 $('closeSettings').onclick = () => $('settings').close();

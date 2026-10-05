@@ -3,7 +3,9 @@
 Serves small WebAssembly apps to a browser, from a local folder or straight from Google Drive.
 Open the page, pick an app, type the arguments, press Run.
 
+Start a new app with `rustle new <module|page|suite> apps/<name>`, then follow [GUIDE.md](GUIDE.md).
 The package format is defined in [SPEC.md](SPEC.md). Check a package with `rustle check <folder or .rustle>`.
+Both documents are also served by rustle at `/docs`, and the JSON Schemas at `/schemas/`.
 
 ## Packaging an app
 
@@ -138,6 +140,13 @@ Limits: 100 MB per zip (64 MB from Drive), 64 MB per file, 256 MB unpacked in to
 Links must be public internet addresses. The server refuses links to itself, to cloud metadata
 (`169.254.169.254`) and to other internal addresses, including after a redirect.
 To import from a file server on your own network, set `IMPORT_ALLOW_LAN=1`.
+
+## Remove an app
+
+Open the app and press **Remove app**, then confirm. The app moves to `apps/.trash/`, and nothing
+is deleted. Press **Undo** right away, or restore it later in **Settings → Removed apps**. To delete
+removed apps for good, empty `apps/.trash/` yourself. Apps served from Google Drive are removed in
+Drive: rustle only reads Drive.
 
 ## Who can change settings
 

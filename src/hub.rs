@@ -2,7 +2,7 @@
 //! while the server runs, and the choice is saved to `<data dir>/config.json`.
 
 use crate::import::{app_name_from, import_zip};
-use crate::source::{unix_now, valid_drive_id, Drive, DriveClient, Source};
+use crate::source::{safe_segment, unix_now, valid_drive_id, Drive, DriveClient, Source, APP_MARKERS};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -237,6 +237,75 @@ impl Hub {
         // refresh notices and stops.
         *self.source.write().unwrap() = Arc::new(Source::Drive(drive));
         Ok(())
+    }
+
+    /// Removed apps wait here, inside the apps folder (so a move is one rename). The folder is
+    /// hidden, so the host never lists or serves it.
+    fn trash_dir(&self) -> PathBuf {
+        self.local_root.join(".trash")
+    }
+
+    /// Moves a local app to the trash. Nothing is deleted: `restore_app` puts it back, and only
+    /// the user empties the trash, outside rustle.
+    pub fn remove_app(&self, name: &str) -> Result<Value, String> {
+        if let Source::Drive(_) = &*self.source() {
+            return Err("these apps come from Google Drive, which rustle only reads. Remove the app's folder in Drive.".into());
+        }
+        if !safe_segment(name) {
+            return Err(format!("\"{name}\" is not an app name"));
+        }
+        let dir = self.local_root.join(name);
+        let meta = fs::symlink_metadata(&dir).map_err(|_| format!("no app \"{name}\""))?;
+        if !meta.is_dir() || !APP_MARKERS.iter().any(|m| dir.join(m).is_file()) {
+            return Err(format!("\"{name}\" is not an app folder"));
+        }
+        fs::create_dir_all(self.trash_dir()).map_err(|e| format!("creating the trash: {e}"))?;
+        let mut id = format!("{name}--{}", unix_now());
+        while self.trash_dir().join(&id).exists() {
+            id.push('_');
+        }
+        fs::rename(&dir, self.trash_dir().join(&id)).map_err(|e| format!("removing {name}: {e}"))?;
+        println!("removed: {name} (kept in {})", self.trash_dir().join(&id).display());
+        Ok(json!({ "removed": name, "id": id }))
+    }
+
+    /// Puts a removed app back, unless an app with its name exists again.
+    pub fn restore_app(&self, id: &str) -> Result<Value, String> {
+        let name = id.rsplit_once("--").map(|(n, _)| n).unwrap_or("");
+        if !safe_segment(id) || !safe_segment(name) {
+            return Err("not a removed app".into());
+        }
+        let from = self.trash_dir().join(id);
+        if !from.is_dir() {
+            return Err("that app is no longer in the trash".into());
+        }
+        let to = self.local_root.join(name);
+        if to.exists() {
+            return Err(format!("an app named \"{name}\" exists again; rename or remove it first"));
+        }
+        fs::rename(&from, &to).map_err(|e| format!("restoring {name}: {e}"))?;
+        println!("restored: {name}");
+        Ok(json!({ "restored": name }))
+    }
+
+    /// The removed apps, newest first.
+    pub fn trash(&self) -> Value {
+        let mut items: Vec<(u64, String, String)> = fs::read_dir(self.trash_dir())
+            .map(|rd| {
+                rd.flatten()
+                    .filter_map(|e| {
+                        let id = e.file_name().into_string().ok()?;
+                        let (name, when) = id.rsplit_once("--")?;
+                        Some((when.trim_end_matches('_').parse().ok()?, name.to_string(), id))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        items.sort_by(|a, b| b.0.cmp(&a.0));
+        json!({
+            "folder": self.trash_dir().display().to_string(),
+            "items": items.into_iter().map(|(t, name, id)| json!({ "id": id, "name": name, "removed_at": t })).collect::<Vec<_>>(),
+        })
     }
 
     /// Unpacks a zip into the local apps folder. The apps show up once the

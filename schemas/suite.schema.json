@@ -62,7 +62,7 @@
         "caps": {
           "description": "Capabilities this app may use.",
           "type": "array",
-          "items": { "enum": ["storage", "worker", "source", "claude:downloads", "claude:sample"] }
+          "items": { "enum": ["storage", "asset", "worker", "source", "claude:downloads", "claude:sample"] }
         }
       },
       "additionalProperties": false

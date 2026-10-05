@@ -1,0 +1,6 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 1,
+  "title": "{{name}}",
+  "description": "Number functions in WebAssembly. Open it in rustle and run each function."
+}

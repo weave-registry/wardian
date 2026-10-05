@@ -213,13 +213,14 @@ The frame runs under this policy, so the browser blocks every network request it
 
 ```
 sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads;
-default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:;
+default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob:; worker-src blob:;
 style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;
 img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'
 ```
 
-   A suite app gets everything it needs from the kernel or from its own frame. Images MUST be
-   inlined as `data:` URLs or made as `blob:` URLs.
+   A suite app gets everything it needs from the kernel or from its own frame. It MAY compile
+   WebAssembly (`'wasm-unsafe-eval'` allows that, not JavaScript `eval`), and it loads the bytes
+   with `ctx.asset`. Images MUST be inlined as `data:` URLs or made as `blob:` URLs.
 
 ### 6.4. `app.js`
 
@@ -254,6 +255,7 @@ kernel enforces the contract in `suite.json`, never the one in `app.js`.** The c
 | `provide({ method: fn })` | Make methods callable by other apps. `fn(args)` may return a value or a promise. Throws if a method is not in `provides`. |
 | `call(app, method, args)` | A promise of the other app's result. Rejects if `"app.method"` is not in `needs`, if the other app does not provide it, if it does not start within 15 seconds, or if the method throws. |
 | `store.get(key)`, `store.set(key, value)` | Needs `storage`. `get` is synchronous and returns `null` for a missing key. Values MUST be JSON-compatible. |
+| `asset(path)` | Needs `asset`. A promise of an `ArrayBuffer` with the bytes of `path`, a file in this suite's package, e.g. `ctx.asset('text.wasm')`. |
 | `cap(name)` | Needs `claude:<name>`. A promise of the capability, or `null` if this host cannot provide it. |
 | `observe(el, fn)` | Call `fn` when `el` changes size. |
 | `source(id)` | Needs `source`. The text of an inlined script, e.g. `ctx.source('lib-src')`. |
@@ -267,6 +269,7 @@ between apps. A value that cannot be copied, such as a function, makes `emit` or
 | Capability | Grants | Provided by |
 |---|---|---|
 | `storage` | `ctx.store`. The host keeps the data per suite, per app and per browser. | kernel |
+| `asset` | `ctx.asset`: read files of this suite's own package, such as `.wasm` modules or data. | kernel |
 | `worker` | `ctx.spawn` | the frame |
 | `source` | `ctx.source` | the frame |
 | `claude:downloads` | `ctx.cap('downloads')` → `{ save({ filename, data }) }`. `filename` matches `[A-Za-z0-9_. -]{1,120}`. `data` is a string, `Blob`, `ArrayBuffer` or typed array. Resolves to `{ status: 'saved' }`. | kernel |
@@ -300,6 +303,7 @@ by its frame, never by the message's content.
 | `{k:'call', id, app, method, args}` | `ctx.call` |
 | `{k:'result', id, ok, value \| error}` | The answer to an `invoke`. |
 | `{k:'store', key, value}` | `ctx.store.set` |
+| `{k:'asset', id, path}` | `ctx.asset` |
 | `{k:'cap', id, name}`, `{k:'capop', id, name, op, args}` | `ctx.cap` and a capability's methods. |
 | `{k:'size', h, bg}` | The frame's content height and background color. |
 | `{k:'fault', message}` | An error inside the app. |
@@ -309,7 +313,7 @@ by its frame, never by the message's content.
 | `{k:'boot', contract, store}` | The contract from `suite.json`, and the stored data. |
 | `{k:'msg', topic, payload}` | A message for `ctx.on`. |
 | `{k:'invoke', id, method, args}` | Another app calls a provided method. |
-| `{k:'reply', id, ok, value \| error}` | The answer to `call`, `cap` or `capop`. |
+| `{k:'reply', id, ok, value \| error}` | The answer to `call`, `asset`, `cap` or `capop`. |
 
 ## 7. Distribution
 
@@ -338,7 +342,19 @@ folder the host serves.
 7.4. The importer unpacks into a hidden staging folder first, so a failed import changes
 nothing. It refuses a package whose name is already taken, unless asked to replace it.
 
-## 8. Checking a package
+7.5. **Removing.** A host SHOULD move a removed package aside rather than delete it, so the
+removal can be undone. rustle moves it to `.trash/` inside the apps folder; hidden folders are
+never listed or served.
+
+## 8. Starting and checking a package
+
+```
+rustle new module my-app      numbers in, numbers out; rustle builds the interface
+rustle new page my-app        WebAssembly plus your own page
+rustle new suite my-app       three sealed apps that talk through the kernel
+```
+
+Each template passes `rustle check` as created, and includes its Rust source and a `build.sh`.
 
 ```
 rustle check my-app/          a package folder

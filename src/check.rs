@@ -15,7 +15,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const KNOWN_CAPS: &[&str] = &["storage", "worker", "source", "claude:downloads", "claude:sample"];
+const KNOWN_CAPS: &[&str] = &["storage", "asset", "worker", "source", "claude:downloads", "claude:sample"];
 const APP_JSON_KEYS: &[&str] = &["$schema", "format", "title", "description", "page"];
 const SUITE_KEYS: &[&str] = &["$schema", "format", "title", "description", "styles", "scripts", "header", "columns", "apps"];
 const ENTRY_KEYS: &[&str] = &["name", "slot", "wrap", "dir", "scripts", "emits", "listens", "provides", "needs", "caps"];
@@ -49,7 +49,7 @@ pub fn run(paths: &[String]) -> i32 {
     i32::from(failed)
 }
 
-fn check_path(path: &Path) -> bool {
+pub fn check_path(path: &Path) -> bool {
     let shown = path.display();
     if path.is_file() {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
@@ -147,15 +147,18 @@ fn check_app(dir: &Path, name: &str, r: &mut Report) -> String {
     walk(dir, "", &mut files);
     let mut served: HashSet<String> = HashSet::new();
     let mut total = 0u64;
-    let (mut hidden, mut skipped_dirs) = (0, 0);
+    let mut skipped_dirs = 0;
     for (rel, size) in &files {
         let parts: Vec<&str> = rel.split('/').collect();
+        // Hidden files (.gitignore, .DS_Store) are normal and simply not served.
         if parts.iter().any(|p| p.starts_with('.')) {
-            hidden += 1;
             continue;
         }
         if parts.iter().any(|p| SKIP_DIRS.contains(p)) {
-            skipped_dirs += 1;
+            // target/ is just Rust's build cache; node_modules may be a real mistake.
+            if parts.contains(&"node_modules") {
+                skipped_dirs += 1;
+            }
             continue;
         }
         if parts.len() > MAX_DEPTH + 1 {
@@ -170,11 +173,8 @@ fn check_app(dir: &Path, name: &str, r: &mut Report) -> String {
         }
         total += size;
     }
-    if hidden > 0 {
-        r.warn(format!("{hidden} hidden file(s) are never served"));
-    }
     if skipped_dirs > 0 {
-        r.warn(format!("{skipped_dirs} file(s) in {} are never served", SKIP_DIRS.join(" or ")));
+        r.warn(format!("{skipped_dirs} file(s) in node_modules are never served; ship built files instead"));
     }
     if served.len() > MAX_APP_FILES {
         r.err(format!("{} files; a package may have at most {MAX_APP_FILES}", served.len()));

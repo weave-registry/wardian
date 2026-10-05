@@ -35,7 +35,8 @@
    - Apps never touch each other. Messages, calls and results pass through here, copied by postMessage.
    - Retained topics are replayed to apps that start listening late.
    - Calls to a method whose app has not started yet wait for it (up to 15 s) instead of failing.
-   - Capabilities are granted here: storage (kept per app), claude:downloads (a file download).
+   - Capabilities are granted here: storage (kept per app), asset (files from this package),
+     claude:downloads (a file download).
    Debug in the console: Kernel.apps(), Kernel.trace(), Kernel.faults(). */
 (async () => {
   'use strict';
@@ -183,6 +184,17 @@
       if (!impl || typeof impl[m.op] !== 'function') return reply(app, m.id, false, `capability ${m.name}.${m.op} is not granted`);
       try { reply(app, m.id, true, await impl[m.op](m.args)); }
       catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
+    },
+    async asset(app, m){
+      if (!frames.get(app).contract.caps.includes('asset')) return reply(app, m.id, false, 'did not declare capability "asset"');
+      const path = String(m.path || '');
+      if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*(\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$/.test(path)) return reply(app, m.id, false, 'bad asset path: ' + path);
+      note('asset', app, path);
+      try {
+        const r = await fetch(`/apps/${enc(suiteName)}/${path}`, {cache: 'no-cache'});
+        if (!r.ok) throw new Error(`${path}: ${r.status}`);
+        reply(app, m.id, true, await r.arrayBuffer());
+      } catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
     },
     fault(app, m){ fault(app, String(m.message)); },
   };

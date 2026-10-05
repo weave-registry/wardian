@@ -1,6 +1,8 @@
 mod check;
+mod docs;
 mod hub;
 mod import;
+mod new;
 mod suite;
 mod source;
 
@@ -151,6 +153,8 @@ fn api_post(path: &str, body: Value, hub: &Hub) -> Result<Value, String> {
             let email = hub.set_key(&body.to_string())?;
             Ok(json!({ "client_email": email }))
         }
+        "/api/apps/remove" => hub.remove_app(body["name"].as_str().unwrap_or("")),
+        "/api/apps/restore" => hub.restore_app(body["id"].as_str().unwrap_or("")),
         "/api/import/url" => {
             let url = body["url"].as_str().unwrap_or("").trim();
             hub.import_url(url, body["replace"].as_bool().unwrap_or(false))
@@ -196,6 +200,28 @@ fn handle(mut req: Request, hub: &Hub) {
             .with_header(header("Cache-Control", "no-cache")),
         // /api/apps keeps its original reply (names only), so a page loaded
         // before an upgrade keeps working; app-list adds titles and pages.
+        // Documentation, and the JSON Schemas editors use to check app.json and suite.json.
+        (Method::Get, ["docs"]) => Response::from_string("")
+            .with_status_code(302)
+            .with_header(header("Location", "/docs/guide")),
+        (Method::Get, ["docs", name]) => match docs::page(name) {
+            Some(html) => Response::from_string(html)
+                .with_header(header("Content-Type", "text/html; charset=utf-8"))
+                .with_header(header("Cache-Control", "no-cache")),
+            None => Response::from_string("not found").with_status_code(404),
+        },
+        (Method::Get, ["schemas", file]) => match *file {
+            "app.schema.json" | "suite.schema.json" => {
+                let body = if *file == "app.schema.json" { docs::APP_SCHEMA } else { docs::SUITE_SCHEMA };
+                Response::from_string(body)
+                    .with_header(header("Content-Type", "application/schema+json"))
+                    .with_header(header("Access-Control-Allow-Origin", "*"))
+                    .with_header(header("Cache-Control", "no-cache"))
+            }
+            _ => Response::from_string("not found").with_status_code(404),
+        },
+        // Browsers ask for a tab icon on every page; "no content" keeps 404s out of the console.
+        (Method::Get, ["favicon.ico"]) => Response::from_data(Vec::new()).with_status_code(204),
         (Method::Get, ["api", "apps"]) => json_resp(200, json!(hub.source().list_apps())),
         (Method::Get, ["api", "app-list"]) => json_resp(200, json!(hub.source().apps())),
         (Method::Get, ["api", "status"]) => {
@@ -203,6 +229,7 @@ fn handle(mut req: Request, hub: &Hub) {
             s["admin"] = json!(admin);
             json_resp(200, s)
         }
+        (Method::Get, ["api", "trash"]) if admin => json_resp(200, hub.trash()),
         (Method::Get, ["api", "drive", "browse"]) if admin => {
             result_resp(hub.browse(query(&url, "parent")))
         }
@@ -253,6 +280,7 @@ const USAGE: &str = "rustle — runs WebAssembly apps and suites in the browser
 
 usage:
   rustle [APPS_FOLDER]          serve the apps in APPS_FOLDER (default: ./apps)
+  rustle new KIND PATH          create a starter package: module, page or suite
   rustle check PACKAGE...       check packages (folders, .zip or .rustle files) against SPEC.md
   rustle --version
 
@@ -262,6 +290,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("check") => std::process::exit(check::run(&args[1..])),
+        Some("new") => std::process::exit(new::run(&args[1..])),
         Some("--version" | "-V") => {
             println!("rustle {} (package format {})", env!("CARGO_PKG_VERSION"), source::FORMAT);
             return;
@@ -294,7 +323,11 @@ fn main() {
             std::process::exit(1);
         }
     };
-    println!("listening on http://{addr}");
+    // Print the address actually bound: with port 0 the system picks a free port.
+    match server.server_addr().to_ip() {
+        Some(bound) => println!("listening on http://{bound}"),
+        None => println!("listening on http://{addr}"),
+    }
     if env("ADMIN_TOKEN").is_none() {
         println!("settings: only from a browser on this machine (set ADMIN_TOKEN to allow others)");
     }

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot explorer</title>
+<style>
+  :root { color-scheme: light dark; --ink: #1b1f24; --muted: #667080; --line: #d5dae0; --bg: #f7f8fa; --panel: #fff; --accent: #2f6fde; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #e6e8eb; --muted: #949ca8; --line: #2e343c; --bg: #111418; --panel: #191d22; --accent: #6d9cf2; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1rem; font: 15px/1.45 system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  .bar { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; margin-bottom: .75rem; }
+  h1 { margin: 0; font-size: 1.2rem; flex: 1 1 auto; }
+  button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: .35rem .75rem; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  label { display: flex; align-items: center; gap: .5rem; color: var(--muted); }
+  input[type=range] { width: 9rem; accent-color: var(--accent); }
+  .stage { position: relative; border-radius: 10px; overflow: hidden; background: #080a16; aspect-ratio: 3 / 2; max-height: 72vh; width: 100%; }
+  canvas { display: block; width: 100%; height: 100%; cursor: zoom-in; touch-action: manipulation; }
+  .status { margin-top: .5rem; color: var(--muted); font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: .25rem; }
+</style>
+<div class="bar">
+  <h1>Mandelbrot explorer</h1>
+  <label>Detail <input id="iter" type="range" min="50" max="3000" step="50" value="400" aria-describedby="iterOut"> <span id="iterOut">400</span></label>
+  <button id="out" type="button" title="Zoom out (−)">Zoom out</button>
+  <button id="reset" type="button" title="Reset (R)">Reset</button>
+  <button id="save" type="button">Save image</button>
+</div>
+<div class="stage"><canvas id="view" aria-label="The Mandelbrot set. Click to zoom in on a point."></canvas></div>
+<div class="status" id="status" aria-live="polite"></div>
+<p class="hint">Click to zoom in ×4 on a point. Shift-click or right-click to zoom out. Keys: + − R.</p>
+<script type="module" src="./app.js"></script>
+</html>
