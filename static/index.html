@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WASM app host</title>
+<style>
+  body { font: 16px system-ui; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+  button { margin: .2rem; }
+  pre { background: #eee; padding: .5rem; }
+</style>
+<h1>WASM apps</h1>
+<div id="apps"></div>
+<h2 id="title"></h2>
+<div id="exports"></div>
+<pre id="out"></pre>
+<script>
+const out = (s) => (document.getElementById('out').textContent += s + '\n');
+
+// The host API every app can import. Extend this to give apps more abilities.
+const imports = { env: { log: (n) => out('app log: ' + n) } };
+
+async function loadApp(name) {
+  const { instance } = await WebAssembly.instantiateStreaming(
+    fetch(`/apps/${name}/app.wasm`), imports);
+  document.getElementById('title').textContent = name;
+  document.getElementById('out').textContent = '';
+  const box = document.getElementById('exports');
+  box.replaceChildren();
+  for (const [k, v] of Object.entries(instance.exports)) {
+    if (typeof v !== 'function') continue;
+    const b = document.createElement('button');
+    b.textContent = `${k}(${v.length} args)`;
+    b.onclick = () => {
+      const args = Array.from({ length: v.length }, (_, i) => Number(prompt(`${k} arg ${i + 1}`, '0')));
+      out(`${k}(${args}) = ${v(...args)}`);
+    };
+    box.append(b);
+  }
+}
+
+(async () => {
+  const names = await (await fetch('/api/apps')).json();
+  const div = document.getElementById('apps');
+  if (!names.length) div.textContent = 'No apps found.';
+  for (const n of names) {
+    const b = document.createElement('button');
+    b.textContent = n;
+    b.onclick = () => loadApp(n).catch((e) => out('load failed: ' + e));
+    div.append(b);
+  }
+})();
+</script>

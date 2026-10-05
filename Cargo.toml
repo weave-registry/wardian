@@ -1,0 +1,10 @@
+[package]
+name = "wasm-host"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+tiny_http = "0.12"
+ureq = { version = "2", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+jsonwebtoken = "9"
