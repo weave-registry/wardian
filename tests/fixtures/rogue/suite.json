@@ -1,0 +1,3 @@
+{ "title": "Rogue", "apps": [
+  { "name": "probe", "slot": "main", "emits": { "probe:done": {} } },
+  { "name": "liar" } ] }

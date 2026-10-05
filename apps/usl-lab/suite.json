@@ -1,0 +1,161 @@
+{
+  "format": 1,
+  "title": "USL scalability lab",
+  "description": "Fit load-test results to the Universal Scalability Law and test changes before you build them.",
+  "styles": [
+    "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap",
+    "core/style.css"
+  ],
+  "scripts": [
+    "core/lib.js"
+  ],
+  "header": "core/header.html",
+  "columns": "minmax(280px, 340px) minmax(0, 1fr)",
+  "apps": [
+    {
+      "name": "engine",
+      "scripts": [
+        "core/engine.js"
+      ],
+      "emits": {
+        "engine:status": {
+          "retain": true
+        }
+      },
+      "provides": [
+        "analyze",
+        "curve"
+      ],
+      "caps": [
+        "worker",
+        "source"
+      ]
+    },
+    {
+      "name": "session",
+      "emits": {
+        "analysis:ready": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "data:changed",
+        "engine:status"
+      ],
+      "needs": [
+        "engine.analyze"
+      ]
+    },
+    {
+      "name": "inputs",
+      "slot": "aside",
+      "wrap": "<aside class=\"inputs\" aria-label=\"Inputs\">",
+      "emits": {
+        "data:changed": {
+          "retain": true
+        },
+        "context:changed": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "storage"
+      ]
+    },
+    {
+      "name": "chart",
+      "slot": "main",
+      "wrap": "<section id=\"chartSec\" aria-labelledby=\"chartTitle\">",
+      "listens": [
+        "analysis:ready",
+        "whatif:changed",
+        "engine:status"
+      ],
+      "needs": [
+        "engine.curve"
+      ]
+    },
+    {
+      "name": "whatif",
+      "slot": "main",
+      "wrap": "<section id=\"whatifSec\" aria-labelledby=\"wiTitle\">",
+      "emits": {
+        "whatif:changed": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "analysis:ready",
+        "capability:ai"
+      ],
+      "needs": [
+        "diagnosis.parseWhatIf"
+      ]
+    },
+    {
+      "name": "readouts",
+      "slot": "main",
+      "wrap": "<section id=\"fitSec\" aria-labelledby=\"fitTitle\">",
+      "listens": [
+        "analysis:ready"
+      ]
+    },
+    {
+      "name": "checks",
+      "slot": "main",
+      "wrap": "<section id=\"checksSec\" aria-labelledby=\"chkTitle\">",
+      "emits": {
+        "checks:ready": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "analysis:ready"
+      ]
+    },
+    {
+      "name": "diagnosis",
+      "slot": "main",
+      "wrap": "<section id=\"aiSec\" aria-labelledby=\"aiTitle\" hidden>",
+      "emits": {
+        "capability:ai": {
+          "retain": true
+        },
+        "diagnosis:updated": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "analysis:ready",
+        "checks:ready",
+        "context:changed"
+      ],
+      "provides": [
+        "parseWhatIf"
+      ],
+      "caps": [
+        "claude:sample"
+      ]
+    },
+    {
+      "name": "export",
+      "slot": "main",
+      "wrap": "<section id=\"exportSec\" aria-labelledby=\"expTitle\">",
+      "listens": [
+        "analysis:ready",
+        "whatif:changed",
+        "checks:ready",
+        "diagnosis:updated",
+        "context:changed",
+        "capability:ai",
+        "engine:status"
+      ],
+      "needs": [
+        "engine.curve"
+      ],
+      "caps": [
+        "claude:downloads"
+      ]
+    }
+  ]
+}

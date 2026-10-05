@@ -1,50 +1,694 @@
 <!doctype html>
+<html lang="en">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WASM app host</title>
 <style>
-  body { font: 16px system-ui; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
-  button { margin: .2rem; }
-  pre { background: #eee; padding: .5rem; }
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9; --panel: #fff; --text: #1b1f24; --muted: #667080; --line: #dde1e6;
+    --accent: #2f6fde; --accent-ink: #fff; --ok: #1f9d55; --warn: #c27c0e; --bad: #d64545;
+    --code: #f0f2f5; --hover: #eef2f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171b; --panel: #1c2026; --text: #e6e8eb; --muted: #949ca8; --line: #2e343c;
+      --accent: #5b8ff0; --accent-ink: #0b1220; --code: #23282f; --hover: #262c35;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  button, input { font: inherit; color: inherit; }
+  button {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 6px;
+    padding: .35rem .75rem; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--hover); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.link { border: 0; background: none; color: var(--accent); padding: 0; }
+  input[type=text], input[type=password], input:not([type]) {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: .35rem .5rem;
+  }
+  code, pre { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .muted { color: var(--muted); }
+  .err { color: var(--bad); }
+  .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+
+  header {
+    display: flex; align-items: center; gap: 1rem; padding: .6rem 1rem;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 1.05rem; margin: 0; }
+  .badge { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; }
+  .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  header .spacer { flex: 1; }
+
+  main { display: grid; grid-template-columns: 15rem 1fr; min-height: calc(100vh - 3rem); }
+  aside { border-right: 1px solid var(--line); padding: .75rem; background: var(--panel); }
+  aside input { width: 100%; margin-bottom: .5rem; }
+  #apps { list-style: none; margin: 0; padding: 0; }
+  #apps li button {
+    width: 100%; text-align: left; border: 0; background: none; padding: .4rem .5rem; border-radius: 6px;
+  }
+  #apps li button.active { background: var(--accent); color: var(--accent-ink); }
+  #content { padding: 1rem 1.25rem; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  .card h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
+  .card h3 { margin: 1rem 0 .5rem; font-size: .95rem; }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-weight: 600; font-size: .85rem; color: var(--muted); }
+  td input { width: 9rem; }
+  td.result { font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+
+  #log {
+    background: var(--code); border-radius: 6px; padding: .5rem .75rem; margin: 0;
+    max-height: 18rem; overflow: auto; white-space: pre-wrap;
+  }
+  #log .e { color: var(--bad); } #log .a { color: var(--muted); }
+
+  dialog {
+    border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(44rem, calc(100vw - 2rem));
+    background: var(--bg); color: var(--text);
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .4); }
+  .dlg-head { display: flex; align-items: center; padding: .75rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .dlg-head h2 { margin: 0; font-size: 1.05rem; flex: 1; }
+  .dlg-body { padding: 1rem; max-height: 75vh; overflow: auto; }
+  dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: 0; }
+  dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; word-break: break-all; }
+  .tabs { display: flex; gap: .25rem; margin-bottom: .75rem; }
+  .tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .step { border-left: 3px solid var(--line); padding-left: .75rem; margin: .75rem 0; }
+  .step.done { border-color: var(--ok); }
+  .crumbs { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; margin-bottom: .5rem; }
+  #folders { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; max-height: 15rem; overflow: auto; background: var(--panel); }
+  #folders li { display: flex; align-items: center; gap: .5rem; padding: .3rem .5rem; border-bottom: 1px solid var(--line); }
+  #folders li:last-child { border-bottom: 0; }
+  #folders li.sel { background: var(--hover); }
+  #folders li .name { flex: 1; cursor: pointer; }
+  .hidden { display: none !important; }
+  .suiteframe { height: 85vh !important; }
+  .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 1rem; }
+  details summary { cursor: pointer; font-weight: 600; margin-bottom: .5rem; }
+
+  @media (max-width: 700px) {
+    main { grid-template-columns: 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    header { flex-wrap: wrap; }
+  }
 </style>
-<h1>WASM apps</h1>
-<div id="apps"></div>
-<h2 id="title"></h2>
-<div id="exports"></div>
-<pre id="out"></pre>
+
+<header>
+  <h1>WASM apps</h1>
+  <span class="badge" id="badge"><span class="dot"></span><span>…</span></span>
+  <span class="spacer"></span>
+  <button id="refreshBtn" title="Re-read the app list now">Refresh</button>
+  <button id="settingsBtn">Settings</button>
+</header>
+
+<main>
+  <aside>
+    <input id="filter" placeholder="Filter apps" aria-label="Filter apps">
+    <ul id="apps"></ul>
+    <p id="appsEmpty" class="muted hidden"></p>
+  </aside>
+
+  <section id="content">
+    <div class="card" id="runner">
+      <p class="muted">Choose an app on the left.</p>
+    </div>
+    <div class="card">
+      <div class="row" style="margin-bottom:.5rem">
+        <h2 style="margin:0;flex:1">Output</h2>
+        <button id="clearLog">Clear</button>
+      </div>
+      <pre id="log"></pre>
+    </div>
+  </section>
+</main>
+
+<dialog id="settings">
+  <div class="dlg-head">
+    <h2>Settings</h2>
+    <button id="closeSettings">Close</button>
+  </div>
+  <div class="dlg-body">
+    <div class="card">
+      <div class="row" style="margin-bottom:.5rem">
+        <h2 style="margin:0;flex:1">Status</h2>
+        <button id="refreshNow">Refresh now</button>
+      </div>
+      <dl class="kv" id="statusList"></dl>
+    </div>
+
+    <div class="card hidden" id="lockedCard">
+      <h2>Settings are locked</h2>
+      <p class="muted">This server only accepts changes from a browser on the same machine, or with the admin token set by <code>ADMIN_TOKEN</code>.</p>
+      <div class="row">
+        <input type="password" id="tokenInput" placeholder="Admin token" aria-label="Admin token">
+        <button id="tokenSave" class="primary">Unlock</button>
+      </div>
+    </div>
+
+    <div class="card" id="sourceCard">
+      <h2>App source</h2>
+      <div class="tabs">
+        <button data-tab="local">Local folder</button>
+        <button data-tab="drive">Google Drive</button>
+      </div>
+
+      <div id="tab-local">
+        <p>Serve apps from <code id="localRoot"></code> on this server.</p>
+        <button class="primary" id="useLocal">Use local folder</button>
+      </div>
+
+      <div id="tab-drive" class="hidden">
+        <div class="step" id="step1">
+          <h3>1. Service account key</h3>
+          <p id="keyState" class="muted"></p>
+          <div class="row">
+            <input type="file" id="keyFile" accept=".json,application/json" aria-label="Service account key file">
+          </div>
+          <p class="muted" style="font-size:.85rem">Google Cloud console → IAM → Service accounts → Keys → Add key → JSON. The key stays on this server and is never sent back to the browser.</p>
+        </div>
+
+        <div class="step" id="step2">
+          <h3>2. Choose the apps folder</h3>
+          <p class="muted" style="font-size:.85rem">The folder must hold one subfolder per app, each with an <code>app.wasm</code>.</p>
+          <div class="row" style="margin-bottom:.5rem">
+            <input id="folderLink" style="flex:1;min-width:14rem" placeholder="Paste a Drive folder link or ID" aria-label="Drive folder link or ID">
+            <button id="useLink">Use link</button>
+          </div>
+          <div class="crumbs" id="crumbs"></div>
+          <ul id="folders"></ul>
+          <p id="browseMsg" class="muted"></p>
+        </div>
+
+        <div class="step" id="step3">
+          <h3>3. Connect</h3>
+          <p id="selected" class="muted">No folder chosen yet.</p>
+          <p id="preview" class="muted"></p>
+          <button class="primary" id="connect" disabled>Connect to this folder</button>
+        </div>
+      </div>
+      <p id="sourceMsg"></p>
+    </div>
+
+    <div class="card" id="importCard">
+      <h2>Import from a zip</h2>
+      <p class="muted" style="font-size:.85rem">Copies the apps in a zip into <code class="localRootName"></code>. The zip can hold an <code>app.wasm</code>, a single <code>.wasm</code> file, or one folder per app.</p>
+      <div class="row" style="margin-bottom:.5rem">
+        <input type="file" id="zipFile" accept=".zip,.rustle,application/zip" aria-label="Zip file to import">
+      </div>
+      <div class="row" style="margin-bottom:.5rem">
+        <input id="zipUrl" style="flex:1;min-width:14rem" placeholder="…or paste a link to a zip (Drive links work)" aria-label="Link to a zip file">
+        <button id="zipUrlBtn">Import link</button>
+      </div>
+      <label class="row"><input type="checkbox" id="zipReplace"> Replace apps that already exist</label>
+      <p id="importMsg"></p>
+    </div>
+  </div>
+</dialog>
+
 <script>
-const out = (s) => (document.getElementById('out').textContent += s + '\n');
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => {
+  const n = Object.assign(document.createElement(tag), props);
+  n.append(...kids);
+  return n;
+};
 
+// ---------- server API ----------
+let token = '';
+try { token = sessionStorage.getItem('adminToken') || ''; } catch {}
+
+async function api(path, body) {
+  const opts = { headers: {} };
+  if (token) opts.headers['X-Admin-Token'] = token;
+  if (body !== undefined) {
+    opts.method = 'POST';
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = typeof body === 'string' ? body : JSON.stringify(body);
+  }
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+  return data;
+}
+
+// ---------- output log ----------
+function log(msg, cls = '') {
+  const line = el('div', { className: cls, textContent: `${new Date().toLocaleTimeString()}  ${msg}` });
+  $('log').append(line);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+$('clearLog').onclick = () => $('log').replaceChildren();
+
+// ---------- status ----------
+let status = {};
+
+function ago(secs) {
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`;
+  return `${Math.floor(secs / 3600)} h ago`;
+}
+
+function health(s) {
+  if (s.source !== 'drive') return ['ok', `Local · ${s.local_root}`];
+  const st = s.status || {};
+  const label = `Drive · ${s.folder_name}`;
+  if (st.last_error) return [st.last_ok ? 'warn' : 'bad', label];
+  return [st.last_ok ? 'ok' : 'warn', label];
+}
+
+function renderStatus() {
+  const s = status;
+  const [cls, label] = health(s);
+  $('badge').replaceChildren(el('span', { className: `dot ${cls}` }), el('span', { textContent: label }));
+
+  const rows = [['Source', s.source === 'drive' ? 'Google Drive' : 'Local folder']];
+  if (s.source === 'drive') {
+    const st = s.status || {};
+    rows.push(['Folder', `${s.folder_name} (${s.folder_id})`]);
+    rows.push(['Last refresh', st.last_ok ? ago(s.now - st.last_ok) : 'never']);
+    rows.push(['Refresh every', `${s.refresh_secs}s`]);
+    if (st.last_error) rows.push(['Last error', st.last_error]);
+  } else {
+    rows.push(['Folder', s.local_root]);
+  }
+  rows.push(['Apps', String(s.apps)]);
+  $('statusList').replaceChildren(...rows.flatMap(([k, v]) => [
+    el('dt', { textContent: k }),
+    el('dd', { textContent: v, className: k === 'Last error' ? 'err' : '' }),
+  ]));
+
+  $('localRoot').textContent = s.local_root || '';
+  document.querySelectorAll('.localRootName').forEach((n) => (n.textContent = s.local_root || ''));
+  $('importCard').classList.toggle('hidden', !s.admin);
+  $('lockedCard').classList.toggle('hidden', !!s.admin);
+  $('sourceCard').classList.toggle('hidden', !s.admin);
+  $('refreshNow').disabled = !s.admin;
+  renderKey();
+}
+
+async function loadStatus() {
+  try { status = await api('/api/status'); renderStatus(); }
+  catch (e) { log(`status: ${e.message}`, 'e'); }
+}
+
+// ---------- app list ----------
+let apps = [];
+let current = null;
+
+async function loadApps() {
+  try { apps = await api('/api/app-list'); }
+  catch (e) { apps = []; log(`app list: ${e.message}`, 'e'); }
+  renderApps();
+}
+
+function renderApps() {
+  const f = $('filter').value.trim().toLowerCase();
+  const shown = apps.filter((a) => `${a.name} ${a.title || ''}`.toLowerCase().includes(f));
+  $('apps').replaceChildren(...shown.map((a) => el('li', {}, el('button', {
+    textContent: (a.error ? '⚠ ' : '') + (a.title || a.name), title: a.error || a.description || a.name,
+    className: a.name === current ? 'active' : '', onclick: () => openApp(a),
+  }))));
+  const empty = $('appsEmpty');
+  empty.classList.toggle('hidden', shown.length > 0);
+  empty.textContent = apps.length ? 'No app matches the filter.' : 'No apps found. Open Settings to choose a source.';
+}
+$('filter').oninput = renderApps;
+
+$('refreshBtn').onclick = async () => {
+  if (status.admin && status.source === 'drive') {
+    try { status = { ...(await api('/api/refresh', {})), admin: status.admin }; renderStatus(); }
+    catch (e) { log(`refresh: ${e.message}`, 'e'); }
+  } else {
+    await loadStatus();
+  }
+  await loadApps();
+  log(`app list refreshed: ${apps.length} app(s)`, 'a');
+};
+
+// ---------- app runner ----------
 // The host API every app can import. Extend this to give apps more abilities.
-const imports = { env: { log: (n) => out('app log: ' + n) } };
+function hostImports(module, name) {
+  const provided = { env: { log: (n) => log(`[${name}] ${n}`) } };
+  const imports = {};
+  const missing = [];
+  for (const imp of WebAssembly.Module.imports(module)) {
+    const have = provided[imp.module]?.[imp.name];
+    imports[imp.module] ??= {};
+    if (have) { imports[imp.module][imp.name] = have; continue; }
+    if (imp.kind === 'function') {
+      // Stub so the app still loads; calling it reports what is missing.
+      imports[imp.module][imp.name] = () => { log(`[${name}] called unprovided import ${imp.module}.${imp.name}`, 'e'); return 0; };
+    }
+    missing.push(`${imp.module}.${imp.name} (${imp.kind})`);
+  }
+  return { imports, missing };
+}
 
-async function loadApp(name) {
-  const { instance } = await WebAssembly.instantiateStreaming(
-    fetch(`/apps/${name}/app.wasm`), imports);
-  document.getElementById('title').textContent = name;
-  document.getElementById('out').textContent = '';
-  const box = document.getElementById('exports');
-  box.replaceChildren();
-  for (const [k, v] of Object.entries(instance.exports)) {
-    if (typeof v !== 'function') continue;
-    const b = document.createElement('button');
-    b.textContent = `${k}(${v.length} args)`;
-    b.onclick = () => {
-      const args = Array.from({ length: v.length }, (_, i) => Number(prompt(`${k} arg ${i + 1}`, '0')));
-      out(`${k}(${args}) = ${v(...args)}`);
-    };
-    box.append(b);
+// Wasm i64 parameters need BigInt; every other number type takes a Number.
+// The JS API cannot tell us the parameter types, so try Number first.
+function callExport(fn, raw) {
+  const nums = raw.map((s) => (s.trim() === '' ? 0 : Number(s)));
+  if (nums.some(Number.isNaN)) throw new Error('every argument must be a number');
+  try { return fn(...nums); }
+  catch (e) {
+    if (e instanceof TypeError && /BigInt/i.test(e.message)) return fn(...raw.map((s) => BigInt(s.trim() || '0')));
+    throw e;
   }
 }
 
-(async () => {
-  const names = await (await fetch('/api/apps')).json();
-  const div = document.getElementById('apps');
-  if (!names.length) div.textContent = 'No apps found.';
-  for (const n of names) {
-    const b = document.createElement('button');
-    b.textContent = n;
-    b.onclick = () => loadApp(n).catch((e) => out('load failed: ' + e));
-    div.append(b);
+const appUrl = (name, rel) => `/apps/${encodeURIComponent(name)}/${rel.split('/').map(encodeURIComponent).join('/')}`;
+
+async function openApp(app) {
+  const { name } = app;
+  current = name;
+  renderApps();
+  const head = [el('h2', { textContent: app.title || name })];
+  if (app.description) head.push(el('p', { className: 'muted', textContent: app.description }));
+  if (app.error) {
+    $('runner').replaceChildren(...head, el('p', { className: 'err', textContent: app.error }));
+    log(`${name}: ${app.error}`, 'e');
+    return;
   }
-})();
+  if (app.suite) {
+    // The kernel page is the host's own trusted code, so this frame is not
+    // sandboxed; the kernel puts each of the suite's apps in a sandboxed frame.
+    const src = `/run/${encodeURIComponent(name)}/`;
+    head.push(el('p', { className: 'row' },
+      el('span', { className: 'muted', textContent: 'Suite of cooperating apps' }),
+      el('a', { href: src, target: '_blank', rel: 'noopener', textContent: 'Open full screen' })));
+    $('runner').replaceChildren(...head, el('iframe', { src, title: `${name} suite`, className: 'appframe suiteframe' }));
+    log(`opened suite ${name}`, 'a');
+    return;
+  }
+  const fnBox = el('div', {}, el('p', { className: 'muted', textContent: 'Loading the module…' }));
+  if (app.page) {
+    // The page is the app's own code, so it runs sandboxed: the server also
+    // sends a CSP sandbox header, which covers "open in a new tab" as well.
+    const src = appUrl(name, app.page);
+    head.push(el('p', { className: 'row' },
+      el('span', { className: 'muted', textContent: `Page: ${app.page}` }),
+      el('a', { href: src, target: '_blank', rel: 'noopener', textContent: 'Open in a new tab' })));
+    const frame = el('iframe', { src, title: `${name} page`, className: 'appframe' });
+    frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
+    $('runner').replaceChildren(...head, frame,
+      el('details', {}, el('summary', { textContent: 'Functions' }), fnBox));
+  } else {
+    $('runner').replaceChildren(...head, fnBox);
+  }
+  try {
+    const resp = await fetch(appUrl(name, 'app.wasm'));
+    if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
+    const bytes = await resp.arrayBuffer();
+    const module = await WebAssembly.compile(bytes);
+    const { imports, missing } = hostImports(module, name);
+    const instance = await WebAssembly.instantiate(module, imports);
+    if (current !== name) return; // another app was picked meanwhile
+    fnBox.replaceChildren(...functionTable(name, instance, bytes.byteLength, missing));
+    log(`loaded ${name} (${bytes.byteLength} bytes)`, 'a');
+  } catch (e) {
+    if (current !== name) return;
+    fnBox.replaceChildren(el('p', { className: 'err', textContent: e.message }));
+    log(`${name}: ${e.message}`, 'e');
+  }
+}
+
+function functionTable(name, instance, size, missing) {
+  const fns = [], others = [];
+  for (const [k, v] of Object.entries(instance.exports)) {
+    if (typeof v === 'function') fns.push([k, v]);
+    else others.push([k, v]);
+  }
+  const kids = [el('p', { className: 'muted', textContent: `${size} bytes · ${fns.length} function(s)` })];
+  if (missing.length) {
+    kids.push(el('p', { className: 'err', textContent: `This app imports things the host does not provide: ${missing.join(', ')}` }));
+  }
+  if (fns.length) {
+    const rows = fns.map(([k, fn]) => {
+      const inputs = Array.from({ length: fn.length }, (_, i) =>
+        el('input', { placeholder: `arg ${i + 1}`, inputMode: 'decimal', ariaLabel: `${k} argument ${i + 1}` }));
+      const result = el('td', { className: 'result' });
+      const run = () => {
+        const args = inputs.map((i) => i.value);
+        try {
+          const out = callExport(fn, args);
+          const shown = out === undefined ? '(no result)' : String(out);
+          result.textContent = shown;
+          result.classList.remove('err');
+          log(`${name}.${k}(${args.map((a) => a || 0).join(', ')}) = ${shown}`);
+        } catch (e) {
+          result.textContent = e.message;
+          result.classList.add('err');
+          log(`${name}.${k}: ${e.message}`, 'e');
+        }
+      };
+      inputs.forEach((i) => i.addEventListener('keydown', (ev) => ev.key === 'Enter' && run()));
+      return el('tr', {},
+        el('td', {}, el('code', { textContent: k })),
+        el('td', {}, el('div', { className: 'row' }, ...inputs,
+          inputs.length ? '' : el('span', { className: 'muted', textContent: 'no arguments' }),
+          el('button', { className: 'primary', textContent: 'Run', onclick: run }))),
+        result);
+    });
+    kids.push(el('table', {},
+      el('thead', {}, el('tr', {}, ...['Function', 'Arguments', 'Result'].map((t) => el('th', { textContent: t })))),
+      el('tbody', {}, ...rows)));
+  } else {
+    kids.push(el('p', { className: 'muted', textContent: 'This app exports no functions.' }));
+  }
+  if (others.length) {
+    kids.push(el('h3', { textContent: 'Other exports' }));
+    kids.push(el('ul', {}, ...others.map(([k, v]) => {
+      let desc = v.constructor?.name || typeof v;
+      if (v instanceof WebAssembly.Memory) desc = `memory, ${v.buffer.byteLength / 65536} page(s)`;
+      if (v instanceof WebAssembly.Global) desc = `global = ${v.value}`;
+      return el('li', {}, el('code', { textContent: k }), ` — ${desc}`);
+    })));
+  }
+  return kids;
+}
+
+// ---------- settings dialog ----------
+$('settingsBtn').onclick = async () => {
+  await loadStatus();
+  showTab(status.source === 'drive' ? 'drive' : 'local');
+  $('sourceMsg').textContent = '';
+  $('settings').showModal();
+  if (status.admin && status.client_email && !folderStack.length) browse(null, 'Shared with the service account');
+};
+$('closeSettings').onclick = () => $('settings').close();
+
+$('tokenSave').onclick = async () => {
+  token = $('tokenInput').value.trim();
+  try { sessionStorage.setItem('adminToken', token); } catch {}
+  await loadStatus();
+  if (!status.admin) log('admin token rejected', 'e');
+};
+
+$('refreshNow').onclick = async () => {
+  try {
+    status = { ...(await api('/api/refresh', {})), admin: status.admin };
+    renderStatus();
+    await loadApps();
+  } catch (e) { log(`refresh: ${e.message}`, 'e'); await loadStatus(); }
+};
+
+function showTab(t) {
+  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+  $('tab-local').classList.toggle('hidden', t !== 'local');
+  $('tab-drive').classList.toggle('hidden', t !== 'drive');
+}
+document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+
+function sourceMsg(text, bad = false) {
+  $('sourceMsg').textContent = text;
+  $('sourceMsg').className = bad ? 'err' : 'muted';
+}
+
+async function switched(newStatus, what) {
+  status = { ...newStatus, admin: status.admin };
+  renderStatus();
+  current = null;
+  $('runner').replaceChildren(el('p', { className: 'muted', textContent: 'Choose an app on the left.' }));
+  await loadApps();
+  sourceMsg(`Now serving ${what}: ${apps.length} app(s).`);
+  log(`source changed to ${what}`, 'a');
+}
+
+$('useLocal').onclick = async () => {
+  try { await switched(await api('/api/source', { kind: 'local' }), 'the local folder'); }
+  catch (e) { sourceMsg(e.message, true); }
+};
+
+// Import from a zip
+function importMsg(text, bad = false, ...extra) {
+  $('importMsg').replaceChildren(text, ...extra);
+  $('importMsg').className = bad ? 'err' : 'muted';
+}
+
+async function imported(res) {
+  const parts = [`Imported ${res.apps.length} app(s): ${res.apps.join(', ')}.`];
+  if (res.skipped.length) parts.push(` Skipped: ${res.skipped.join('; ')}.`);
+  log(`imported from zip: ${res.apps.join(', ')}`, 'a');
+  if (res.serving_local) {
+    await loadApps();
+    await loadStatus();
+    importMsg(parts.join(''));
+  } else {
+    importMsg(parts.join('') + ' The server is serving Drive right now. ', false,
+      el('button', { className: 'link', textContent: 'Switch to the local folder', onclick: () => $('useLocal').click() }));
+  }
+}
+
+async function runImport(promise) {
+  importMsg('Importing…');
+  try { await imported(await promise); }
+  catch (e) { importMsg(e.message, true); log(`import: ${e.message}`, 'e'); }
+  // Clear the picker so choosing the same file again (say, after ticking
+  // Replace) still fires a change event.
+  $('zipFile').value = '';
+}
+
+$('zipFile').onchange = () => {
+  const file = $('zipFile').files[0];
+  if (!file) return;
+  const name = file.name.replace(/[^\w.-]/g, '-');
+  const q = `name=${encodeURIComponent(name)}${$('zipReplace').checked ? '&replace=1' : ''}`;
+  runImport((async () => {
+    const r = await fetch(`/api/import?${q}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/zip', ...(token ? { 'X-Admin-Token': token } : {}) },
+      body: file,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+    return data;
+  })());
+};
+
+$('zipUrlBtn').onclick = () => {
+  const url = $('zipUrl').value.trim();
+  if (!url) return importMsg('Paste a link first.', true);
+  runImport(api('/api/import/url', { url, replace: $('zipReplace').checked }));
+};
+
+// Step 1: key
+function renderKey() {
+  const has = !!status.client_email;
+  $('step1').classList.toggle('done', has);
+  $('keyState').replaceChildren(...(has
+    ? ['Key loaded. Share your apps folder in Drive with ', el('code', { textContent: status.client_email }),
+       ' as Viewer. ', el('button', { className: 'link', textContent: 'Copy address',
+         onclick: () => navigator.clipboard.writeText(status.client_email).then(() => sourceMsg('Address copied.')) })]
+    : ['No key yet. Upload the JSON key file of a Google Cloud service account.']));
+}
+
+$('keyFile').onchange = async () => {
+  const file = $('keyFile').files[0];
+  if (!file) return;
+  sourceMsg('Checking the key with Google…');
+  try {
+    const { client_email } = await api('/api/drive/key', await file.text());
+    status.client_email = client_email;
+    renderKey();
+    sourceMsg('Key accepted.');
+    folderStack = [];
+    browse(null, 'Shared with the service account');
+  } catch (e) { sourceMsg(`Key rejected: ${e.message}`, true); }
+  $('keyFile').value = '';
+};
+
+// Step 2: folder browser
+let folderStack = []; // [{id, name}] from the top level down; top level has id null
+let chosen = null;    // {id, name}
+
+async function browse(id, name, depth) {
+  if (depth !== undefined) folderStack = folderStack.slice(0, depth);
+  folderStack.push({ id, name });
+  renderCrumbs();
+  $('folders').replaceChildren();
+  $('browseMsg').textContent = 'Loading…';
+  try {
+    const { folders } = await api(`/api/drive/browse${id ? `?parent=${encodeURIComponent(id)}` : ''}`);
+    $('browseMsg').textContent = folders.length ? ''
+      : id ? 'No subfolders here.' : 'Nothing is shared with the service account yet. Share a folder with the address above.';
+    $('folders').replaceChildren(...folders.map((f) => {
+      const li = el('li', { className: chosen?.id === f.id ? 'sel' : '' },
+        el('span', { textContent: f.shared_drive ? '🗄️' : '📁' }),
+        el('span', { className: 'name', textContent: f.name, title: 'Open', onclick: () => browse(f.id, f.name) }),
+        el('button', { textContent: 'Choose', onclick: () => choose(f.id, f.name) }));
+      return li;
+    }));
+  } catch (e) { $('browseMsg').textContent = e.message; $('browseMsg').className = 'err'; return; }
+  $('browseMsg').className = 'muted';
+}
+
+function renderCrumbs() {
+  $('crumbs').replaceChildren(...folderStack.flatMap((f, i) => {
+    const last = i === folderStack.length - 1;
+    const node = last ? el('strong', { textContent: f.name })
+      : el('button', { className: 'link', textContent: f.name, onclick: () => browse(f.id, f.name, i) });
+    return i ? [el('span', { className: 'muted', textContent: '›' }), node] : [node];
+  }));
+}
+
+function folderIdFrom(text) {
+  const t = text.trim();
+  const m = t.match(/\/folders\/([\w-]+)/) || t.match(/[?&]id=([\w-]+)/);
+  if (m) return m[1];
+  return /^[\w-]+$/.test(t) ? t : null;
+}
+
+$('useLink').onclick = () => {
+  const id = folderIdFrom($('folderLink').value);
+  if (!id) return sourceMsg('That does not look like a Drive folder link or ID.', true);
+  choose(id, id);
+};
+
+// Step 3: preview and connect
+async function choose(id, name) {
+  chosen = { id, name };
+  document.querySelectorAll('#folders li').forEach((li) => li.classList.remove('sel'));
+  $('selected').replaceChildren('Chosen: ', el('strong', { textContent: name }), ` (${id})`);
+  $('connect').disabled = true;
+  $('preview').className = 'muted';
+  $('preview').textContent = 'Looking for apps in this folder…';
+  try {
+    const { apps: found } = await api(`/api/drive/preview?folder=${encodeURIComponent(id)}`);
+    if (chosen?.id !== id) return;
+    $('preview').textContent = found.length
+      ? `Found ${found.length} app(s): ${found.join(', ')}`
+      : 'No apps found here. Each app needs its own subfolder with an app.wasm inside.';
+    $('step2').classList.add('done');
+    $('connect').disabled = false;
+  } catch (e) {
+    if (chosen?.id !== id) return;
+    $('preview').className = 'err';
+    $('preview').textContent = `Cannot read this folder: ${e.message}`;
+  }
+}
+
+$('connect').onclick = async () => {
+  if (!chosen) return;
+  $('connect').disabled = true;
+  sourceMsg('Connecting…');
+  try { await switched(await api('/api/source', { kind: 'drive', folder_id: chosen.id, folder_name: chosen.name }), `Drive folder “${chosen.name}”`); }
+  catch (e) { sourceMsg(e.message, true); }
+  $('connect').disabled = false;
+};
+
+// ---------- start ----------
+loadStatus();
+loadApps();
+// Drive refreshes in the background, so pick up new apps and health now and then.
+setInterval(() => { loadStatus(); loadApps(); }, 30000);
 </script>
+</html>

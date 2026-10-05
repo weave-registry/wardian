@@ -4,13 +4,16 @@ services:
     restart: unless-stopped
     ports: ["8000:8000"]
     environment:
-      GDRIVE_FOLDER_ID: "${GDRIVE_FOLDER_ID}"     # the Drive folder that contains one subfolder per app
-      GDRIVE_SA_KEY: /run/secrets/gdrive_sa
+      # Required in Docker to use Settings: requests arrive from the Docker
+      # network, not from this machine, so they need the token.
+      ADMIN_TOKEN: "${ADMIN_TOKEN}"
+      # Optional: start on a Drive folder without using Settings.
+      GDRIVE_FOLDER_ID: "${GDRIVE_FOLDER_ID:-}"
       REFRESH_SECS: "60"
-    secrets: [gdrive_sa]
+    volumes:
+      - data:/data            # saved settings and the uploaded key
     read_only: true
     mem_limit: 256m
 
-secrets:
-  gdrive_sa:
-    file: ./service-account.json    # keep out of git
+volumes:
+  data:

@@ -1,0 +1,7 @@
+/target
+/data
+service-account.json
+# apps/ is the server's working folder; only the examples are tracked.
+/apps/*
+!/apps/adder/
+!/apps/usl-lab/

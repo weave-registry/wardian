@@ -1,0 +1,7 @@
+{ "format": 2, "titel": "typo", "styles": ["https://cdn.example.com/x.css", "missing.css"],
+  "scripts": ["lib.js"],
+  "apps": [
+    { "name": "a", "slot": "left", "wrap": "section", "emits": { "x:done": { "retain": "yes" } }, "listen": ["y"] },
+    { "name": "b", "slot": "main", "needs": ["a.run", "zed.go", "nodot"], "listens": ["nobody:emits"], "caps": ["network", "storage"] },
+    { "name": "b", "provides": "run" },
+    { "name": "../c" } ] }

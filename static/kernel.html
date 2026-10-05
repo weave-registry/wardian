@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suite</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 14px system-ui, sans-serif; }
+  .suite {
+    max-width: 1280px; margin: 0 auto; padding: 28px clamp(16px, 3vw, 40px) 72px;
+    display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 0 44px;
+  }
+  .suite iframe { display: block; width: 100%; height: 0; border: 0; }
+  .hdr { grid-column: 1 / -1; }
+  /* The sticky, scrolling input column, rebuilt around the frame. */
+  .aside { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto; }
+  .headless { display: none; }
+  @media (max-width: 960px) {
+    .suite { grid-template-columns: minmax(0, 1fr); }
+    .aside { position: static; max-height: none; overflow: visible; margin-bottom: 34px; }
+  }
+  #faults {
+    position: fixed; left: 12px; bottom: 12px; max-width: min(40rem, calc(100vw - 24px)); max-height: 30vh; overflow: auto;
+    background: #fff4f4; color: #8a1c1c; border: 1px solid #e5b4b4; border-radius: 8px; padding: .5rem .75rem;
+    font: 12px ui-monospace, Menlo, monospace; white-space: pre-wrap; box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  }
+  #faults[hidden] { display: none; }
+  #error { padding: 2rem; color: #b33; }
+</style>
+<div class="suite" id="suite"></div>
+<div id="faults" hidden></div>
+<script>
+/* Host kernel: runs the apps of one suite, each in its own sandboxed frame.
+   - Contracts come from suite.json. An app's own code cannot widen them.
+   - Apps never touch each other. Messages, calls and results pass through here, copied by postMessage.
+   - Retained topics are replayed to apps that start listening late.
+   - Calls to a method whose app has not started yet wait for it (up to 15 s) instead of failing.
+   - Capabilities are granted here: storage (kept per app), claude:downloads (a file download).
+   Debug in the console: Kernel.apps(), Kernel.trace(), Kernel.faults(). */
+(async () => {
+  'use strict';
+  const suiteName = decodeURIComponent(location.pathname.split('/')[2] || '');
+  const enc = encodeURIComponent;
+  const frames = new Map();            // app -> {win, el, contract, provided:Set, slot}
+  const byWin = new Map();             // frame window -> app ('' for the header)
+  const listeners = new Map();         // topic -> Set(app)
+  const retained = new Map();          // topic -> latest payload
+  const pendingCalls = new Map();      // host call id -> {from, id, to}
+  const waiting = new Map();           // "app.method" -> [queued call]
+  const trace = [], faults = [];
+  let nextId = 1, headerEl = null;
+
+  const note = (kind, app, what) => { trace.push({t: Math.round(performance.now()), kind, app, what}); if (trace.length > 400) trace.shift(); };
+  function fault(app, message){
+    faults.push({app, message});
+    console.error('[' + app + ']', message);
+    const box = document.getElementById('faults');
+    box.hidden = false;
+    box.textContent = faults.slice(-8).map(f => f.app + ': ' + f.message).join('\n');
+  }
+  const send = (app, m) => { const f = frames.get(app); if (f) f.win.postMessage(m, '*'); };
+  const reply = (app, id, ok, valueOrError) => send(app, ok ? {k: 'reply', id, ok, value: valueOrError} : {k: 'reply', id, ok, error: valueOrError});
+
+  // ---------- load and check suite.json ----------
+  let suite;
+  try {
+    const r = await fetch(`/apps/${enc(suiteName)}/suite.json`, {cache: 'no-store'});
+    if (!r.ok) throw new Error(`suite.json: ${r.status}`);
+    suite = await r.json();
+    if (!Array.isArray(suite.apps)) throw new Error('suite.json needs an "apps" list');
+    const FORMAT = 1;   // the newest suite.json format this kernel understands (SPEC.md)
+    if ((suite.format ?? 1) > FORMAT) throw new Error(`it needs package format ${suite.format}; this rustle reads format ${FORMAT}`);
+  } catch (e) {
+    const p = Object.assign(document.createElement('p'), {id: 'error', textContent: 'Cannot start this suite: ' + e.message});
+    document.getElementById('suite').replaceChildren(p);
+    return;
+  }
+  document.title = suite.title || suiteName;
+  const list = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : [];
+  const contractOf = a => ({
+    emits: Object.fromEntries(Object.entries(a.emits || {}).map(([k, v]) => [k, {retain: !!(v && v.retain)}])),
+    listens: list(a.listens), provides: list(a.provides), needs: list(a.needs), caps: list(a.caps),
+  });
+
+  // ---------- per-app storage, kept by the host for this viewer ----------
+  const storeKey = app => `kernel:${suiteName}:${app}`;
+  function loadStore(app){ try { return JSON.parse(localStorage.getItem(storeKey(app)) || '{}') || {}; } catch { return {}; } }
+  function saveStore(app, key, value){
+    const all = loadStore(app); all[key] = value;
+    try { localStorage.setItem(storeKey(app), JSON.stringify(all)); } catch { /* storage full or blocked */ }
+  }
+
+  // ---------- capabilities the host can grant ----------
+  const CAPS = {
+    downloads: {
+      async save(args){
+        const {filename, data} = args || {};
+        if (typeof filename !== 'string' || !/^[\w.\- ]{1,120}$/.test(filename)) throw new Error('bad file name');
+        if (!(typeof data === 'string' || data instanceof Blob || ArrayBuffer.isView(data) || data instanceof ArrayBuffer)) throw new Error('data must be text or bytes');
+        const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+        const a = Object.assign(document.createElement('a'), {href: url, download: filename});
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        return {status: 'saved'};
+      },
+    },
+    // claude:sample needs the Claude viewer; this host answers "not available", and apps hide that feature.
+  };
+
+  // ---------- message handling ----------
+  function deliver(app, topic){
+    if (retained.has(topic)) send(app, {k: 'msg', topic, payload: retained.get(topic)});
+  }
+  function forwardCall(c){
+    const id = nextId++;
+    pendingCalls.set(id, {from: c.from, id: c.id, to: c.app});
+    note('call', c.from, c.app + '.' + c.method);
+    send(c.app, {k: 'invoke', id, method: c.method, args: c.args});
+  }
+
+  const handlers = {
+    hello(app){
+      const f = frames.get(app); if (!f) return;
+      send(app, {k: 'boot', contract: f.contract, store: f.contract.caps.includes('storage') ? loadStore(app) : {}});
+      note('boot', app, 'ok');
+    },
+    emit(app, m){
+      const f = frames.get(app);
+      if (!f.contract.emits[m.topic]) return fault(app, `may not emit "${m.topic}" (not in suite.json)`);
+      if (f.contract.emits[m.topic].retain) retained.set(m.topic, m.payload);
+      note('emit', app, m.topic);
+      (listeners.get(m.topic) || new Set()).forEach(to => send(to, {k: 'msg', topic: m.topic, payload: m.payload}));
+    },
+    on(app, m){
+      if (!frames.get(app).contract.listens.includes(m.topic)) return fault(app, `may not listen to "${m.topic}" (not in suite.json)`);
+      if (!listeners.has(m.topic)) listeners.set(m.topic, new Set());
+      listeners.get(m.topic).add(app);
+      deliver(app, m.topic);
+    },
+    provide(app, m){
+      const f = frames.get(app);
+      for (const method of list(m.methods)){
+        if (!f.contract.provides.includes(method)){ fault(app, `may not provide "${method}" (not in suite.json)`); continue; }
+        f.provided.add(method);
+        const key = app + '.' + method;
+        (waiting.get(key) || []).forEach(c => { clearTimeout(c.timer); forwardCall(c); });
+        waiting.delete(key);
+      }
+    },
+    call(app, m){
+      const key = m.app + '.' + m.method;
+      if (!frames.get(app).contract.needs.includes(key)) return reply(app, m.id, false, `${app} may not call "${key}" (not in suite.json)`);
+      const target = frames.get(m.app);
+      if (!target || !target.contract.provides.includes(m.method)) return reply(app, m.id, false, key + ' is not available');
+      const c = {from: app, id: m.id, app: m.app, method: m.method, args: m.args};
+      if (target.provided.has(m.method)) return forwardCall(c);
+      // The provider's frame has not started yet: hold the call until it does.
+      c.timer = setTimeout(() => {
+        waiting.set(key, (waiting.get(key) || []).filter(x => x !== c));
+        reply(app, m.id, false, key + ' did not start in time');
+      }, 15000);
+      if (!waiting.has(key)) waiting.set(key, []);
+      waiting.get(key).push(c);
+    },
+    result(app, m){
+      const p = pendingCalls.get(m.id);
+      if (!p || p.to !== app) return;   // only the app that was asked may answer
+      pendingCalls.delete(m.id);
+      reply(p.from, p.id, !!m.ok, m.ok ? m.value : String(m.error));
+    },
+    store(app, m){
+      if (!frames.get(app).contract.caps.includes('storage')) return fault(app, 'did not declare capability "storage"');
+      if (typeof m.key === 'string') saveStore(app, m.key, m.value);
+    },
+    cap(app, m){
+      const ok = frames.get(app).contract.caps.includes('claude:' + m.name);
+      const impl = ok && CAPS[m.name];
+      note('cap', app, m.name + (impl ? '' : ' (not available)'));
+      reply(app, m.id, true, impl ? Object.keys(impl) : null);
+    },
+    async capop(app, m){
+      const impl = frames.get(app).contract.caps.includes('claude:' + m.name) && CAPS[m.name];
+      if (!impl || typeof impl[m.op] !== 'function') return reply(app, m.id, false, `capability ${m.name}.${m.op} is not granted`);
+      try { reply(app, m.id, true, await impl[m.op](m.args)); }
+      catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
+    },
+    fault(app, m){ fault(app, String(m.message)); },
+  };
+
+  addEventListener('message', e => {
+    if (!byWin.has(e.source)) return;          // only our own frames are heard
+    const app = byWin.get(e.source), m = e.data || {};
+    const f = app ? frames.get(app) : null;
+    if (m.k === 'size'){
+      const el = app ? f.el : headerEl;
+      el.style.height = (m.h | 0) + 'px';
+      // Follow the latest color, not the first: a frame can report before its
+      // dark-mode styles apply, and the theme can change while the page is open.
+      if (m.bg && m.bg !== 'rgba(0, 0, 0, 0)') document.body.style.background = m.bg;
+      return;
+    }
+    if (!app) return;                          // the header frame only reports its size
+    const h = handlers[m.k];
+    if (h) h(app, m); else fault(app, 'unknown message: ' + String(m.k));
+  });
+
+  // ---------- layout ----------
+  const grid = document.getElementById('suite');
+  if (suite.columns && /^[\w\s(),.%-]+$/.test(suite.columns)) grid.style.gridTemplateColumns = suite.columns;
+  const SANDBOX = 'allow-scripts allow-forms allow-modals allow-popups allow-downloads';
+  function frameEl(src, title){
+    const el = document.createElement('iframe');
+    el.setAttribute('sandbox', SANDBOX);
+    el.title = title; el.src = src;
+    return el;
+  }
+  if (suite.header){
+    headerEl = frameEl(`/frame/${enc(suiteName)}/`, 'header');
+    const box = Object.assign(document.createElement('div'), {className: 'hdr'});
+    box.append(headerEl); grid.append(box);
+  }
+  const aside = Object.assign(document.createElement('div'), {className: 'aside'});
+  const main = Object.assign(document.createElement('div'), {className: 'main'});
+  const hidden = Object.assign(document.createElement('div'), {className: 'headless'});
+  grid.append(aside, main);
+  document.body.append(hidden);
+  if (headerEl) byWin.set(headerEl.contentWindow, '');
+
+  for (const a of suite.apps){
+    if (!a || typeof a.name !== 'string' || !/^[\w.-]+$/.test(a.name) || frames.has(a.name)){ fault('kernel', 'bad or duplicate app entry in suite.json'); continue; }
+    const el = frameEl(`/frame/${enc(suiteName)}/${enc(a.name)}`, a.name);
+    (a.slot === 'aside' ? aside : a.slot === 'main' ? main : hidden).append(el);
+    frames.set(a.name, {win: el.contentWindow, el, contract: contractOf(a), provided: new Set(), slot: a.slot || null});
+    byWin.set(el.contentWindow, a.name);
+  }
+  if (!aside.children.length) aside.remove();
+
+  window.Kernel = Object.freeze({
+    apps: () => suite.apps.map(a => Object.assign({name: a.name}, contractOf(a))),
+    trace: () => trace.slice(),
+    faults: () => faults.slice(),
+  });
+})();
+</script>
+</html>

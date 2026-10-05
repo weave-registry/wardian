@@ -1,0 +1,26 @@
+    <section>
+      <h2>Measurements</h2>
+      <p class="hint">One run per line: load, throughput, and optionally response time. Commas, tabs, or spaces all work.</p>
+      <div class="example-note" id="exampleNote" hidden>Example data is loaded. Paste your own runs to replace it.</div>
+      <textarea id="data" spellcheck="false" aria-label="Measurements, one run per line"></textarea>
+      <div class="status" id="parseStatus" role="status"></div>
+      <div class="btnrow">
+        <button class="ghost" id="btnExample" type="button">Use example</button>
+        <label class="filebtn" id="fileLbl" tabindex="0">Open file<input type="file" id="file" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden></label>
+        <button class="ghost" id="btnClear" type="button">Clear</button>
+      </div>
+    </section>
+    <section>
+      <h2>Units and context</h2>
+      <div class="units">
+        <div><label for="nUnit">Load unit</label><input type="text" id="nUnit" value="threads"></div>
+        <div><label for="xUnit">Throughput unit</label><input type="text" id="xUnit" value="req/s"></div>
+        <div class="wide"><label for="rUnit">Response time column is in</label>
+          <select id="rUnit"><option value="1000">milliseconds</option><option value="1">seconds</option></select></div>
+      </div>
+      <div class="field">
+        <label for="ctx">Describe your system</label>
+        <textarea id="ctx" placeholder="For example: Java API on a 32-core host, one Postgres primary with a pool of 20 connections, Redis cache in front."></textarea>
+        <p class="note">Used only by the AI diagnosis and the plain-language what-if.</p>
+      </div>
+    </section>

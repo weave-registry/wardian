@@ -1,0 +1,28 @@
+      <div class="sec-head">
+        <h2 id="wiTitle">Try a change</h2>
+        <span class="sec-sub">Scale each parameter and watch the dotted curve.</span>
+      </div>
+      <div class="sliders">
+        <div class="slider">
+          <label for="sa">Contention (α) <output id="oa"></output></label>
+          <input type="range" id="sa" min="0" max="3" step="0.05" value="1">
+          <small>Serialized work: locks, a single writer, a shared queue.</small>
+        </div>
+        <div class="slider">
+          <label for="sb">Coherency (β) <output id="ob"></output></label>
+          <input type="range" id="sb" min="0" max="3" step="0.05" value="1">
+          <small>Coordination between workers: cache sync, consensus, chatty calls.</small>
+        </div>
+        <div class="slider">
+          <label for="sl">Single-unit speed (λ) <output id="ol"></output></label>
+          <input type="range" id="sl" min="0.25" max="3" step="0.05" value="1">
+          <small>Throughput of one worker alone: faster code, faster hardware.</small>
+        </div>
+      </div>
+      <div class="btnrow" style="margin-top:8px"><button class="ghost" id="btnWiReset" type="button">Reset sliders</button></div>
+      <p class="wi-sum" id="wiSum"></p>
+      <div class="wi-ask" id="wiAsk" hidden>
+        <input type="text" id="wiText" placeholder="Or describe it: &quot;halve lock hold time&quot;, &quot;shard the queue in two&quot;" aria-label="Describe a change in plain language">
+        <button id="btnWiAsk" type="button">Apply to sliders</button>
+      </div>
+      <p class="note" id="wiNote"></p>
