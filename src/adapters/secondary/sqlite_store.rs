@@ -1,11 +1,13 @@
 //! Each package's database, in SQLite (ADR-2610071219): `<data dir>/db/<package>.sqlite`, written
 //! private. Apps send their own SQL, so every connection carries an authorizer that keeps it inside
-//! its own file: no ATTACH or DETACH, no loading extensions, and only read-only pragmas. Each
+//! its own file: no ATTACH, DETACH or VACUUM (INTO), no loading extensions, and only read-only pragmas. Each
 //! database is capped in size, and each statement is stopped after a time limit.
 
 use crate::ports::db::{check_params, check_statement, quoted, safe_segment, valid_ident, Database, PageRequest, MAX_DB_BYTES, MAX_ROWS_PER_CALL, MAX_STATEMENT_MS};
 use rusqlite::{
+    config::DbConfig,
     hooks::{AuthAction, AuthContext, Authorization},
+    limits::Limit,
     params_from_iter,
     types::{Value as Sql, ValueRef},
     Connection, ErrorCode, OpenFlags,
@@ -48,6 +50,17 @@ fn read_rules(ctx: AuthContext<'_>) -> Authorization {
         AuthAction::Pragma { pragma_name, pragma_value } => read_pragma(pragma_name, pragma_value),
         _ => Authorization::Deny,
     }
+}
+
+/// The wall under the authorizer, so that no single check keeps an app in its file: no database
+/// may be attached at all (ATTACH, VACUUM and VACUUM INTO all need one), the schema cannot be
+/// written by hand, and a function named in a table's schema runs only if it is harmless, since a
+/// database can arrive in an imported file.
+fn walled(conn: &Connection) -> Result<(), String> {
+    let set = |c: DbConfig, on: bool| conn.set_db_config(c, on).map(|_| ()).map_err(|e| e.to_string());
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0).map_err(|e| e.to_string())?;
+    set(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
+    set(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false)
 }
 
 fn read_pragma(name: &str, value: Option<&str>) -> Authorization {
@@ -104,6 +117,7 @@ impl SqliteStore {
         let path = self.path(package)?;
         private_file(&self.dir, &path)?;
         let conn = Connection::open(&path).map_err(|e| format!("opening {package}'s database: {e}"))?;
+        walled(&conn)?;
         let page_size: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0)).map_err(|e| e.to_string())?;
         let pages = i64::try_from(self.max_bytes).unwrap_or(i64::MAX) / page_size.max(512);
         conn.pragma_update(None, "max_page_count", pages).map_err(|e| e.to_string())?;
@@ -131,7 +145,14 @@ impl SqliteStore {
             Some(ErrorCode::AuthorizationForStatementDenied) => {
                 "that is not allowed in an app's database: attaching files, loading extensions, changing settings, and writing where only reading is allowed are refused".into()
             }
-            _ => e.to_string(),
+            _ => {
+                let said = e.to_string();
+                if said.contains("not authorized") || said.contains("too many attached databases") {
+                    format!("that is not allowed in an app's database ({said})")
+                } else {
+                    said
+                }
+            }
         }
     }
 
@@ -223,6 +244,7 @@ impl Database for SqliteStore {
                 return Err(format!("{package} has no tables yet"));
             }
             let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| format!("opening {package}'s database: {e}"))?;
+            walled(&conn)?;
             conn.authorizer(Some(read_rules)).map_err(|e| e.to_string())?;
             return self.page_on(&conn, req);
         }
@@ -341,6 +363,69 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// The SQL wall (ADR-2610072033): every way out of the package's file an app could try.
+    #[test]
+    fn the_sql_wall_refuses_every_way_out() {
+        let (db, dir) = store("wall", MAX_DB_BYTES, 2000);
+        db.query("app", "CREATE TABLE t (a)", &[]).unwrap();
+        let outside = dir.join("outside.sqlite");
+        let o = outside.display();
+        for (what, sql) in [
+            ("ATTACH", format!("ATTACH DATABASE '{o}' AS o")),
+            ("ATTACH of a memory database", "ATTACH ':memory:' AS m".to_string()),
+            ("DETACH", "DETACH DATABASE main".to_string()),
+            ("load_extension", "SELECT load_extension('/tmp/x')".to_string()),
+            ("load_extension with an entry point", "SELECT load_extension('/tmp/x', 'init')".to_string()),
+            ("VACUUM INTO", format!("VACUUM INTO '{o}'")),
+            ("VACUUM INTO behind a comment", format!("/* x */ vacuum  main  into '{o}'")),
+            ("VACUUM", "VACUUM".to_string()),
+            ("a virtual table", "CREATE VIRTUAL TABLE v USING fts5(x)".to_string()),
+        ] {
+            let r = db.query("app", &sql, &[]);
+            assert!(refused(r.clone()), "{what} must be refused, got {r:?}");
+        }
+        assert!(!outside.exists(), "nothing was written outside the package's file");
+        for pragma in [
+            "PRAGMA writable_schema = 1",
+            "PRAGMA journal_mode = OFF",
+            "PRAGMA main.journal_mode = DELETE",
+            "PRAGMA synchronous = OFF",
+            "PRAGMA max_page_count = 999999999",
+            "PRAGMA max_page_count",
+            "PRAGMA page_size = 65536",
+            "PRAGMA user_version = 7",
+            "PRAGMA application_id = 7",
+            "PRAGMA secure_delete = 0",
+            "PRAGMA trusted_schema = 1",
+            "PRAGMA cell_size_check = 0",
+            "PRAGMA ignore_check_constraints = 1",
+            "PRAGMA locking_mode = EXCLUSIVE",
+            "PRAGMA temp_store_directory = '/tmp'",
+            "PRAGMA wal_checkpoint(TRUNCATE)",
+            "PRAGMA database_list",
+        ] {
+            let r = db.query("app", pragma, &[]);
+            assert!(refused(r.clone()), "{pragma} must be refused, got {r:?}");
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Without the authorizer, the connection's own settings still keep it in its file.
+    #[test]
+    fn the_wall_holds_without_the_authorizer() {
+        let (_, dir) = store("wall2", MAX_DB_BYTES, 2000);
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = Connection::open(dir.join("x.sqlite")).unwrap();
+        walled(&conn).unwrap();
+        let out = dir.join("out.sqlite");
+        for sql in [format!("ATTACH '{}' AS o", out.display()), format!("VACUUM INTO '{}'", out.display()), "VACUUM".into()] {
+            assert!(conn.execute_batch(&sql).is_err(), "{sql}");
+        }
+        assert!(conn.execute_batch("PRAGMA writable_schema = 1; UPDATE sqlite_schema SET sql = 'x'").is_err(), "the schema cannot be written by hand");
+        assert!(!out.exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn size_and_time_are_limited() {
         let (db, dir) = store("limits", 64 * 1024, 300);
@@ -348,10 +433,31 @@ mod tests {
         let big = "x".repeat(200_000);
         let full = db.query("app", "INSERT INTO t VALUES (?)", &[json!(big)]);
         assert!(full.is_err_and(|e| e.contains("full")), "the size limit holds");
+        // Grown a little at a time, it stops at the cap too, and the file stays under it.
+        let mut stopped = None;
+        for i in 0..200 {
+            if let Err(e) = db.query("app", "INSERT INTO t VALUES (?)", &[json!("y".repeat(4000))]) {
+                stopped = Some((i, e));
+                break;
+            }
+        }
+        let (i, e) = stopped.expect("the database stops growing at its cap");
+        assert!(i > 0 && e.contains("full"), "{e}");
+        let grown = db.query("app", "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c LIMIT 100000) INSERT INTO t SELECT randomblob(100) FROM c", &[]);
+        assert!(grown.is_err_and(|e| e.contains("full")), "one statement cannot grow it past the cap either");
+        assert!(std::fs::metadata(dir.join("db/app.sqlite")).unwrap().len() <= 64 * 1024, "the file stays within its cap");
+        assert!(db.query("app", "SELECT count(*) FROM t", &[]).is_ok(), "a full database still reads");
         let start = Instant::now();
         let slow = db.query("app", "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c", &[]);
         assert!(slow.is_err_and(|e| e.contains("stopped")), "a runaway statement is stopped");
         assert!(start.elapsed() < Duration::from_secs(5));
+        // A recursive query that only sorts is stopped the same way, and the next statement
+        // gets a fresh clock.
+        let start = Instant::now();
+        let sorted = db.query("app", "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c LIMIT 100000000) SELECT x FROM c ORDER BY x DESC LIMIT 1", &[]);
+        assert!(sorted.is_err_and(|e| e.contains("stopped")), "a runaway sort is stopped");
+        assert!(start.elapsed() < Duration::from_secs(5));
+        assert!(db.query("app", "SELECT 1", &[]).is_ok(), "the next statement runs");
         let _ = std::fs::remove_dir_all(dir);
     }
 
