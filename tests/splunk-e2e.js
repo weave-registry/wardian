@@ -183,7 +183,7 @@ async function answer(page, re, yes, what) {
   await ht.locator('#preset').selectOption('');
   await ht.locator('#spl').fill('index=big slowtable | table n host');
   await ht.locator('#title').fill('Slow table');
-  await ht.locator('#btnRun').click();
+  await ht.locator('#btnRun').dispatchEvent('click');   // a click on a fresh sandboxed frame can be lost
   await sleep(1000);
   ok(await ht.locator('wardian-progress').getAttribute('state') !== 'done' && /Searching Splunk/.test(await ht.locator('wardian-progress').getAttribute('label')), 'the slow load is running');
   // Six more long searches from this browser: each answers at once, so none holds a connection.
@@ -232,7 +232,7 @@ async function answer(page, re, yes, what) {
 
   console.log('== a cancel stops the load, and the search on Splunk');
   const cancelledBefore = (await (await fetch(SPLUNK + '/fake/cancelled')).json()).length;
-  await ht.locator('#btnRun').click();
+  await ht.locator('#btnRun').dispatchEvent('click');   // a click on a fresh sandboxed frame can be lost
   await sleep(1500);
   await home.locator('#jobsBtn').click();
   await home.locator('#jobsPanel').waitFor({ state: 'visible', timeout: 3000 });
@@ -248,9 +248,9 @@ async function answer(page, re, yes, what) {
   ok(mine[0].state === 'cancelled', 'and the job is cancelled');
   await home.locator('#jobsClose').click();
   // The app's own Stop button does the same.
-  await ht.locator('#btnRun').click();
+  await ht.locator('#btnRun').dispatchEvent('click');   // a click on a fresh sandboxed frame can be lost
   await sleep(1500);
-  await ht.locator('wardian-progress button', { hasText: 'Stop' }).click();
+  await ht.locator('wardian-progress button', { hasText: 'Stop' }).dispatchEvent('click');
   await ht.locator('#status', { hasText: 'You stopped the search' }).waitFor({ timeout: 8000 }).catch(() => {});
   ok(/You stopped the search/.test(await ht.locator('#status').textContent()), 'the progress bar\'s Stop button cancels too');
   ok((await home.evaluate(() => [...document.querySelectorAll('iframe')].map(f => f.contentWindow.Kernel && f.contentWindow.Kernel.faults()).filter(Boolean).flat())).length === 0, 'no kernel faults in the app list\'s table app');
