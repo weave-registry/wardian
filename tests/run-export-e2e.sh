@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end test of exporting an app as a .wardian file and importing it into another Wardian
 # (ADR-2610071248). Two servers: A exports with its data, B starts empty and imports.
-# Needs: Node with the playwright package (npm i -g playwright) and Google Chrome.
+# Needs: Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian

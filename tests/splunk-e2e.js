@@ -39,7 +39,7 @@ async function answer(page, re, yes, what) {
   r = await post('/api/splunk/search', { package: 'usl-lab', app: 'inputs', search: 'index=x' });
   ok(/does not declare/.test(r.body.error), 'the USL lab no longer runs searches itself');
 
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(require('./browser')({ headless: true }));
   const context = await browser.newContext({ viewport: { width: 1360, height: 1000 } });
   const tab = await context.newPage(), lab = await context.newPage();
   const pageErrors = [];

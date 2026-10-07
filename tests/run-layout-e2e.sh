@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end test of Arrange: each viewer's own layout of a suite, a page app and a module app.
-# Needs: Node with the playwright package (npm i -g playwright) and Google Chrome.
+# Needs: Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian

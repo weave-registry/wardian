@@ -7,7 +7,7 @@ let failed = 0;
 const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${what} ${extra}`); if (!cond) failed++; };
 
 (async () => {
-  const browser = await chromium.launch({ channel: 'chrome' });
+  const browser = await chromium.launch(require('./browser')());
   const ctx = await browser.newContext();               // one browser profile: tabs share channels
   const errors = [];
   const open = async (title) => {
