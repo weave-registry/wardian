@@ -185,9 +185,9 @@ impl Exports for Exporter {
         }
         let files = self.files(&dir);
         let data = if with_data { self.data(app, true)? } else { Data { included: DataIncluded::default(), files: vec![] } };
-        let total: u64 = files.iter().map(|(_, s)| s).sum::<u64>() + data.files.iter().map(|(_, b)| b.len() as u64).sum::<u64>();
-        if total > MAX_EXPORT_BYTES {
-            return Err(format!("{app} with its data is larger than {} MB, the most one file may hold", MAX_EXPORT_BYTES / (1024 * 1024)));
+        // Import reads each data file up to MAX_ENTRY_BYTES; a larger one would export and never come back.
+        if let Some((name, bytes)) = data.files.iter().find(|(_, b)| b.len() as u64 > MAX_ENTRY_BYTES) {
+            return Err(format!("{app}'s {name} is {} MB, and an import reads at most {} MB of it", bytes.len() / (1024 * 1024), MAX_ENTRY_BYTES / (1024 * 1024)));
         }
         let info = app_info(app.to_string(), &|rel| self.fs.read(&dir.join(rel)), &|rel| self.fs.is_file(&dir.join(rel)));
         let man = manifest(app, info.title.as_deref(), unix_now(), env!("CARGO_PKG_VERSION"), &data.included);
@@ -207,6 +207,10 @@ impl Exports for Exporter {
         }
         put(format!("{app}/{MANIFEST}"), serde_json::to_string_pretty(&man).map_err(|e| e.to_string())?.as_bytes())?;
         let out = zip.finish().map_err(|e| format!("finishing the file: {e}"))?;
+        // The limit is on the finished file, the size an import is asked to take.
+        if out.get_ref().len() as u64 > MAX_EXPORT_BYTES {
+            return Err(format!("{app}{} makes a file larger than {} MB, the most Wardian imports", if data.included.any() { " with its data" } else { "" }, MAX_EXPORT_BYTES / (1024 * 1024)));
+        }
         println!("export: {app}{}", if data.included.any() { " with its data" } else { "" });
         Ok(out.into_inner())
     }

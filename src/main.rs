@@ -119,6 +119,10 @@ fn serve(cfg: Settings) {
             std::process::exit(2);
         }
     }
+    // A first start with an empty data folder shows the first-run setup once (ADR-2610072033).
+    if let Err(e) = usecases::workspace::mark_first_run(&*fs, &cfg.data_dir) {
+        eprintln!("data: could not prepare {}: {e}", cfg.data_dir.display());
+    }
     // The working folder (ADR-2610071122): filled from the repository's apps on the first start,
     // and the repository is never changed. A folder named on the command line is served as it is.
     if cfg.chosen_folder {

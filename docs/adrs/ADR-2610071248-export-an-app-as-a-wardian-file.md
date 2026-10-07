@@ -87,6 +87,9 @@ Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy o
   puts back its files; the kept data is there to be put back by hand.
 - Export reads the local working folder; an app served from Google Drive is exported after it is
   imported locally.
+- The 500 MB limit was lowered (ADR-2610072033): an export may be at most the size Wardian accepts
+  as an upload (100 MB, measured on the finished file), and no data file may be larger than import
+  reads (256 MB), so every file Wardian writes can be imported again.
 
 ## References
 

@@ -38,6 +38,19 @@ pub fn seed(fs: &dyn FileSystem, source: &Path, working: &Path) -> Result<Option
     Ok(Some(apps))
 }
 
+/// The file in the data folder that says the first-run setup has not been seen (ADR-2610072033).
+pub const FIRST_RUN_MARKER: &str = "first-run";
+
+/// On a start with a missing or empty data folder, leaves the first-run marker there, before
+/// anything else writes to it. Returns whether this is such a first start.
+pub fn mark_first_run(fs: &dyn FileSystem, data_dir: &Path) -> Result<bool, String> {
+    if fs.exists(data_dir) && !fs.list_dir(data_dir).is_empty() {
+        return Ok(false);
+    }
+    fs.write(&data_dir.join(FIRST_RUN_MARKER), b"The first-run setup has not been shown yet. Wardian removes this file when it is skipped or finished.\n")?;
+    Ok(true)
+}
+
 /// Whether `folder` is inside a git work tree: it or a parent holds `.git`.
 pub fn inside_git(fs: &dyn FileSystem, folder: &Path) -> bool {
     let Some(abs) = fs.canonical(folder) else { return false };

@@ -17,8 +17,9 @@ pub const LAYOUT_FILE: &str = "layout.json";
 pub const TABLES_FILE: &str = "tables.sqlite";
 /// The first bytes of every SQLite database.
 const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
-/// The largest export, data included.
-pub const MAX_EXPORT_BYTES: u64 = 500 * 1024 * 1024;
+/// The largest export, data included: what Wardian accepts as an upload, so every file it writes
+/// can be imported again (ADR-2610072033).
+pub const MAX_EXPORT_BYTES: u64 = super::import_plan::MAX_ZIP_BYTES;
 const FORMAT: u64 = 1;
 
 /// What never leaves with an app, said to the user before a download.

@@ -206,6 +206,7 @@ fn api_post(path: &str, body: Value, s: &Services) -> Result<Value, String> {
             out
         }
         "/api/grants" => hub.set_grant(&body),
+        "/api/setup/done" => hub.setup_done(),
         "/api/ai/key" => studio.set_key(body["key"].as_str().unwrap_or(""), body["workspace"].as_str()),
         "/api/ai/provider" => studio.set_provider(&body),
         "/api/ai/send" => studio.send(&body),

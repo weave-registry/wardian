@@ -19,7 +19,7 @@ they leave open falls into five groups.
    admin, which is fine for one person on a laptop and not for a shared host. Import reads zips from
    strangers: paths, sizes, symbolic links and the `.wardian/data` folder are all inputs.
 2. **Real services.** Google Drive, Splunk paging through a large job, Bedrock, and exports near the
-   500 MB limit are tested only against fakes in `tests/fixtures/`.
+   size limit are tested only against fakes in `tests/fixtures/`.
 3. **Reliability.** A user's server stopped at 11:31 on 2026-10-07 with no message, and the cause is
    unknown. A page sometimes waits forever for one or two files, most likely in how `tiny_http` keeps
    connections open for many browser requests at once.
@@ -43,8 +43,8 @@ Wardian 1.0 ships when every item below is done or is written down here as delib
      for them.
 2. **Real services, once per release.** `tests/live/` holds opt-in checks that run only when their
    credentials are set: one Bedrock call by API key and one by SigV4, a Splunk search of at least
-   100,000 rows loaded and paged, a Drive folder listed and an app opened from it, and an export of
-   400 MB. The release notes say which ran.
+   100,000 rows loaded and paged, a Drive folder listed and an app opened from it, and an export just
+   under the 100 MB limit, imported again. The release notes say which ran.
 3. **Reliability.**
    - Find the page hang and fix it, with a test that loads the app list and a suite 200 times in a row
      with no request left unanswered. If `tiny_http` is the cause, it is replaced behind the existing
