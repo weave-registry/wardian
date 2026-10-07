@@ -11,13 +11,20 @@
 //! JavaScript, HTML and CSS: a page app (Wardian adds an empty app.wasm, the
 //! marker that makes a folder an app) or a suite.
 
-use crate::check::check_dir;
-use crate::hub::{write_private, Hub};
-use crate::source::{safe_rel, safe_segment, unix_now, APP_MARKERS, SKIP_DIRS};
+use super::catalog::Hub;
+use super::check::Checker;
+use crate::domain::components::{files_for, page_tags, wire_suite, GUIDE};
+use crate::domain::package::{random_u32, safe_rel, unix_now, SKIP_DIRS};
+use crate::domain::studio::{free_name, json_in, size_text, Session, EMPTY_WASM};
+use crate::ports::{
+    assets::Assets,
+    llm::{Llm, LlmAuth, LlmError, Tier},
+    service::Builder,
+    storage::FileSystem,
+};
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, HashMap},
-    fs,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -27,8 +34,6 @@ use std::{
     time::Duration,
 };
 
-const DEFAULT_MODEL: &str = "claude-opus-5-5";
-const DEFAULT_BASE: &str = "https://api.anthropic.com";
 /// Model requests in one turn of the chat, before Wardian stops it.
 const MAX_STEPS: usize = 40;
 const MAX_TOKENS: u32 = 16_000;
@@ -36,21 +41,8 @@ const MAX_MESSAGE_CHARS: usize = 20_000;
 const MAX_FILE_CHARS: usize = 512 * 1024;
 const MAX_FILES: usize = 300;
 const MAX_SESSIONS: usize = 20;
-/// The smallest valid WebAssembly module: the marker for a page app with no
-/// WebAssembly of its own.
-const EMPTY_WASM: &[u8] = b"\0asm\x01\0\0\0";
-
-const SPEC_MD: &str = include_str!("../SPEC.md");
-const EXAMPLES: &[(&str, &str)] = &[
-    ("suite.json", include_str!("../templates/suite/suite.json")),
-    ("style.css", include_str!("../templates/suite/style.css")),
-    ("header.html", include_str!("../templates/suite/header.html")),
-    ("apps/input/app.js", include_str!("../templates/suite/apps/input/app.js")),
-    ("apps/input/view.html", include_str!("../templates/suite/apps/input/view.html")),
-    ("apps/output/app.js", include_str!("../templates/suite/apps/output/app.js")),
-    ("apps/output/view.html", include_str!("../templates/suite/apps/output/view.html")),
-    ("apps/text/app.js", include_str!("../templates/suite/apps/text/app.js")),
-];
+/// The most an app may send in one `claude:sample` prompt.
+const MAX_SAMPLE_CHARS: usize = 60_000;
 
 const INTRO: &str = r#"You build apps for Wardian, a program that runs small web apps in a sandbox. The person you talk to describes an app; you write its files. Many users are not programmers: keep your chat replies short, friendly and free of jargon.
 
@@ -112,9 +104,9 @@ fn tools() -> Value {
     ])
 }
 
-fn system() -> Value {
-    let mut reference = format!("<spec>\n{SPEC_MD}\n</spec>\n\n<example-suite>\n");
-    for (path, body) in EXAMPLES {
+fn system(assets: &dyn Assets) -> Value {
+    let mut reference = format!("<spec>\n{}\n</spec>\n\n<example-suite>\n", assets.spec_md());
+    for (path, body) in assets.example_suite() {
         reference += &format!("<file path=\"{path}\">\n{body}\n</file>\n");
     }
     reference += "</example-suite>\n(The example's \"text\" app loads a .wasm file with ctx.asset. Your apps cannot include .wasm files, so do that work in JavaScript.)";
@@ -125,34 +117,26 @@ fn system() -> Value {
     ])
 }
 
-/// Where to reach the API, and with which key.
-#[derive(Clone)]
+/// A failed model call, in words.
+fn api_error(e: LlmError) -> String {
+    match e {
+        LlmError::Status(401, _) => "the API key was refused (401). Check it in Settings.".into(),
+        LlmError::Status(code, msg) if msg.is_empty() => format!("the API answered HTTP {code}"),
+        LlmError::Status(code, msg) => format!("the API answered HTTP {code}: {msg}"),
+        LlmError::Transport(why) => format!("cannot reach the API: {why}"),
+        LlmError::Unreadable(why) => format!("unreadable reply from the API: {why}"),
+    }
+}
+
+/// The model, the key, and what the build loop needs to call it.
 struct Api {
-    key: String,
-    /// Sent as anthropic-workspace-id. Keys that are not scoped to one workspace need it.
-    workspace: String,
-    base: String,
-    model: String,
+    llm: Arc<dyn Llm>,
+    auth: LlmAuth,
+    assets: Arc<dyn Assets>,
 }
 
 impl Api {
-    fn agent() -> ureq::Agent {
-        ureq::AgentBuilder::new().timeout(Duration::from_secs(600)).build()
-    }
-
-    fn request(&self, method: &str, path: &str) -> ureq::Request {
-        let req = Self::agent()
-            .request(method, &format!("{}{path}", self.base))
-            .set("x-api-key", &self.key)
-            .set("anthropic-version", "2023-06-01");
-        if self.workspace.is_empty() {
-            req
-        } else {
-            req.set("anthropic-workspace-id", &self.workspace)
-        }
-    }
-
-    /// One model request. Retries rate limits and overloads a few times.
+    /// One model request of the build loop. Retries rate limits and overloads a few times.
     fn messages(&self, messages: &[Value], cancel: &AtomicBool) -> Result<Value, String> {
         let mut messages = messages.to_vec();
         // Cache the conversation so far: the next request reuses it.
@@ -162,18 +146,17 @@ impl Api {
             }
         }
         let body = json!({
-            "model": self.model,
+            "model": self.llm.model(Tier::Main),
             "max_tokens": MAX_TOKENS,
-            "system": system(),
+            "system": system(&*self.assets),
             "tools": tools(),
             "messages": messages,
         });
         let mut wait = 2;
         loop {
-            match self.request("POST", "/v1/messages").send_json(body.clone()) {
-                Ok(resp) => return resp.into_json().map_err(|e| format!("unreadable reply from the API: {e}")),
-                Err(ureq::Error::Status(code, resp)) if matches!(code, 429 | 500 | 502 | 503 | 529) && wait <= 16 => {
-                    drop(resp);
+            match self.llm.messages(&self.auth, &body) {
+                Ok(v) => return Ok(v),
+                Err(LlmError::Status(code, _)) if matches!(code, 429 | 500 | 502 | 503 | 529) && wait <= 16 => {
                     for _ in 0..wait * 10 {
                         if cancel.load(Ordering::Relaxed) {
                             return Err("stopped".into());
@@ -187,23 +170,11 @@ impl Api {
         }
     }
 
-    /// Asks for one model's details: a cheap way to test a key.
-    fn test(&self) -> Result<(), String> {
-        self.request("GET", &format!("/v1/models/{}", self.model)).call().map(drop).map_err(api_error)
-    }
-}
-
-/// The most an app may send in one `claude:sample` prompt.
-const MAX_SAMPLE_CHARS: usize = 60_000;
-/// The model for `{modelTier: 'quick'}` requests.
-const QUICK_MODEL: &str = "claude-haiku-4-5-20251001";
-
-impl Api {
     /// One question from an app (`claude:sample`), no tools. Errors start with a
     /// code the app can act on ("rate_limited: …"), the same codes the Claude
     /// viewer uses.
     fn sample(&self, prompt: &str, quick: bool, max_tokens: u32) -> Result<Value, String> {
-        let model = if quick { QUICK_MODEL } else { self.model.as_str() };
+        let model = self.llm.model(if quick { Tier::Quick } else { Tier::Main });
         let body = json!({
             "model": model,
             "max_tokens": max_tokens,
@@ -211,15 +182,14 @@ impl Api {
         });
         let mut wait = 2;
         let resp: Value = loop {
-            match self.request("POST", "/v1/messages").send_json(body.clone()) {
-                Ok(r) => break r.into_json().map_err(|e| format!("error: unreadable reply from the API: {e}"))?,
-                Err(ureq::Error::Status(code, r)) if matches!(code, 500 | 502 | 503 | 529) && wait <= 8 => {
-                    drop(r);
+            match self.llm.messages(&self.auth, &body) {
+                Ok(r) => break r,
+                Err(LlmError::Status(code, _)) if matches!(code, 500 | 502 | 503 | 529) && wait <= 8 => {
                     thread::sleep(Duration::from_secs(wait));
                     wait *= 2;
                 }
-                Err(ureq::Error::Status(429, _)) => return Err("rate_limited: the Anthropic API rate limit was reached".into()),
-                Err(ureq::Error::Status(401, _)) => return Err("not_granted: the Anthropic API key was refused; check Settings".into()),
+                Err(LlmError::Status(429, _)) => return Err("rate_limited: the Anthropic API rate limit was reached".into()),
+                Err(LlmError::Status(401, _)) => return Err("not_granted: the Anthropic API key was refused; check Settings".into()),
                 Err(e) => return Err(format!("error: {}", api_error(e))),
             }
         };
@@ -235,80 +205,65 @@ impl Api {
     }
 }
 
-/// The first JSON object or array in a model's answer, which may wrap it in
-/// a code fence or a sentence.
-fn json_in(text: &str) -> Option<Value> {
-    let start = text.find(['{', '['])?;
-    let end = text.rfind(['}', ']'])?;
-    (end > start).then(|| serde_json::from_str(&text[start..=end]).ok()).flatten()
-}
-
-fn api_error(e: ureq::Error) -> String {
-    match e {
-        ureq::Error::Status(code, resp) => {
-            let body: Value = resp.into_json().unwrap_or_default();
-            let msg = body["error"]["message"].as_str().unwrap_or("");
-            match code {
-                401 => "the API key was refused (401). Check it in Settings.".into(),
-                _ if msg.is_empty() => format!("the API answered HTTP {code}"),
-                _ => format!("the API answered HTTP {code}: {msg}"),
-            }
-        }
-        ureq::Error::Transport(t) => format!("cannot reach the API: {}", t.message().unwrap_or(&t.kind().to_string())),
-    }
-}
-
-/// One chat. It lives in memory only; the apps it saves are ordinary folders.
-struct Session {
-    /// The app this chat creates or changes; None until the first save of a new app.
-    app: Option<String>,
-    messages: Vec<Value>,
-    /// What the user sees: their messages, Claude's words, each tool step.
-    events: Vec<Value>,
-    busy: bool,
-    cancel: Arc<AtomicBool>,
-    last_used: u64,
-    /// A browser tab that is testing the latest save: (index of the saved event, when it claimed it).
-    /// Any tab may run the test, so the chat goes on while you work elsewhere; the claim keeps two
-    /// tabs from testing the same save. A claim older than TEST_CLAIM_SECS is given up.
-    test_claim: Option<(usize, u64)>,
-}
-
-/// How long a tab may hold a test before another tab may take it over (the tab may have closed).
-const TEST_CLAIM_SECS: u64 = 90;
-
 pub struct Studio {
+    fs: Arc<dyn FileSystem>,
+    llm: Arc<dyn Llm>,
+    assets: Arc<dyn Assets>,
+    hub: Arc<Hub>,
+    checker: Arc<Checker>,
     key_path: PathBuf,
     key: Mutex<Option<(String, &'static str)>>,
+    /// The key from ANTHROPIC_API_KEY, used when Settings has none.
+    env_key: Option<String>,
     workspace_path: PathBuf,
     workspace: Mutex<String>,
-    base: String,
-    model: String,
     sessions: Mutex<HashMap<String, Arc<Mutex<Session>>>>,
 }
 
+/// What the build loop works with: the model, the apps folder and the checker.
+struct Workshop<'a> {
+    api: &'a Api,
+    fs: &'a dyn FileSystem,
+    hub: &'a Hub,
+    checker: &'a Checker,
+}
+
 impl Studio {
-    pub fn new(data_dir: &Path) -> Studio {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        fs: Arc<dyn FileSystem>,
+        llm: Arc<dyn Llm>,
+        assets: Arc<dyn Assets>,
+        hub: Arc<Hub>,
+        checker: Arc<Checker>,
+        data_dir: &Path,
+        env_key: Option<String>,
+        env_workspace: Option<String>,
+    ) -> Studio {
         let key_path = data_dir.join("anthropic-key");
-        let saved = fs::read_to_string(&key_path).ok().map(|k| k.trim().to_string()).filter(|k| !k.is_empty());
+        let saved = fs.read(&key_path).map(|b| String::from_utf8_lossy(&b).trim().to_string()).filter(|k| !k.is_empty());
         let key = match saved {
             Some(k) => Some((k, "settings")),
-            None => env("ANTHROPIC_API_KEY").map(|k| (k, "environment")),
+            None => env_key.clone().map(|k| (k, "environment")),
         };
         let workspace_path = data_dir.join("anthropic-workspace");
-        let workspace = fs::read_to_string(&workspace_path)
-            .ok()
-            .map(|w| w.trim().to_string())
+        let workspace = fs
+            .read(&workspace_path)
+            .map(|b| String::from_utf8_lossy(&b).trim().to_string())
             .filter(|w| !w.is_empty())
-            .or_else(|| env("ANTHROPIC_WORKSPACE_ID"))
+            .or(env_workspace)
             .unwrap_or_default();
         Studio {
+            fs,
+            llm,
+            assets,
+            hub,
+            checker,
             key_path,
             key: Mutex::new(key),
+            env_key,
             workspace_path,
             workspace: Mutex::new(workspace),
-            base: env("ANTHROPIC_BASE_URL").unwrap_or_else(|| DEFAULT_BASE.into()).trim_end_matches('/').to_string(),
-            model: env("WARDIAN_AI_MODEL").or_else(|| env("RUSTLE_AI_MODEL")).unwrap_or_else(|| DEFAULT_MODEL.into()),
             sessions: Mutex::new(HashMap::new()),
         }
     }
@@ -316,13 +271,17 @@ impl Studio {
     fn api(&self) -> Result<Api, String> {
         let key = self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone());
         let key = key.ok_or("no Anthropic API key yet: add one in Settings → Make apps with Claude")?;
-        Ok(Api { key, workspace: self.workspace.lock().unwrap().clone(), base: self.base.clone(), model: self.model.clone() })
+        Ok(self.api_with(LlmAuth { key, workspace: self.workspace.lock().unwrap().clone() }))
+    }
+
+    fn api_with(&self, auth: LlmAuth) -> Api {
+        Api { llm: Arc::clone(&self.llm), auth, assets: Arc::clone(&self.assets) }
     }
 
     pub fn status(&self) -> Value {
         let key = self.key.lock().unwrap();
         let ws = self.workspace.lock().unwrap();
-        json!({ "ready": key.is_some(), "key_from": key.as_ref().map(|(_, from)| *from), "model": self.model,
+        json!({ "ready": key.is_some(), "key_from": key.as_ref().map(|(_, from)| *from), "model": self.llm.model(Tier::Main),
                 "workspace": if ws.is_empty() { Value::Null } else { json!(*ws) } })
     }
 
@@ -362,8 +321,8 @@ impl Studio {
             w => w.map(String::from),
         };
         if key.is_empty() && workspace.is_none() {
-            let _ = fs::remove_file(&self.key_path);
-            *self.key.lock().unwrap() = env("ANTHROPIC_API_KEY").map(|k| (k, "environment"));
+            self.fs.remove_file(&self.key_path);
+            *self.key.lock().unwrap() = self.env_key.clone().map(|k| (k, "environment"));
             return Ok(self.status());
         }
         let typed = !key.is_empty();
@@ -376,16 +335,16 @@ impl Studio {
             self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone()).ok_or("paste the API key too")?
         };
         let ws = workspace.clone().unwrap_or_else(|| self.workspace.lock().unwrap().clone());
-        Api { key: key.clone(), workspace: ws.clone(), base: self.base.clone(), model: self.model.clone() }.test()?;
+        self.llm.test_key(&LlmAuth { key: key.clone(), workspace: ws.clone() }).map_err(api_error)?;
         if typed {
-            write_private(&self.key_path, key.as_bytes()).map_err(|e| format!("saving the key: {e}"))?;
+            self.fs.write_private(&self.key_path, key.as_bytes()).map_err(|e| format!("saving the key: {e}"))?;
             *self.key.lock().unwrap() = Some((key, "settings"));
         }
         if workspace.is_some() {
             if ws.is_empty() {
-                let _ = fs::remove_file(&self.workspace_path);
+                self.fs.remove_file(&self.workspace_path);
             } else {
-                write_private(&self.workspace_path, ws.as_bytes()).map_err(|e| format!("saving the workspace: {e}"))?;
+                self.fs.write_private(&self.workspace_path, ws.as_bytes()).map_err(|e| format!("saving the workspace: {e}"))?;
             }
             *self.workspace.lock().unwrap() = ws;
         }
@@ -394,9 +353,9 @@ impl Studio {
 
     /// Adds the user's message to a chat (a new one when `session` is
     /// missing) and starts Claude's turn in the background.
-    pub fn send(self: &Arc<Self>, hub: &Arc<Hub>, body: &Value) -> Result<Value, String> {
+    pub fn send(&self, body: &Value) -> Result<Value, String> {
         let api = self.api()?;
-        if !hub.serving_local() {
+        if !self.hub.serving_local() {
             return Err("AI apps are saved in the local apps folder. Switch the source to Local first.".into());
         }
         let text = body["message"].as_str().unwrap_or("").trim();
@@ -414,20 +373,12 @@ impl Studio {
             None => {
                 let app = body["app"].as_str().filter(|a| !a.is_empty());
                 if let Some(app) = app {
-                    if !safe_segment(app) || !is_app(&hub.local_root().join(app)) {
+                    if !self.hub.local_app_exists(app) {
                         return Err(format!("no local app \"{app}\" to change"));
                     }
                 }
-                let id = format!("{:x}{:08x}", unix_now(), rand32());
-                let s = Arc::new(Mutex::new(Session {
-                    app: app.map(String::from),
-                    messages: Vec::new(),
-                    events: Vec::new(),
-                    busy: false,
-                    cancel: Arc::new(AtomicBool::new(false)),
-                    last_used: unix_now(),
-                    test_claim: None,
-                }));
+                let id = format!("{:x}{:08x}", unix_now(), random_u32());
+                let s = Arc::new(Mutex::new(Session::new(app.map(String::from), unix_now())));
                 self.remember(&id, Arc::clone(&s));
                 (id, s)
             }
@@ -461,10 +412,11 @@ impl Studio {
         let cancel = Arc::clone(&s.cancel);
         drop(s);
 
-        let hub = Arc::clone(hub);
+        let (fs, hub, checker) = (Arc::clone(&self.fs), Arc::clone(&self.hub), Arc::clone(&self.checker));
         let worker = Arc::clone(&session);
         thread::spawn(move || {
-            let result = run_turn(&api, &hub, &worker, &cancel);
+            let shop = Workshop { api: &api, fs: &*fs, hub: &hub, checker: &checker };
+            let result = run_turn(&shop, &worker, &cancel);
             let mut s = worker.lock().unwrap();
             match result {
                 Ok(()) => {}
@@ -510,7 +462,7 @@ impl Studio {
             .iter()
             .filter_map(|(id, s)| {
                 let s = s.lock().unwrap();
-                (now.saturating_sub(s.last_used) < 24 * 3600).then(|| (s.last_used, summary(id, &s, now)))
+                (now.saturating_sub(s.last_used) < 24 * 3600).then(|| (s.last_used, s.summary(id, now)))
             })
             .collect();
         out.sort_by(|a, b| b.0.cmp(&a.0));
@@ -521,34 +473,16 @@ impl Studio {
     /// being tested by another tab. Then every tab shows "Trying the app…".
     pub fn claim_test(&self, id: &str, saved: usize) -> Result<Value, String> {
         let s = self.sessions.lock().unwrap().get(id).cloned().ok_or("that chat has ended (Wardian restarted)")?;
-        let mut s = s.lock().unwrap();
-        let now = unix_now();
-        let ok = !s.busy
-            && last_saved(&s.events) == Some(saved)
-            && !tested(&s.events, saved)
-            && s.test_claim.is_none_or(|(i, at)| i != saved || now.saturating_sub(at) > TEST_CLAIM_SECS);
-        if ok {
-            if s.test_claim.is_none_or(|(i, _)| i != saved) {
-                s.events.push(json!({ "kind": "testing", "saved": saved, "text": "Trying the app in this browser…" }));
-            }
-            s.test_claim = Some((saved, now));
-        }
+        let ok = s.lock().unwrap().claim_test(saved, unix_now());
         Ok(json!({ "claimed": ok }))
     }
 
     /// The result of a tab's browser test of save number `saved`.
     pub fn tested(&self, id: &str, body: &Value) -> Result<Value, String> {
         let s = self.sessions.lock().unwrap().get(id).cloned().ok_or("that chat has ended (Wardian restarted)")?;
-        let mut s = s.lock().unwrap();
-        let saved = body["saved"].as_u64().ok_or("which save was tested?")? as usize;
-        if tested(&s.events, saved) {
-            return Ok(json!({ "recorded": false }));
-        }
-        let text: String = body["text"].as_str().unwrap_or("").chars().take(4000).collect();
-        s.events.push(json!({ "kind": "tested", "saved": saved, "ok": body["ok"].as_bool() == Some(true), "text": text }));
-        s.test_claim = None;
-        s.last_used = unix_now();
-        Ok(json!({ "recorded": true }))
+        let saved = usize::try_from(body["saved"].as_u64().ok_or("which save was tested?")?).map_err(|_| "which save was tested?")?;
+        let recorded = s.lock().unwrap().record_test(saved, body["ok"].as_bool() == Some(true), body["text"].as_str().unwrap_or(""), unix_now());
+        Ok(json!({ "recorded": recorded }))
     }
 
     pub fn stop(&self, id: &str) -> Result<Value, String> {
@@ -558,58 +492,6 @@ impl Studio {
     }
 }
 
-fn last_saved(events: &[Value]) -> Option<usize> {
-    events.iter().rposition(|e| e["kind"] == "saved")
-}
-
-fn tested(events: &[Value], saved: usize) -> bool {
-    events.iter().any(|e| e["kind"] == "tested" && e["saved"].as_u64() == Some(saved as u64))
-}
-
-/// One chat for the session list. `state`: working, untested (saved, nobody tested it yet),
-/// testing, ready (the test passed), needs_you (an error, a stop, a failed test, or a question),
-/// or idle (nothing asked yet).
-fn summary(id: &str, s: &Session, now: u64) -> Value {
-    let saved = last_saved(&s.events);
-    let last = s.events.iter().rev().find(|e| e["kind"] != "tool");
-    let claimed = s.test_claim.is_some_and(|(i, at)| Some(i) == saved && now.saturating_sub(at) <= TEST_CLAIM_SECS);
-    // Claude often says a last word after it saves, so a save waits for its test whatever came after.
-    let state = if s.busy {
-        "working"
-    } else if saved.is_some_and(|i| !tested(&s.events, i)) {
-        if claimed { "testing" } else { "untested" }
-    } else {
-        match last.and_then(|e| e["kind"].as_str()) {
-            None => "idle",
-            Some("tested") if last.is_some_and(|e| e["ok"] == true) => "ready",
-            // Claude's last word after a passed test still means "ready".
-            Some("say") if s.events.iter().rev().find(|e| e["kind"] == "tested" || e["kind"] == "user" || e["kind"] == "test").is_some_and(|e| e["kind"] == "tested" && e["ok"] == true) => "ready",
-            _ => "needs_you",
-        }
-    };
-    // Automatic fixes since the user last wrote: the page stops after a few.
-    let fixes = s.events.iter().rev().take_while(|e| e["kind"] != "user").filter(|e| e["kind"] == "test").count();
-    let title: String = s.events.iter().find(|e| e["kind"] == "user").and_then(|e| e["text"].as_str()).unwrap_or("").chars().take(80).collect();
-    json!({ "session": id, "app": s.app, "busy": s.busy, "state": state, "saved": saved, "fixes": fixes, "title": title, "last_used": s.last_used })
-}
-
-fn env(k: &str) -> Option<String> {
-    std::env::var(k).ok().filter(|v| !v.is_empty())
-}
-
-fn rand32() -> u32 {
-    // Session ids only need to differ, not to be secret: every API call is admin-only.
-    let mut b = [0u8; 4];
-    if let Ok(mut f) = fs::File::open("/dev/urandom") {
-        let _ = std::io::Read::read_exact(&mut f, &mut b);
-    }
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
-    u32::from_le_bytes(b) ^ std::process::id().rotate_left(16) ^ nanos
-}
-
-fn is_app(dir: &Path) -> bool {
-    APP_MARKERS.iter().any(|m| dir.join(m).is_file())
-}
 
 fn push_event(session: &Mutex<Session>, ev: Value) {
     session.lock().unwrap().events.push(ev);
@@ -619,214 +501,176 @@ fn push_event(session: &Mutex<Session>, ev: Value) {
 type Files = BTreeMap<String, Vec<u8>>;
 
 /// Reads an app folder, leaving out hidden files and build folders.
-fn load(dir: &Path, prefix: &str, out: &mut Files) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
-            continue;
-        }
-        let rel = format!("{prefix}{name}");
-        match e.file_type() {
-            Ok(t) if t.is_dir() => load(&e.path(), &format!("{rel}/"), out),
-            Ok(t) if t.is_file() => {
-                if let Ok(b) = fs::read(e.path()) {
-                    out.insert(rel, b);
-                }
-            }
-            _ => {}
-        }
-    }
+fn load(fs: &dyn FileSystem, dir: &Path) -> Files {
+    fs.walk(dir)
+        .into_iter()
+        .filter(|(rel, _)| !rel.split('/').any(|p| p.starts_with('.') || SKIP_DIRS.contains(&p)))
+        .filter_map(|(rel, _)| fs.read(&dir.join(&rel)).map(|b| (rel, b)))
+        .collect()
 }
 
 /// Writes the package to `dir`, adding the empty app.wasm a page app needs.
-fn materialize(files: &Files, dir: &Path) -> Result<(), String> {
+fn materialize(fs: &dyn FileSystem, files: &Files, dir: &Path) -> Result<(), String> {
     for (rel, bytes) in files {
-        let out = dir.join(rel);
-        fs::create_dir_all(out.parent().unwrap()).map_err(|e| e.to_string())?;
-        fs::write(&out, bytes).map_err(|e| e.to_string())?;
+        fs.write(&dir.join(rel), bytes)?;
     }
     if !files.contains_key("suite.json") && !files.contains_key("app.wasm") && files.contains_key("app.json") {
-        fs::write(dir.join("app.wasm"), EMPTY_WASM).map_err(|e| e.to_string())?;
+        fs.write(&dir.join("app.wasm"), EMPTY_WASM)?;
     }
     Ok(())
 }
 
 /// A hidden folder inside the apps folder, so the final move is one rename.
 fn staging_dir(root: &Path) -> PathBuf {
-    root.join(format!(".ai-{}-{:08x}", unix_now(), rand32()))
+    root.join(format!(".ai-{}-{:08x}", unix_now(), random_u32()))
 }
 
-fn check_files(files: &Files, root: &Path, name: &str) -> Result<(bool, String), String> {
-    let dir = staging_dir(root);
-    let r = materialize(files, &dir).map(|()| check_dir(&dir, name));
-    let _ = fs::remove_dir_all(&dir);
-    r.map_err(|e| format!("cannot write the files to check them: {e}"))
-}
-
-/// A free folder name for a new app: "notes", else "notes-2", "notes-3"…
-fn free_name(root: &Path, wanted: &str) -> String {
-    let base: String = wanted
-        .trim()
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
-        .collect::<String>()
-        .trim_matches('-')
-        .chars()
-        .take(40)
-        .collect();
-    let base = if safe_segment(&base) { base } else { "my-app".into() };
-    let mut name = base.clone();
-    let mut n = 2;
-    while root.join(&name).exists() {
-        name = format!("{base}-{n}");
-        n += 1;
+impl Workshop<'_> {
+    fn check_files(&self, files: &Files, name: &str) -> Result<(bool, String), String> {
+        let dir = staging_dir(self.hub.local_root());
+        let r = materialize(self.fs, files, &dir).map(|()| self.checker.check_dir(&dir, name));
+        self.fs.remove_dir_all(&dir);
+        r.map_err(|e| format!("cannot write the files to check them: {e}"))
     }
-    name
-}
 
-/// Checks, then saves. The old version goes to the trash. Returns the app
-/// name and the trash id of the old version, if there was one.
-fn save(files: &Files, hub: &Hub, app: Option<&str>, wanted: &str) -> Result<(String, Option<String>), String> {
-    let root = hub.local_root();
-    let name = match app {
-        Some(a) => a.to_string(),
-        None => free_name(root, wanted),
-    };
-    let dir = staging_dir(root);
-    fs::create_dir_all(root).map_err(|e| e.to_string())?;
-    if let Err(e) = materialize(files, &dir) {
-        let _ = fs::remove_dir_all(&dir);
-        return Err(format!("cannot write the files: {e}"));
-    }
-    let (ok, report) = check_dir(&dir, &name);
-    if !ok {
-        let _ = fs::remove_dir_all(&dir);
-        return Err(format!("not saved: the check found errors.\n{report}"));
-    }
-    let old = if root.join(&name).exists() { Some(hub.move_to_trash(&name)?) } else { None };
-    if let Err(e) = fs::rename(&dir, root.join(&name)) {
-        let _ = fs::remove_dir_all(&dir);
-        return Err(format!("cannot save {name}: {e}"));
-    }
-    println!("ai: saved {name}");
-    Ok((name, old))
-}
-
-fn size_text(n: usize) -> String {
-    if n < 1024 { format!("{n} B") } else { format!("{:.1} KB", n as f64 / 1024.0) }
-}
-
-/// Runs one tool. Returns the text for Claude, whether it is an error, and
-/// the line to show the user (if any).
-fn run_tool(name: &str, input: &Value, files: &mut Files, hub: &Hub, session: &Mutex<Session>) -> (String, bool, Option<String>) {
-    let path = input["path"].as_str().unwrap_or("").trim_start_matches("./");
-    let bad_path = || (format!("\"{path}\" is not an allowed path: use letters, digits, '-', '_', '.' and '/'"), true, None);
-    match name {
-        "list_files" => {
-            if files.is_empty() {
-                return ("The package is empty.".into(), false, None);
-            }
-            let list = files.iter().map(|(p, b)| format!("{p}  {}", size_text(b.len()))).collect::<Vec<_>>().join("\n");
-            (list, false, Some("looked at the files".into()))
+    /// Checks, then saves. The old version goes to the trash. Returns the app
+    /// name and the trash id of the old version, if there was one.
+    fn save(&self, files: &Files, app: Option<&str>, wanted: &str) -> Result<(String, Option<String>), String> {
+        let root = self.hub.local_root();
+        let name = match app {
+            Some(a) => a.to_string(),
+            None => free_name(wanted, &|n| self.fs.exists(&root.join(n))),
+        };
+        let dir = staging_dir(root);
+        self.fs.create_dir_all(root)?;
+        if let Err(e) = materialize(self.fs, files, &dir) {
+            self.fs.remove_dir_all(&dir);
+            return Err(format!("cannot write the files: {e}"));
         }
-        "read_file" => match files.get(path) {
-            None => (format!("no file \"{path}\""), true, None),
-            Some(b) => match std::str::from_utf8(b) {
-                Ok(t) => (t.to_string(), false, Some(format!("read {path}"))),
-                Err(_) => (format!("{path} is binary ({}); it cannot be shown or changed", size_text(b.len())), false, None),
+        let (ok, report) = self.checker.check_dir(&dir, &name);
+        if !ok {
+            self.fs.remove_dir_all(&dir);
+            return Err(format!("not saved: the check found errors.\n{report}"));
+        }
+        let old = if self.fs.exists(&root.join(&name)) { Some(self.hub.move_to_trash(&name)?) } else { None };
+        if let Err(e) = self.fs.rename(&dir, &root.join(&name)) {
+            self.fs.remove_dir_all(&dir);
+            return Err(format!("cannot save {name}: {e}"));
+        }
+        println!("ai: saved {name}");
+        Ok((name, old))
+    }
+
+    /// Runs one tool. Returns the text for Claude, whether it is an error, and
+    /// the line to show the user (if any).
+    fn run_tool(&self, name: &str, input: &Value, files: &mut Files, session: &Mutex<Session>) -> (String, bool, Option<String>) {
+        let path = input["path"].as_str().unwrap_or("").trim_start_matches("./");
+        let bad_path = || (format!("\"{path}\" is not an allowed path: use letters, digits, '-', '_', '.' and '/'"), true, None);
+        match name {
+            "list_files" => {
+                if files.is_empty() {
+                    return ("The package is empty.".into(), false, None);
+                }
+                let list = files.iter().map(|(p, b)| format!("{p}  {}", size_text(b.len()))).collect::<Vec<_>>().join("\n");
+                (list, false, Some("looked at the files".into()))
+            }
+            "read_file" => match files.get(path) {
+                None => (format!("no file \"{path}\""), true, None),
+                Some(b) => match std::str::from_utf8(b) {
+                    Ok(t) => (t.to_string(), false, Some(format!("read {path}"))),
+                    Err(_) => (format!("{path} is binary ({}); it cannot be shown or changed", size_text(b.len())), false, None),
+                },
             },
-        },
-        "write_file" => {
-            if !safe_rel(path) {
-                return bad_path();
-            }
-            let content = input["content"].as_str().unwrap_or("");
-            if path.ends_with(".wasm") {
-                return ("You cannot write .wasm files. Do the work in JavaScript.".into(), true, None);
-            }
-            if !files.contains_key(path) && files.len() >= MAX_FILES {
-                return (format!("a package made here may have at most {MAX_FILES} files"), true, None);
-            }
-            let append = input["append"].as_bool().unwrap_or(false);
-            let entry = files.entry(path.to_string()).or_default();
-            if !append {
-                entry.clear();
-            }
-            if entry.len() + content.len() > MAX_FILE_CHARS {
-                return (format!("{path} would be larger than 512 KB"), true, None);
-            }
-            entry.extend_from_slice(content.as_bytes());
-            let verb = if append { "added to" } else { "wrote" };
-            (format!("{verb} {path} ({})", size_text(entry.len())), false, Some(format!("{verb} {path} ({})", size_text(entry.len()))))
-        }
-        "delete_file" => match files.remove(path) {
-            Some(_) => (format!("deleted {path}"), false, Some(format!("deleted {path}"))),
-            None => (format!("no file \"{path}\""), true, None),
-        },
-        "add_components" => {
-            let names: Vec<String> = input["components"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
-            let list = match crate::ui::files_for(&names) {
-                Ok(l) => l,
-                Err(e) => return (e, true, None),
-            };
-            let rels: Vec<String> = list.iter().map(|f| format!("ui/{f}")).collect();
-            let mut out = Vec::new();
-            for (f, rel) in list.iter().zip(&rels) {
-                // Keep a copy the app already has: it may have been changed on purpose.
-                if !files.contains_key(rel) {
-                    files.insert(rel.clone(), crate::ui::file(f).unwrap_or("").as_bytes().to_vec());
-                    out.push(format!("added {rel}"));
+            "write_file" => {
+                if !safe_rel(path) {
+                    return bad_path();
                 }
+                let content = input["content"].as_str().unwrap_or("");
+                if path.ends_with(".wasm") {
+                    return ("You cannot write .wasm files. Do the work in JavaScript.".into(), true, None);
+                }
+                if !files.contains_key(path) && files.len() >= MAX_FILES {
+                    return (format!("a package made here may have at most {MAX_FILES} files"), true, None);
+                }
+                let append = input["append"].as_bool().unwrap_or(false);
+                let entry = files.entry(path.to_string()).or_default();
+                if !append {
+                    entry.clear();
+                }
+                if entry.len() + content.len() > MAX_FILE_CHARS {
+                    return (format!("{path} would be larger than 512 KB"), true, None);
+                }
+                entry.extend_from_slice(content.as_bytes());
+                let verb = if append { "added to" } else { "wrote" };
+                (format!("{verb} {path} ({})", size_text(entry.len())), false, Some(format!("{verb} {path} ({})", size_text(entry.len()))))
             }
-            if let Some(text) = files.get("suite.json").and_then(|b| String::from_utf8(b.clone()).ok()) {
-                match crate::ui::wire_suite(&text, &rels) {
-                    Ok((body, wired)) => {
-                        if let Some(body) = body {
-                            files.insert("suite.json".into(), body.into_bytes());
-                        }
-                        out.extend(wired.into_iter().map(|w| format!("suite.json {w}")));
+            "delete_file" => match files.remove(path) {
+                Some(_) => (format!("deleted {path}"), false, Some(format!("deleted {path}"))),
+                None => (format!("no file \"{path}\""), true, None),
+            },
+            "add_components" => {
+                let names: Vec<String> = input["components"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
+                let list = match files_for(&names) {
+                    Ok(l) => l,
+                    Err(e) => return (e, true, None),
+                };
+                let rels: Vec<String> = list.iter().map(|f| format!("ui/{f}")).collect();
+                let mut out = Vec::new();
+                for (f, rel) in list.iter().zip(&rels) {
+                    // Keep a copy the app already has: it may have been changed on purpose.
+                    if !files.contains_key(rel) {
+                        files.insert(rel.clone(), self.api.assets.ui_file(f).unwrap_or("").as_bytes().to_vec());
+                        out.push(format!("added {rel}"));
                     }
-                    Err(e) => out.push(format!("could not list them in suite.json ({e}); add them to \"styles\" and \"scripts\" yourself")),
                 }
-            } else {
-                out.push(format!("Put these in the page's <head>, before your own CSS and scripts:\n{}", crate::ui::page_tags(&rels).join("\n")));
-            }
-            out.push(String::new());
-            out.push(crate::ui::GUIDE.into());
-            (out.join("\n"), false, Some(format!("added components: {}", names.join(", "))))
-        }
-        "check" => {
-            let app = session.lock().unwrap().app.clone();
-            match check_files(files, hub.local_root(), app.as_deref().unwrap_or("new-app")) {
-                Ok((ok, report)) => {
-                    let line = if ok { "check passed" } else { "check found problems; fixing them" };
-                    (report, !ok, Some(line.into()))
+                if let Some(text) = files.get("suite.json").and_then(|b| String::from_utf8(b.clone()).ok()) {
+                    match wire_suite(&text, &rels) {
+                        Ok((body, wired)) => {
+                            if let Some(body) = body {
+                                files.insert("suite.json".into(), body.into_bytes());
+                            }
+                            out.extend(wired.into_iter().map(|w| format!("suite.json {w}")));
+                        }
+                        Err(e) => out.push(format!("could not list them in suite.json ({e}); add them to \"styles\" and \"scripts\" yourself")),
+                    }
+                } else {
+                    out.push(format!("Put these in the page's <head>, before your own CSS and scripts:\n{}", page_tags(&rels).join("\n")));
                 }
-                Err(e) => (e, true, None),
+                out.push(String::new());
+                out.push(GUIDE.into());
+                (out.join("\n"), false, Some(format!("added components: {}", names.join(", "))))
             }
-        }
-        "finish" => {
-            let app = session.lock().unwrap().app.clone();
-            let wanted = input["name"].as_str().unwrap_or("my-app");
-            match save(files, hub, app.as_deref(), wanted) {
-                Ok((name, old)) => {
-                    let summary = input["summary"].as_str().unwrap_or("").to_string();
-                    let mut s = session.lock().unwrap();
-                    s.app = Some(name.clone());
-                    s.events.push(json!({ "kind": "saved", "app": name, "replaced": old, "text": summary }));
-                    (format!("Saved as \"{name}\". The user can open it now."), false, None)
+            "check" => {
+                let app = session.lock().unwrap().app.clone();
+                match self.check_files(files, app.as_deref().unwrap_or("new-app")) {
+                    Ok((ok, report)) => {
+                        let line = if ok { "check passed" } else { "check found problems; fixing them" };
+                        (report, !ok, Some(line.into()))
+                    }
+                    Err(e) => (e, true, None),
                 }
-                Err(e) => (e, true, Some("not saved yet: the check found problems; fixing them".into())),
             }
+            "finish" => {
+                let app = session.lock().unwrap().app.clone();
+                let wanted = input["name"].as_str().unwrap_or("my-app");
+                match self.save(files, app.as_deref(), wanted) {
+                    Ok((name, old)) => {
+                        let summary = input["summary"].as_str().unwrap_or("").to_string();
+                        let mut s = session.lock().unwrap();
+                        s.app = Some(name.clone());
+                        s.events.push(json!({ "kind": "saved", "app": name, "replaced": old, "text": summary }));
+                        (format!("Saved as \"{name}\". The user can open it now."), false, None)
+                    }
+                    Err(e) => (e, true, Some("not saved yet: the check found problems; fixing them".into())),
+                }
+            }
+            _ => (format!("unknown tool {name}"), true, None),
         }
-        _ => (format!("unknown tool {name}"), true, None),
     }
 }
 
 /// One turn: Claude works until it stops calling tools, with a limit on steps.
-fn run_turn(api: &Api, hub: &Hub, session: &Mutex<Session>, cancel: &AtomicBool) -> Result<(), String> {
+fn run_turn(shop: &Workshop, session: &Mutex<Session>, cancel: &AtomicBool) -> Result<(), String> {
     let (mut messages, app) = {
         let s = session.lock().unwrap();
         (s.messages.clone(), s.app.clone())
@@ -834,7 +678,7 @@ fn run_turn(api: &Api, hub: &Hub, session: &Mutex<Session>, cancel: &AtomicBool)
     // Start from the app as it is on disk now, so edits made by hand are kept.
     let mut files = Files::new();
     if let Some(app) = &app {
-        load(&hub.local_root().join(app), "", &mut files);
+        files = load(shop.fs, &shop.hub.local_root().join(app));
         files.retain(|p, b| !(p == "app.wasm" && b.as_slice() == EMPTY_WASM));
     }
     let start_len = messages.len();
@@ -845,7 +689,7 @@ fn run_turn(api: &Api, hub: &Hub, session: &Mutex<Session>, cancel: &AtomicBool)
             if cancel.load(Ordering::Relaxed) {
                 return Err("stopped".to_string());
             }
-            let reply = api.messages(&messages, cancel)?;
+            let reply = shop.api.messages(&messages, cancel)?;
             // An empty text block is refused when sent back, so drop any.
             let content: Vec<Value> = reply["content"]
                 .as_array()
@@ -886,7 +730,7 @@ fn run_turn(api: &Api, hub: &Hub, session: &Mutex<Session>, cancel: &AtomicBool)
                 let (text, is_error, shown) = if cut_off && name != "finish" {
                     ("Your reply was cut off at the length limit, so this call was not run. Write large files in smaller parts with append.".to_string(), true, None)
                 } else {
-                    run_tool(name, &call["input"], &mut files, hub, session)
+                    shop.run_tool(name, &call["input"], &mut files, session)
                 };
                 match name {
                     "write_file" | "delete_file" if !is_error => saved_since_change = false,
@@ -917,38 +761,32 @@ fn run_turn(api: &Api, hub: &Hub, session: &Mutex<Session>, cancel: &AtomicBool)
     result
 }
 
-#[cfg(test)]
-mod sample_tests {
-    use super::json_in;
-    use serde_json::json;
-
-    #[test]
-    fn finds_json_in_an_answer() {
-        assert_eq!(json_in("```json\n{\"a\": 1}\n```"), Some(json!({"a": 1})));
-        assert_eq!(json_in("Here: [1, 2]"), Some(json!([1, 2])));
-        assert_eq!(json_in("no json"), None);
+impl Builder for Studio {
+    fn status(&self) -> Value {
+        Studio::status(self)
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn free_names_and_page_marker() {
-        let root = std::env::temp_dir().join(format!("wardian-ai-test-{}", std::process::id()));
-        fs::create_dir_all(root.join("notes")).unwrap();
-        assert_eq!(free_name(&root, "Notes"), "notes-2");
-        assert_eq!(free_name(&root, "My Budget!"), "my-budget");
-        assert_eq!(free_name(&root, "../.."), "my-app");
-
-        let mut files = Files::new();
-        files.insert("app.json".into(), br#"{"format":1,"title":"Hi","page":"index.html"}"#.to_vec());
-        files.insert("index.html".into(), b"<!doctype html><p>hi</p>".to_vec());
-        let (ok, report) = check_files(&files, &root, "hi").unwrap();
-        assert!(ok, "{report}");
-        files.remove("index.html");
-        assert!(!check_files(&files, &root, "hi").unwrap().0, "a missing page must fail");
-        let _ = fs::remove_dir_all(root);
+    fn set_key(&self, key: &str, workspace: Option<&str>) -> Result<Value, String> {
+        Studio::set_key(self, key, workspace)
+    }
+    fn send(&self, body: &Value) -> Result<Value, String> {
+        Studio::send(self, body)
+    }
+    fn sample(&self, body: &Value) -> Result<Value, String> {
+        Studio::sample(self, body)
+    }
+    fn stop(&self, session: &str) -> Result<Value, String> {
+        Studio::stop(self, session)
+    }
+    fn claim_test(&self, session: &str, saved: usize) -> Result<Value, String> {
+        Studio::claim_test(self, session, saved)
+    }
+    fn tested(&self, session: &str, body: &Value) -> Result<Value, String> {
+        Studio::tested(self, session, body)
+    }
+    fn sessions(&self) -> Value {
+        Studio::sessions(self)
+    }
+    fn events(&self, session: &str, since: usize) -> Result<Value, String> {
+        Studio::events(self, session, since)
     }
 }

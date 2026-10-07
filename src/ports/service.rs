@@ -1,0 +1,72 @@
+//! The driving ports: what the web server may ask Wardian to do. The use cases implement them;
+//! the HTTP adapter only knows these traits and the types they carry.
+
+pub use crate::domain::import_plan::MAX_ZIP_BYTES;
+pub use crate::domain::package::{safe_rel, safe_segment, AppInfo};
+pub use crate::domain::suite::FRAME_CSP;
+use serde_json::Value;
+use std::sync::Arc;
+
+/// The apps being served, their settings, the trash, imports and permissions.
+pub trait Catalog: Send + Sync {
+    fn list_apps(&self) -> Vec<String>;
+    fn apps(&self) -> Vec<AppInfo>;
+    /// A file of a served app; `rel` must already have passed `safe_rel`.
+    fn read(&self, app: &str, rel: &str) -> Option<Vec<u8>>;
+    /// The document for one frame of a suite, or its header when `app` is None.
+    fn frame(&self, suite: &str, app: Option<&str>) -> Result<String, String>;
+    fn status(&self) -> Value;
+    fn grants(&self) -> Value;
+    fn set_grant(&self, body: &Value) -> Result<Value, String>;
+    /// Whether `app` of suite `package` declares `cap` and the user allowed `grant` for it.
+    fn check_host_cap(&self, package: &str, app: &str, cap: &str, grant: &str) -> Result<(), String>;
+    fn trash(&self) -> Value;
+    fn remove_app(&self, name: &str) -> Result<Value, String>;
+    fn restore_app(&self, id: &str) -> Result<Value, String>;
+    fn import(&self, bytes: &[u8], zip_name: &str, replace: bool) -> Result<Value, String>;
+    fn import_url(&self, url: &str, replace: bool) -> Result<Value, String>;
+    fn refresh(&self) -> Result<(), String>;
+    /// Tests and saves a Google service account key; returns the address to share folders with.
+    fn set_drive_key(&self, raw: &str) -> Result<String, String>;
+    fn browse(&self, parent: Option<&str>) -> Result<Value, String>;
+    fn preview(&self, folder_id: &str) -> Result<Value, String>;
+    fn use_local(&self) -> Result<(), String>;
+    fn use_drive(&self, folder_id: &str, folder_name: &str) -> Result<(), String>;
+}
+
+/// "Make an app", and Claude for apps (`claude:sample`).
+pub trait Builder: Send + Sync {
+    fn status(&self) -> Value;
+    fn set_key(&self, key: &str, workspace: Option<&str>) -> Result<Value, String>;
+    fn send(&self, body: &Value) -> Result<Value, String>;
+    fn sample(&self, body: &Value) -> Result<Value, String>;
+    fn stop(&self, session: &str) -> Result<Value, String>;
+    fn claim_test(&self, session: &str, saved: usize) -> Result<Value, String>;
+    fn tested(&self, session: &str, body: &Value) -> Result<Value, String>;
+    fn sessions(&self) -> Value;
+    fn events(&self, session: &str, since: usize) -> Result<Value, String>;
+}
+
+/// Splunk searches for apps, and the Splunk account in Settings.
+pub trait Searches: Send + Sync {
+    fn status(&self) -> Value;
+    fn set_config(&self, body: &Value) -> Result<Value, String>;
+    fn search(&self, spl: &str, earliest: &str, latest: &str) -> Result<Value, String>;
+}
+
+/// The docs, the JSON Schemas and the component library, as pages.
+pub trait Pages: Send + Sync {
+    fn page(&self, name: &str) -> Option<String>;
+    fn schema(&self, name: &str) -> Option<&'static str>;
+    fn ui_file(&self, name: &str) -> Option<&'static str>;
+    fn gallery(&self) -> &'static str;
+}
+
+/// Everything the web server serves.
+#[derive(Clone)]
+pub struct Services {
+    pub catalog: Arc<dyn Catalog>,
+    pub builder: Arc<dyn Builder>,
+    pub searches: Arc<dyn Searches>,
+    pub pages: Arc<dyn Pages>,
+}

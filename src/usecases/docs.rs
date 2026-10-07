@@ -1,18 +1,39 @@
-//! The docs pages (/docs/guide, /docs/spec) and the JSON Schemas
-//! (/schemas/*.json). The Markdown files in the repo are the only source:
-//! they are built into the program and rendered on request.
+//! The docs pages (/docs/guide, /docs/spec). The Markdown files in the repo are the only
+//! source: they are built into the program (the assets) and rendered on request.
 
+use crate::ports::{assets::Assets, service::Pages};
 use pulldown_cmark::{html, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use std::sync::Arc;
 
-const GUIDE_MD: &str = include_str!("../GUIDE.md");
-const SPEC_MD: &str = include_str!("../SPEC.md");
-pub const APP_SCHEMA: &str = include_str!("../schemas/app.schema.json");
-pub const SUITE_SCHEMA: &str = include_str!("../schemas/suite.schema.json");
+pub struct Docs {
+    assets: Arc<dyn Assets>,
+}
 
-const PAGES: &[(&str, &str, &str)] = &[
-    ("guide", "Building Wardian apps", GUIDE_MD),
-    ("spec", "Package format", SPEC_MD),
-];
+impl Docs {
+    pub fn new(assets: Arc<dyn Assets>) -> Docs {
+        Docs { assets }
+    }
+
+    /// A docs page, or None for an unknown name.
+    pub fn page(&self, name: &str) -> Option<String> {
+        let pages: [(&str, &str, &str); 2] = [("guide", "Building Wardian apps", self.assets.guide_md()), ("spec", "Package format", self.assets.spec_md())];
+        page(&pages, name)
+    }
+
+    /// app.schema.json or suite.schema.json, for editors that check those files.
+    pub fn schema(&self, name: &str) -> Option<&'static str> {
+        self.assets.schema(name)
+    }
+
+    /// A component library file, as the gallery and `wardian add` users read it.
+    pub fn ui_file(&self, name: &str) -> Option<&'static str> {
+        self.assets.ui_file(name)
+    }
+
+    pub fn gallery(&self) -> &'static str {
+        self.assets.gallery()
+    }
+}
 
 /// "6.2. `suite.json`" -> "6-2-suite-json", for links to a heading.
 fn slug(text: &str) -> String {
@@ -78,11 +99,10 @@ fn render(md: &str) -> (String, Vec<(u8, String, String)>) {
     (body, toc)
 }
 
-/// A docs page, or None for an unknown name.
-pub fn page(name: &str) -> Option<String> {
-    let (_, title, md) = PAGES.iter().find(|(n, _, _)| *n == name)?;
+fn page(pages: &[(&str, &str, &str)], name: &str) -> Option<String> {
+    let (_, title, md) = pages.iter().find(|(n, _, _)| *n == name)?;
     let (body, toc) = render(md);
-    let nav: String = PAGES
+    let nav: String = pages
         .iter()
         .map(|(n, t, _)| format!("<a href=\"/docs/{n}\"{}>{}</a>", if *n == name { " aria-current=\"page\"" } else { "" }, escape(t)))
         .collect::<Vec<_>>()
@@ -144,16 +164,27 @@ pub fn page(name: &str) -> Option<String> {
     ))
 }
 
+impl Pages for Docs {
+    fn page(&self, name: &str) -> Option<String> {
+        Docs::page(self, name)
+    }
+    fn schema(&self, name: &str) -> Option<&'static str> {
+        Docs::schema(self, name)
+    }
+    fn ui_file(&self, name: &str) -> Option<&'static str> {
+        Docs::ui_file(self, name)
+    }
+    fn gallery(&self) -> &'static str {
+        Docs::gallery(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{page, slug};
+    use super::slug;
 
     #[test]
-    fn docs_render_with_anchors() {
+    fn slugs_for_headings() {
         assert_eq!(slug("6.2. `suite.json`"), "6-2-suite-json");
-        let spec = page("spec").unwrap();
-        assert!(spec.contains("id=\"6-5-ctx\"") && spec.contains("<table>"));
-        assert!(page("guide").unwrap().contains("wardian new module"));
-        assert!(page("nope").is_none());
     }
 }

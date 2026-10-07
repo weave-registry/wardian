@@ -1,119 +1,37 @@
-//! `wardian check <folder|zip>...`: tests packages against SPEC.md before
-//! they are imported, and says what is wrong in words.
-//!
-//! A zip is first unpacked by the real importer into a temporary folder, so
-//! the check judges exactly what an import would produce.
+//! The rules of `wardian check`: does a package follow SPEC.md, and if not, what is wrong, in
+//! words. Pure: the package is given as its file list and a reader, so the same rules judge a
+//! folder, a zip and an app Claude is still writing in memory.
 
-use crate::hub::valid_channel;
-use crate::import::{import_zip, MAX_FILE_BYTES, MAX_TOTAL_BYTES};
-use crate::source::{safe_rel, safe_segment, APP_MARKERS, FORMAT, MAX_APP_FILES, MAX_DEPTH, SKIP_DIRS};
-use crate::suite::{tag_name, FONT_CSS};
+use super::grants::valid_channel;
+use super::import_plan::{MAX_FILE_BYTES, MAX_TOTAL_BYTES};
+use super::package::{safe_rel, safe_segment, FORMAT, MAX_APP_FILES, MAX_DEPTH, PAGE_GUESSES, SKIP_DIRS};
+use super::suite::{tag_name, FONT_CSS};
 use serde_json::{Map, Value};
-use std::{
-    collections::{BTreeMap, HashSet},
-    fs,
-    path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::{BTreeMap, HashSet};
 
 const KNOWN_CAPS: &[&str] = &["storage", "asset", "worker", "source", "claude:downloads", "claude:sample", "splunk"];
 const APP_JSON_KEYS: &[&str] = &["$schema", "format", "title", "description", "page", "channels"];
 const SUITE_KEYS: &[&str] = &["$schema", "format", "title", "description", "styles", "scripts", "header", "columns", "apps"];
 const ENTRY_KEYS: &[&str] = &["name", "slot", "wrap", "dir", "scripts", "emits", "listens", "provides", "needs", "caps", "channels"];
 
+/// What a check found. A package passes when it has no errors.
 #[derive(Default)]
-struct Report {
-    errors: Vec<String>,
-    warnings: Vec<String>,
+pub struct Report {
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 impl Report {
     fn err(&mut self, m: impl Into<String>) {
         self.errors.push(m.into());
     }
-    fn warn(&mut self, m: impl Into<String>) {
+    pub fn warn(&mut self, m: impl Into<String>) {
         self.warnings.push(m.into());
     }
 }
 
-/// Runs the checks and prints the report. Returns the process exit code:
-/// 0 when no package has errors, 1 otherwise, 2 for bad usage.
-pub fn run(paths: &[String]) -> i32 {
-    if paths.is_empty() {
-        eprintln!("usage: wardian check <package folder | .zip | .wardian>...");
-        return 2;
-    }
-    let mut failed = false;
-    for p in paths {
-        failed |= !check_path(Path::new(p));
-    }
-    i32::from(failed)
-}
-
-pub fn check_path(path: &Path) -> bool {
-    let shown = path.display();
-    if path.is_file() {
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let tmp = std::env::temp_dir().join(format!("wardian-check-{nanos}"));
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("package.zip");
-        let result = fs::read(path)
-            .map_err(|e| e.to_string())
-            .and_then(|bytes| import_zip(&bytes, name, &tmp, true));
-        let ok = match result {
-            Err(e) => {
-                println!("{shown}\n  error    {e}\n");
-                false
-            }
-            Ok(done) => {
-                let mut all_ok = true;
-                for app in &done.apps {
-                    let mut r = Report::default();
-                    // What the importer left out is worth knowing, not fatal.
-                    for s in &done.skipped {
-                        r.warn(format!("import skipped {s}"));
-                    }
-                    all_ok &= print(&format!("{shown} → {app}"), check_app(&tmp.join(app), app, &mut r), r);
-                }
-                all_ok
-            }
-        };
-        let _ = fs::remove_dir_all(&tmp);
-        return ok;
-    }
-    if !path.is_dir() {
-        println!("{shown}\n  error    not found\n");
-        return false;
-    }
-    let is_app = APP_MARKERS.iter().any(|m| path.join(m).is_file());
-    if is_app {
-        let name = path.canonicalize().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default();
-        let mut r = Report::default();
-        return print(&shown.to_string(), check_app(path, &name, &mut r), r);
-    }
-    // A folder of apps, like the host's apps folder.
-    let mut apps: Vec<PathBuf> = fs::read_dir(path)
-        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| APP_MARKERS.iter().any(|m| p.join(m).is_file())).collect())
-        .unwrap_or_default();
-    apps.sort();
-    if apps.is_empty() {
-        println!("{shown}\n  error    no app here: a package needs app.wasm or suite.json at its top\n");
-        return false;
-    }
-    let mut ok = true;
-    for app in apps {
-        let name = app.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let mut r = Report::default();
-        ok &= print(&app.display().to_string(), check_app(&app, &name, &mut r), r);
-    }
-    ok
-}
-
-fn print(title: &str, summary: String, r: Report) -> bool {
-    println!("{}", format_report(title, &summary, &r));
-    r.errors.is_empty()
-}
-
-fn format_report(title: &str, summary: &str, r: &Report) -> String {
+/// The report as text: a title line, then one line per error and warning, then "ok" if it passed.
+pub fn format_report(title: &str, summary: &str, r: &Report) -> String {
     let mut out = format!("{title}  ({summary})\n");
     for e in &r.errors {
         out += &format!("  error    {e}\n");
@@ -127,41 +45,18 @@ fn format_report(title: &str, summary: &str, r: &Report) -> String {
     out
 }
 
-/// Checks one app folder whose name is given separately (the folder may be a
-/// staging copy). Returns whether it passed, and the report as text.
-pub fn check_dir(dir: &Path, name: &str) -> (bool, String) {
-    let mut r = Report::default();
-    let summary = check_app(dir, name, &mut r);
-    (r.errors.is_empty(), format_report(name, &summary, &r))
-}
-
-/// Every file under `dir`, as paths relative to it ("pkg/usl.js").
-fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, u64)>) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
-        let rel = format!("{prefix}{name}");
-        let Ok(meta) = e.metadata() else { continue };
-        if meta.is_dir() {
-            walk(&e.path(), &format!("{rel}/"), out);
-        } else {
-            out.push((rel, meta.len()));
-        }
-    }
-}
-
-fn check_app(dir: &Path, name: &str, r: &mut Report) -> String {
+/// Checks one package: `files` lists every file under it (relative path, size), and `read`
+/// reads one. Returns a one-line summary of what the package is.
+pub fn check_package(name: &str, files: &[(String, u64)], read: &dyn Fn(&str) -> Option<Vec<u8>>, r: &mut Report) -> String {
     if !safe_segment(name) {
         r.err(format!("app name \"{name}\" is not allowed: use letters, digits, '-', '_' or '.', not starting with '.'"));
     }
 
     // ---- files ----
-    let mut files = Vec::new();
-    walk(dir, "", &mut files);
     let mut served: HashSet<String> = HashSet::new();
     let mut total = 0u64;
     let mut skipped_dirs = 0;
-    for (rel, size) in &files {
+    for (rel, size) in files {
         let parts: Vec<&str> = rel.split('/').collect();
         // Hidden files (.gitignore, .DS_Store) are normal and simply not served.
         if parts.iter().any(|p| p.starts_with('.')) {
@@ -195,7 +90,6 @@ fn check_app(dir: &Path, name: &str, r: &mut Report) -> String {
     if total > MAX_TOTAL_BYTES {
         r.err("more than 256 MB in total");
     }
-    let read = |rel: &str| fs::read(dir.join(rel)).ok();
 
     // ---- app.json ----
     let mut page: Option<String> = None;
@@ -239,15 +133,15 @@ fn check_app(dir: &Path, name: &str, r: &mut Report) -> String {
         if has_wasm || page.is_some() {
             r.warn("suite.json is present, so the host runs the suite; app.wasm and the page are not shown");
         }
-        let n = check_suite(&served, &read, r);
-        check_library(&served, None, &read, r);
+        let n = check_suite(&served, read, r);
+        check_library(&served, None, read, r);
         return format!("suite, {n} apps, {} files, {} KB", served.len(), total.div_ceil(1024));
     }
     let page = page.or_else(|| {
-        ["index.html", "demo/index.html", "www/index.html", "web/index.html"].into_iter().find(|p| served.contains(*p)).map(String::from)
+        PAGE_GUESSES.iter().find(|p| served.contains(**p)).map(|p| p.to_string())
     });
     if let Some(p) = &page {
-        check_library(&served, Some(p), &read, r);
+        check_library(&served, Some(p), read, r);
     }
     match page {
         Some(p) => format!("module with page {p}, {} files, {} KB", served.len(), total.div_ceil(1024)),
@@ -494,36 +388,4 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
         }
     }
     apps.len()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{check_dir, check_path};
-    use std::fs;
-    use std::path::Path;
-
-    #[test]
-    fn real_packages_pass() {
-        assert!(check_path(Path::new("apps/usl-lab")));
-        assert!(check_path(Path::new("tests/fixtures/rogue")));
-    }
-
-    #[test]
-    fn channels_need_format_2() {
-        let dir = std::env::temp_dir().join(format!("wardian-ch-test-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("app.wasm"), b"\0asm\x01\0\0\0").unwrap();
-        fs::write(dir.join("app.json"), r#"{"format":1,"channels":{"send":["budget"]}}"#).unwrap();
-        assert!(!check_dir(&dir, "x").0, "format 1 with channels must fail");
-        fs::write(dir.join("app.json"), r#"{"format":2,"channels":{"send":["Budget!"]}}"#).unwrap();
-        assert!(!check_dir(&dir, "x").0, "a bad channel name must fail");
-        fs::write(dir.join("app.json"), r#"{"format":2,"channels":{"send":["budget"],"receive":["loan.v1"]}}"#).unwrap();
-        assert!(check_dir(&dir, "x").0);
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn broken_suite_fails() {
-        assert!(!check_path(Path::new("tests/fixtures/broken")));
-    }
 }

@@ -140,7 +140,8 @@ violation_patterns = ["\ntype ", "\nclass ", "\nstruct "]
 adr = "ADR-2609211430"
 id = "domain-imports-only-what-it-is-allowed"
 layer = "/domain/"
-allow = []
+# Wardian: the package format is JSON; serde and serde_json are pure (ADR-2610071200).
+allow = ["serde", "serde_json"]
 deny = [
   # Rust
   "std::fs", "std::net", "std::process", "std::env", "std::io",

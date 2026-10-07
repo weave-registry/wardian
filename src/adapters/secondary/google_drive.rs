@@ -1,194 +1,86 @@
-//! Where apps come from: a local directory, or a Google Drive folder
-//! accessed directly through the Drive API with a service account.
+//! Google Drive as a source of apps: a service account reads a folder through the Drive API
+//! directly. Each subfolder that holds an app is an app; files are downloaded on first use and
+//! cached by checksum, and the index is refreshed in the background.
 
+use crate::ports::drive::{
+    safe_segment, unix_now, valid_drive_id, DriveClient, DriveConnector, DriveFolder, Folder, RefreshStatus, APP_MARKERS, MAX_APP_FILES, MAX_DEPTH, SKIP_DIRS,
+};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     io::Read,
-    path::PathBuf,
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
-/// How deep an app's own folders may go, and how many files it may have.
-pub const MAX_DEPTH: usize = 8;
-pub const MAX_APP_FILES: usize = 2_000;
-/// The newest package format this host understands (SPEC.md). A package
-/// without a "format" field is format 1.
-pub const FORMAT: u64 = 2;
-/// Folders never served or copied: build caches and package downloads.
-pub const SKIP_DIRS: &[&str] = &["node_modules", "target"];
-/// Where to look for an app's page when app.json does not name one.
-const PAGE_GUESSES: &[&str] = &["index.html", "demo/index.html", "www/index.html", "web/index.html"];
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 const SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
 
-/// Accept only simple names: no slashes, no "..", no hidden files.
-pub fn safe_segment(s: &str) -> bool {
-    !s.is_empty()
-        && !s.starts_with('.')
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+/// Makes Drive clients that talk to `api_base` (Google's, or a test server's).
+pub struct GoogleDrive {
+    api_base: String,
 }
 
-/// Drive IDs are opaque but always URL-safe; anything else is rejected so an
-/// ID can never break out of the quoted Drive query it is placed in.
-pub fn valid_drive_id(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-}
-
-/// A path inside an app, like "pkg/usl.js": every part a safe name.
-pub fn safe_rel(rel: &str) -> bool {
-    let parts: Vec<&str> = rel.split('/').collect();
-    parts.len() <= MAX_DEPTH + 1 && parts.iter().all(|p| safe_segment(p))
-}
-
-/// The optional app.json at the top of an app.
-#[derive(Deserialize, Default)]
-struct Manifest {
-    format: Option<u64>,
-    title: Option<String>,
-    description: Option<String>,
-    page: Option<String>,
-    /// Read loosely (as JSON values): a wrong type here must not hide the title.
-    channels: Option<serde_json::Value>,
-}
-
-/// What a package may do outside its own sealed frame. The app page shows it as the "Sealed" label.
-#[derive(Serialize, Default)]
-pub struct Allows {
-    /// Capabilities from suite.json, such as "storage" or "claude:downloads".
-    pub caps: Vec<String>,
-    /// Channels it may send on and read from, after the user agrees.
-    pub send: Vec<String>,
-    pub receive: Vec<String>,
-}
-
-/// The strings in a JSON array; anything else counts as empty.
-fn strings(v: Option<&serde_json::Value>) -> Vec<String> {
-    v.and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
-        .unwrap_or_default()
-}
-
-/// What the app list shows for each app.
-#[derive(Serialize)]
-pub struct AppInfo {
-    pub name: String,
-    pub title: Option<String>,
-    pub description: Option<String>,
-    /// The app's own page, relative to the app folder, if it has one.
-    pub page: Option<String>,
-    /// True for a suite: several apps run together by the host kernel.
-    pub suite: bool,
-    /// Why the host cannot run this app, e.g. it needs a newer format.
-    pub error: Option<String>,
-    pub allows: Allows,
-}
-
-#[derive(Deserialize, Default)]
-struct SuiteHead {
-    format: Option<u64>,
-    title: Option<String>,
-    description: Option<String>,
-    apps: Option<serde_json::Value>,
-}
-
-pub fn unix_now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-}
-
-/// A folder is an app if it holds a module (app.wasm) or a suite of
-/// cooperating apps (suite.json).
-pub const APP_MARKERS: &[&str] = &["app.wasm", "suite.json"];
-
-fn is_app_dir(p: &std::path::Path) -> bool {
-    APP_MARKERS.iter().any(|m| p.join(m).is_file())
-}
-
-pub enum Source {
-    Local(PathBuf),
-    Drive(Arc<Drive>),
-}
-
-impl Source {
-    pub fn list_apps(&self) -> Vec<String> {
-        match self {
-            Source::Local(root) => {
-                let mut names: Vec<String> = fs::read_dir(root)
-                    .map(|rd| {
-                        rd.flatten()
-                            .filter(|e| is_app_dir(&e.path()))
-                            .filter_map(|e| e.file_name().into_string().ok())
-                            .filter(|n| safe_segment(n))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                names.sort();
-                names
-            }
-            Source::Drive(d) => d.list_apps(),
-        }
+impl GoogleDrive {
+    pub fn new(api_base: &str) -> GoogleDrive {
+        GoogleDrive { api_base: api_base.to_string() }
     }
+}
 
-    /// `rel` must already have passed `safe_rel`.
-    pub fn read(&self, app: &str, rel: &str) -> Option<Vec<u8>> {
-        match self {
-            Source::Local(root) => fs::read(root.join(app).join(rel)).ok(),
-            Source::Drive(d) => d.read(app, rel),
-        }
+impl DriveConnector for GoogleDrive {
+    fn client(&self, key_json: &str) -> Result<Arc<dyn DriveClient>, String> {
+        Ok(GoogleClient::from_json(key_json, &self.api_base)?)
     }
+}
 
+impl DriveClient for GoogleClient {
+    fn client_email(&self) -> String {
+        self.sa.client_email.clone()
+    }
+    fn check(&self) -> Result<(), String> {
+        self.token().map(|_| ())
+    }
+    fn browse(&self, parent: Option<&str>) -> Result<Vec<Folder>, String> {
+        self.browse_folders(parent)
+    }
+    fn preview(&self, folder_id: &str) -> Result<Vec<String>, String> {
+        self.preview_folder(folder_id)
+    }
+    fn download(&self, file_id: &str) -> Result<Vec<u8>, String> {
+        self.download_file(file_id)
+    }
+    fn open_folder(self: Arc<Self>, folder_id: &str, folder_name: &str, every: Duration, strict: bool) -> Result<Arc<dyn DriveFolder>, String> {
+        Ok(ServedFolder::connect(self, folder_id, folder_name, every, strict)?)
+    }
+}
+
+impl DriveFolder for ServedFolder {
+    fn folder_id(&self) -> String {
+        self.folder_id.clone()
+    }
+    fn folder_name(&self) -> String {
+        self.folder_name.clone()
+    }
+    fn client_email(&self) -> String {
+        self.client.sa.client_email.clone()
+    }
+    fn status(&self) -> RefreshStatus {
+        self.status.lock().unwrap().clone()
+    }
+    fn refresh(&self) -> Result<(), String> {
+        self.refresh_index()
+    }
+    fn list_apps(&self) -> Vec<String> {
+        self.app_names()
+    }
     fn has(&self, app: &str, rel: &str) -> bool {
-        match self {
-            Source::Local(root) => root.join(app).join(rel).is_file(),
-            Source::Drive(d) => d.has(app, rel),
-        }
+        self.indexed(app, rel)
     }
-
-    pub fn apps(&self) -> Vec<AppInfo> {
-        self.list_apps().into_iter().map(|name| self.info(name)).collect()
-    }
-
-    fn info(&self, name: String) -> AppInfo {
-        let m: Manifest = self
-            .read(&name, "app.json")
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
-        let named = m.page.filter(|p| safe_rel(p) && self.has(&name, p));
-        let page = named.or_else(|| {
-            PAGE_GUESSES.iter().find(|p| self.has(&name, p)).map(|p| p.to_string())
-        });
-        let suite = self.has(&name, "suite.json");
-        let head: SuiteHead = if suite {
-            self.read(&name, "suite.json").and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
-        } else {
-            SuiteHead::default()
-        };
-        let needed = m.format.into_iter().chain(head.format).max().unwrap_or(1);
-        let error = (needed > FORMAT).then(|| format!("needs package format {needed}; this Wardian reads format {FORMAT}. Update Wardian."));
-        // app.json wins; a suite's own title and description fill the gaps.
-        let title = m.title.or(head.title);
-        let description = m.description.or(head.description);
-        // A suite may do what any of its apps may do.
-        let mut allows = Allows::default();
-        let entries = head.apps.as_ref().and_then(|a| a.as_array()).cloned().unwrap_or_default();
-        for ch in m.channels.iter().chain(entries.iter().filter_map(|e| e.get("channels"))) {
-            allows.send.extend(strings(ch.get("send")));
-            allows.receive.extend(strings(ch.get("receive")));
-        }
-        for e in &entries {
-            allows.caps.extend(strings(e.get("caps")));
-        }
-        for v in [&mut allows.caps, &mut allows.send, &mut allows.receive] {
-            v.sort();
-            v.dedup();
-        }
-        AppInfo { name, title, description, page, suite, error, allows }
+    fn read(&self, app: &str, rel: &str) -> Option<Vec<u8>> {
+        self.fetch(app, rel)
     }
 }
 
@@ -266,14 +158,6 @@ struct DriveList {
     drives: Vec<SharedDrive>,
 }
 
-/// A folder (or shared drive) shown in the folder browser.
-#[derive(Serialize)]
-pub struct Folder {
-    pub id: String,
-    pub name: String,
-    pub shared_drive: bool,
-}
-
 #[derive(Clone)]
 struct FileMeta {
     id: String,
@@ -285,35 +169,25 @@ type Index = HashMap<String, HashMap<String, FileMeta>>;
 
 /// An authenticated connection to the Drive API. It is not tied to a folder,
 /// so the settings page can browse Drive before an apps folder is chosen.
-pub struct DriveClient {
+struct GoogleClient {
     sa: ServiceAccount,
     api_base: String,
     agent: ureq::Agent,
     token: Mutex<Option<(String, Instant)>>,
 }
 
-impl DriveClient {
-    pub fn from_json(raw: &str, api_base: &str) -> Result<Arc<DriveClient>, String> {
+impl GoogleClient {
+    fn from_json(raw: &str, api_base: &str) -> Result<Arc<GoogleClient>, String> {
         let sa: ServiceAccount =
             serde_json::from_str(raw).map_err(|e| format!("not a service account key: {e}"))?;
         EncodingKey::from_rsa_pem(sa.private_key.as_bytes())
             .map_err(|e| format!("bad private key: {e}"))?;
-        Ok(Arc::new(DriveClient {
+        Ok(Arc::new(GoogleClient {
             sa,
             api_base: api_base.trim_end_matches('/').to_string(),
             agent: ureq::AgentBuilder::new().timeout(Duration::from_secs(30)).build(),
             token: Mutex::new(None),
         }))
-    }
-
-    /// The address a Drive folder must be shared with.
-    pub fn client_email(&self) -> &str {
-        &self.sa.client_email
-    }
-
-    /// Proves the key works by fetching an access token.
-    pub fn check(&self) -> Result<(), String> {
-        self.token().map(|_| ())
     }
 
     fn token(&self) -> Result<String, String> {
@@ -383,7 +257,7 @@ impl DriveClient {
     /// Subfolders of `parent`. With no parent, the top level: folders shared
     /// with the service account plus shared drives it is a member of. (A
     /// service account's own "My Drive" is empty, so that is not listed.)
-    pub fn browse(&self, parent: Option<&str>) -> Result<Vec<Folder>, String> {
+    fn browse_folders(&self, parent: Option<&str>) -> Result<Vec<Folder>, String> {
         let mut out: Vec<Folder> = Vec::new();
         let q = match parent {
             Some(id) if valid_drive_id(id) => {
@@ -476,13 +350,13 @@ impl DriveClient {
     }
 
     /// The app names a folder would serve, without connecting to it.
-    pub fn preview(&self, folder_id: &str) -> Result<Vec<String>, String> {
+    fn preview_folder(&self, folder_id: &str) -> Result<Vec<String>, String> {
         let mut v: Vec<String> = self.build_index(folder_id)?.into_keys().collect();
         v.sort();
         Ok(v)
     }
 
-    pub fn download(&self, id: &str) -> Result<Vec<u8>, String> {
+    fn download_file(&self, id: &str) -> Result<Vec<u8>, String> {
         let tok = self.token()?;
         let resp = self
             .agent
@@ -504,19 +378,11 @@ impl DriveClient {
     }
 }
 
-#[derive(Default, Clone, Serialize)]
-pub struct RefreshStatus {
-    /// Unix time of the last successful index.
-    pub last_ok: Option<u64>,
-    /// The error from the last attempt, cleared by a success.
-    pub last_error: Option<String>,
-}
-
 /// A Drive folder being served: the index of its apps and a download cache.
-pub struct Drive {
-    client: Arc<DriveClient>,
-    pub folder_id: String,
-    pub folder_name: String,
+struct ServedFolder {
+    client: Arc<GoogleClient>,
+    folder_id: String,
+    folder_name: String,
     index: Mutex<Index>,
     /// Downloaded bytes keyed by "<fileId>:<md5>", so a changed file is
     /// re-downloaded and an unchanged one never is.
@@ -524,21 +390,15 @@ pub struct Drive {
     status: Mutex<RefreshStatus>,
 }
 
-impl Drive {
+impl ServedFolder {
     /// Indexes the folder, then keeps refreshing it in the background. With
     /// `strict`, a failed first index is an error; otherwise the drive starts
     /// empty and the background refresh keeps retrying.
-    pub fn connect(
-        client: Arc<DriveClient>,
-        folder_id: &str,
-        folder_name: &str,
-        every: Duration,
-        strict: bool,
-    ) -> Result<Arc<Drive>, String> {
+    fn connect(client: Arc<GoogleClient>, folder_id: &str, folder_name: &str, every: Duration, strict: bool) -> Result<Arc<ServedFolder>, String> {
         if !valid_drive_id(folder_id) {
             return Err("folder id looks invalid".into());
         }
-        let drive = Arc::new(Drive {
+        let drive = Arc::new(ServedFolder {
             client,
             folder_id: folder_id.to_string(),
             folder_name: folder_name.to_string(),
@@ -546,7 +406,7 @@ impl Drive {
             cache: Mutex::new(HashMap::new()),
             status: Mutex::new(RefreshStatus::default()),
         });
-        match drive.refresh() {
+        match drive.refresh_index() {
             Ok(()) => println!("drive: indexed {} apps", drive.index.lock().unwrap().len()),
             Err(e) if strict => return Err(e),
             Err(e) => eprintln!("drive: initial refresh failed: {e}"),
@@ -557,22 +417,14 @@ impl Drive {
         thread::spawn(move || loop {
             thread::sleep(every);
             let Some(me) = weak.upgrade() else { break };
-            if let Err(e) = me.refresh() {
+            if let Err(e) = me.refresh_index() {
                 eprintln!("drive: refresh failed (keeping old index): {e}");
             }
         });
         Ok(drive)
     }
 
-    pub fn client(&self) -> &Arc<DriveClient> {
-        &self.client
-    }
-
-    pub fn status(&self) -> RefreshStatus {
-        self.status.lock().unwrap().clone()
-    }
-
-    pub fn refresh(&self) -> Result<(), String> {
+    fn refresh_index(&self) -> Result<(), String> {
         let result = self.client.build_index(&self.folder_id);
         let mut status = self.status.lock().unwrap();
         let new = match result {
@@ -593,7 +445,7 @@ impl Drive {
         Ok(())
     }
 
-    fn list_apps(&self) -> Vec<String> {
+    fn app_names(&self) -> Vec<String> {
         let mut v: Vec<String> = self.index.lock().unwrap().keys().cloned().collect();
         v.sort();
         v
@@ -601,17 +453,17 @@ impl Drive {
 
     /// Only files present in the index can be served, so the web client can
     /// never ask for an arbitrary Drive file ID.
-    fn has(&self, app: &str, rel: &str) -> bool {
+    fn indexed(&self, app: &str, rel: &str) -> bool {
         self.index.lock().unwrap().get(app).is_some_and(|m| m.contains_key(rel))
     }
 
-    fn read(&self, app: &str, file: &str) -> Option<Vec<u8>> {
+    fn fetch(&self, app: &str, file: &str) -> Option<Vec<u8>> {
         let meta = self.index.lock().unwrap().get(app)?.get(file)?.clone();
         let key = format!("{}:{}", meta.id, meta.md5);
         if let Some(b) = self.cache.lock().unwrap().get(&key) {
             return Some(b.clone());
         }
-        match self.client.download(&meta.id) {
+        match self.client.download_file(&meta.id) {
             Ok(bytes) => {
                 self.cache.lock().unwrap().insert(key, bytes.clone());
                 Some(bytes)

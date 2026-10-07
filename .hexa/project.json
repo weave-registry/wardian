@@ -2,6 +2,16 @@
   "name": "wardian",
   "hexVersion": "26.9.12",
   "analyze": {
-    "exclude": ["apps", "templates", "tests", "target", "data"]
+    "exclude": [
+      "apps",
+      "templates",
+      "tests",
+      "target",
+      "data"
+    ],
+    "layers": {
+      "src/config.rs": "composition-root",
+      "src/tests.rs": "composition-root"
+    }
   }
 }

@@ -10,11 +10,8 @@
 //! scripts inlined, the app's view inside its wrapper, the shim that plays
 //! `Kernel` inside the frame, then the app's script.
 
-use crate::source::{safe_rel, safe_segment, Source};
+use super::package::{safe_rel, safe_segment};
 use serde::Deserialize;
-
-/// The shim that plays `Kernel` inside each frame, and the standard components every app may use.
-const SHIM_JS: &str = concat!(include_str!("../static/shim.js"), "\n", include_str!("../static/ui/progress.js"));
 
 /// Fonts are the one outside resource a frame may load.
 pub const FONT_CSS: &str = "https://fonts.googleapis.com/";
@@ -54,18 +51,21 @@ struct SuiteApp {
     scripts: Vec<String>,
 }
 
-fn text(src: &Source, suite: &str, rel: &str) -> Result<String, String> {
+/// Reads a file of the suite through the reader the frame was given.
+type Read<'a> = &'a dyn Fn(&str) -> Option<Vec<u8>>;
+
+fn text(read: Read, rel: &str) -> Result<String, String> {
     if !safe_rel(rel) {
         return Err(format!("path not allowed: {rel}"));
     }
-    let bytes = src.read(suite, rel).ok_or_else(|| format!("missing file: {rel}"))?;
+    let bytes = read(rel).ok_or_else(|| format!("missing file: {rel}"))?;
     String::from_utf8(bytes).map_err(|_| format!("{rel} is not UTF-8 text"))
 }
 
 /// Inlines a script so `ctx.source("<stem>-src")` can read it back, as in the
 /// single-file build.
-fn script_tag(src: &Source, suite: &str, rel: &str) -> Result<String, String> {
-    let code = text(src, suite, rel)?;
+fn script_tag(read: Read, rel: &str) -> Result<String, String> {
+    let code = text(read, rel)?;
     if code.to_ascii_lowercase().contains("</script") {
         return Err(format!("{rel} contains </script"));
     }
@@ -82,11 +82,10 @@ pub fn tag_name(open: &str) -> Option<&str> {
 // display:flow-root keeps child margins inside <body>, so the height the
 // shim reports to the kernel is the whole of what the frame shows.
 
-/// Builds the document for one frame: an app, or the suite header when
-/// `app` is None.
-pub fn frame(src: &Source, suite: &str, app: Option<&str>) -> Result<String, String> {
-    let s: Suite = serde_json::from_slice(&src.read(suite, "suite.json").ok_or("no suite.json")?)
-        .map_err(|e| format!("suite.json: {e}"))?;
+/// Builds the document for one frame: an app, or the suite header when `app` is None. `read`
+/// reads the suite's files; `shim` is the script that plays `Kernel` inside the frame.
+pub fn frame(read: Read, shim: &str, app: Option<&str>) -> Result<String, String> {
+    let s: Suite = serde_json::from_slice(&read("suite.json").ok_or("no suite.json")?).map_err(|e| format!("suite.json: {e}"))?;
 
     let mut head = String::new();
     for style in &s.styles {
@@ -96,7 +95,7 @@ pub fn frame(src: &Source, suite: &str, app: Option<&str>) -> Result<String, Str
             }
             head.push_str(&format!("<link rel=\"stylesheet\" href=\"{style}\">\n"));
         } else {
-            let css = text(src, suite, style)?;
+            let css = text(read, style)?;
             if css.to_ascii_lowercase().contains("</style") {
                 return Err(format!("{style} contains </style"));
             }
@@ -107,8 +106,8 @@ pub fn frame(src: &Source, suite: &str, app: Option<&str>) -> Result<String, Str
     let (body, scripts) = match app {
         None => {
             let rel = s.header.as_deref().ok_or("suite has no header")?;
-            let shim = format!("<script>\n{SHIM_JS}\n</script>\n");
-            (format!("<div data-app=\"header\">{}</div>", text(src, suite, rel)?), shim)
+            let shim = format!("<script>\n{shim}\n</script>\n");
+            (format!("<div data-app=\"header\">{}</div>", text(read, rel)?), shim)
         }
         Some(name) => {
             let pos = s.apps.iter().position(|a| a.name == name).ok_or_else(|| format!("no app \"{name}\" in suite.json"))?;
@@ -118,7 +117,7 @@ pub fn frame(src: &Source, suite: &str, app: Option<&str>) -> Result<String, Str
             }
             let dir = a.dir.clone().unwrap_or_else(|| format!("apps/{}", a.name));
             let view = match a.slot {
-                Some(_) => src.read(suite, &format!("{dir}/view.html")).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default(),
+                Some(_) => read(&format!("{dir}/view.html")).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default(),
                 None => String::new(),
             };
             let open = a.wrap.clone().unwrap_or_else(|| "<div>".into());
@@ -138,10 +137,10 @@ pub fn frame(src: &Source, suite: &str, app: Option<&str>) -> Result<String, Str
             };
             let mut scripts = String::new();
             for rel in s.scripts.iter().chain(&a.scripts) {
-                scripts.push_str(&script_tag(src, suite, rel)?);
+                scripts.push_str(&script_tag(read, rel)?);
             }
-            scripts.push_str(&format!("<script>\n{SHIM_JS}\n</script>\n"));
-            scripts.push_str(&script_tag(src, suite, &format!("{dir}/app.js"))?);
+            scripts.push_str(&format!("<script>\n{shim}\n</script>\n"));
+            scripts.push_str(&script_tag(read, &format!("{dir}/app.js"))?);
             (body, scripts)
         }
     };
