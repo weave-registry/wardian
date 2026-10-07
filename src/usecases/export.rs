@@ -6,7 +6,8 @@
 use super::check::Checker;
 use super::history::History;
 use crate::domain::export::{
-    exported, file_name, manifest, read_manifest, DataIncluded, Manifest, DATA, LAYOUT_FILE, MANIFEST, MAX_EXPORT_BYTES, MIME, NEVER_INCLUDED, STORAGE_FILE, TABLES_FILE,
+    exported, file_name, looks_like_sqlite, manifest, read_manifest, DataIncluded, Manifest, DATA, LAYOUT_FILE, MANIFEST, MAX_EXPORT_BYTES, MIME, NEVER_INCLUDED, STORAGE_FILE,
+    TABLES_FILE,
 };
 use crate::domain::package::{app_info, safe_segment, unix_now, APP_MARKERS};
 use crate::ports::{
@@ -97,15 +98,27 @@ impl Exporter {
         Ok(Data { included, files })
     }
 
-    /// Opens a `.wardian` or `.zip` file, finds its manifest, and the folder it sits in.
+    /// Opens a `.wardian` or `.zip` file, finds its manifest, and the folder it sits in. A file
+    /// with more than one manifest, or whose manifest names another folder than its own, is
+    /// refused: its data could otherwise land in an app it does not belong to.
     fn open(bytes: &[u8]) -> Result<Opened<'_>, String> {
         let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("not a valid zip: {e}"))?;
-        let at = zip.file_names().find(|n| n.ends_with(&format!("/{MANIFEST}")) && n.matches('/').count() == 2).map(String::from);
-        let found = match at {
+        let all: Vec<String> = zip.file_names().filter(|n| n.ends_with(&format!("/{MANIFEST}")) && n.matches('/').count() == 2).map(String::from).collect();
+        if all.len() > 1 {
+            return Err("the file was refused: it holds more than one exported app; a .wardian file holds one".into());
+        }
+        let found = match all.into_iter().next() {
             Some(name) => {
                 let raw = read_entry(&mut zip, &name)?.ok_or("the manifest could not be read")?;
                 let folder = name.trim_end_matches(MANIFEST).trim_end_matches('/').to_string();
-                Some((folder, read_manifest(&raw)?))
+                let man = read_manifest(&raw)?;
+                if folder != man.package {
+                    return Err(format!("the file was refused: its manifest names the app \"{}\" but sits in the folder \"{}\"", man.package, folder.escape_debug()));
+                }
+                if man.data {
+                    check_data(&mut zip, &folder)?;
+                }
+                Some((folder, man))
             }
             None => None,
         };
@@ -113,12 +126,36 @@ impl Exporter {
     }
 }
 
+/// Checks the data a file carries before any of it is read or installed: each file within the
+/// size limit by what it says and a plain file, and the tables an SQLite database by their first
+/// bytes. A file that fails is refused whole, so an import never installs half its data.
+fn check_data(zip: &mut zip::ZipArchive<Cursor<&[u8]>>, folder: &str) -> Result<(), String> {
+    for name in [STORAGE_FILE, LAYOUT_FILE, TABLES_FILE] {
+        let path = format!("{folder}/{DATA}/{name}");
+        let Ok(f) = zip.by_name(&path) else { continue };
+        if !f.is_file() {
+            return Err(format!("the file was refused: its {name} is not a plain file"));
+        }
+        if f.size() > MAX_ENTRY_BYTES {
+            return Err(format!("the file was refused: its {name} unpacks to {} MB, and data files may be at most {} MB", f.size() / (1024 * 1024), MAX_ENTRY_BYTES / (1024 * 1024)));
+        }
+        if name == TABLES_FILE {
+            let mut head = Vec::new();
+            f.take(16).read_to_end(&mut head).map_err(|e| format!("reading {path}: {e}"))?;
+            if !looks_like_sqlite(&head) {
+                return Err(format!("the file was refused: its {TABLES_FILE} is not an SQLite database"));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn read_entry(zip: &mut zip::ZipArchive<Cursor<&[u8]>>, name: &str) -> Result<Option<Vec<u8>>, String> {
     let Ok(f) = zip.by_name(name) else { return Ok(None) };
     let mut buf = Vec::new();
     f.take(MAX_ENTRY_BYTES + 1).read_to_end(&mut buf).map_err(|e| format!("reading {name}: {e}"))?;
     if buf.len() as u64 > MAX_ENTRY_BYTES {
-        return Err(format!("{name} is larger than 256 MB"));
+        return Err(format!("the file was refused: {name} unpacks to more than {} MB", MAX_ENTRY_BYTES / (1024 * 1024)));
     }
     Ok(Some(buf))
 }
@@ -224,25 +261,30 @@ impl Exports for Exporter {
         let Some((folder, man)) = found.filter(|(_, m)| m.data) else {
             return Ok(json!({ "installed": false, "note": "the file holds no data" }));
         };
+        // Everything is read and checked first, and the tables, the part most likely to be
+        // refused, go in first, so a refused file leaves the app's data as it was.
+        let json = |b: Option<Vec<u8>>, what: &str| -> Result<Option<Value>, String> {
+            b.map(|b| serde_json::from_slice(&b).map_err(|e| format!("the file's {what} is not valid JSON: {e}"))).transpose()
+        };
+        let storage = json(read_entry(&mut zip, &format!("{folder}/{DATA}/{STORAGE_FILE}"))?, "storage data")?;
+        let layout = json(read_entry(&mut zip, &format!("{folder}/{DATA}/{LAYOUT_FILE}"))?, "layout")?;
         let mut installed = Vec::new();
-        if let Some(b) = read_entry(&mut zip, &format!("{folder}/{DATA}/{STORAGE_FILE}"))? {
-            let v: Value = serde_json::from_slice(&b).map_err(|e| format!("the file's storage data is not valid JSON: {e}"))?;
-            self.state.replace_app_data(app, &v)?;
-            installed.push("storage");
-        }
-        if let Some(b) = read_entry(&mut zip, &format!("{folder}/{DATA}/{LAYOUT_FILE}"))? {
-            let v: Value = serde_json::from_slice(&b).map_err(|e| format!("the file's layout is not valid JSON: {e}"))?;
-            self.state.set_layout(app, v)?;
-            installed.push("layout");
-        }
         if let Some(b) = read_entry(&mut zip, &format!("{folder}/{DATA}/{TABLES_FILE}"))? {
             let tmp = self.fs.temp_path("wardian-import");
             self.fs.create_dir_all(&tmp)?;
             let file = tmp.join(TABLES_FILE);
             let result = self.fs.write(&file, &b).and_then(|()| self.db.restore(app, &file));
             self.fs.remove_dir_all(&tmp);
-            result?;
+            result.map_err(|e| format!("the file's tables were not installed: {e}"))?;
             installed.push("tables");
+        }
+        if let Some(v) = storage {
+            self.state.replace_app_data(app, &v)?;
+            installed.push("storage");
+        }
+        if let Some(v) = layout {
+            self.state.set_layout(app, v)?;
+            installed.push("layout");
         }
         println!("import: {app}: installed its data ({}) from the file of {}", installed.join(", "), man.package);
         Ok(json!({ "installed": true, "what": installed }))

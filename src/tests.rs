@@ -460,3 +460,221 @@ fn export_with_data_round_trips_and_never_carries_secrets() {
     let _ = fs::remove_dir_all(a);
     let _ = fs::remove_dir_all(b);
 }
+
+// ---------- hostile imports (ADR-2610072033) ----------
+
+/// A zip of these (name, bytes) entries, compressed as an exporter would.
+fn zip_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    use std::io::Write;
+    let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    for (name, bytes) in entries {
+        z.start_file(*name, opts).unwrap();
+        z.write_all(bytes).unwrap();
+    }
+    z.finish().unwrap().into_inner()
+}
+
+/// A zip with one symbolic link among its files.
+fn zip_with_link(files: &[(&str, &[u8])], link: &str, target: &str) -> Vec<u8> {
+    use std::io::Write;
+    let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let opts = zip::write::SimpleFileOptions::default();
+    for (name, bytes) in files {
+        z.start_file(*name, opts).unwrap();
+        z.write_all(bytes).unwrap();
+    }
+    z.add_symlink(link, target, opts).unwrap();
+    z.finish().unwrap().into_inner()
+}
+
+/// Each central directory record of a zip: (where it is, where its local header is, its name).
+fn zip_records(zip: &[u8]) -> Vec<(usize, usize, String)> {
+    let end = (0..=zip.len() - 22).rev().find(|&i| zip[i..i + 4] == [0x50, 0x4b, 0x05, 0x06]).unwrap();
+    let le16 = |i: usize| usize::from(u16::from_le_bytes([zip[i], zip[i + 1]]));
+    let le32 = |i: usize| u32::from_le_bytes(zip[i..i + 4].try_into().unwrap()) as usize;
+    let mut at = le32(end + 16);
+    let mut out = Vec::new();
+    for _ in 0..le16(end + 10) {
+        let (n, e, c) = (le16(at + 28), le16(at + 30), le16(at + 32));
+        out.push((at, le32(at + 42), String::from_utf8_lossy(&zip[at + 46..at + 46 + n]).into_owned()));
+        at += 46 + n + e + c;
+    }
+    out
+}
+
+/// Makes a zip lie: entry `name` says, in both its headers, that it unpacks to `size` bytes.
+fn claim_size(zip: &mut [u8], name: &str, size: u32) {
+    for (cd, local, n) in zip_records(zip) {
+        if n == name {
+            zip[cd + 24..cd + 28].copy_from_slice(&size.to_le_bytes());
+            zip[local + 22..local + 26].copy_from_slice(&size.to_le_bytes());
+        }
+    }
+}
+
+/// Renames an entry in both its headers to a name of the same length, as a hand-made zip could.
+fn rename_entry(zip: &mut [u8], from: &str, to: &str) {
+    assert_eq!(from.len(), to.len());
+    for (cd, local, n) in zip_records(zip) {
+        if n == from {
+            zip[cd + 46..cd + 46 + to.len()].copy_from_slice(to.as_bytes());
+            zip[local + 30..local + 30 + to.len()].copy_from_slice(to.as_bytes());
+        }
+    }
+}
+
+/// Every file under `dir`, hidden ones included, so a test can see that nothing was written.
+fn files_under(dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            out.extend(files_under(&p));
+        } else {
+            out.push(p.display().to_string());
+        }
+    }
+    out
+}
+
+#[test]
+fn hostile_zips_are_refused_and_nothing_lands_outside() {
+    use crate::usecases::import::import_zip;
+    let disk = LocalDisk;
+    let base = tmp("hostile");
+    let apps = base.join("inside/apps");
+    fs::create_dir_all(&apps).unwrap();
+    let outside = std::env::temp_dir().join(format!("wardian-escaped-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&outside);
+    let page: &[u8] = b"<p>hi</p>";
+    let app = |extra: &[(&str, &[u8])]| {
+        let mut v: Vec<(&str, &[u8])> = vec![("hello/app.wasm", EMPTY_WASM), ("hello/index.html", page)];
+        v.extend_from_slice(extra);
+        zip_of(&v)
+    };
+    let refused = |bytes: &[u8], why: &str| {
+        let e = import_zip(&disk, bytes, "x.zip", &apps, true, &|_| {}).err().unwrap_or_else(|| panic!("{why}: the zip was imported"));
+        assert!(e.contains(why) && e.contains("refused"), "expected \"{why}\", got: {e}");
+        assert_eq!(files_under(&base), Vec::<String>::new(), "{why}: nothing may be written");
+    };
+
+    // Paths that leave the folder, absolute paths and drives.
+    let absolute = format!("{}/app.wasm", outside.display());
+    refused(&app(&[("../escaped/app.wasm", EMPTY_WASM)]), "leaves its folder");
+    refused(&app(&[("hello/../../../escaped.txt", b"x")]), "leaves its folder");
+    refused(&app(&[("..\\..\\escaped.txt", b"x")]), "leaves its folder");
+    refused(&app(&[(absolute.as_str(), EMPTY_WASM)]), "absolute path");
+    refused(&app(&[("C:\\escaped.txt", b"x")]), "names a drive");
+
+    // Links: refused where they would be installed, left out where nothing is installed.
+    let files: [(&str, &[u8]); 2] = [("hello/app.wasm", EMPTY_WASM), ("hello/index.html", page)];
+    refused(&zip_with_link(&files, "hello/passwd", "/etc/passwd"), "symbolic link");
+    refused(&zip_with_link(&files, "hello/ui", "../../.."), "symbolic link");
+    let ignored = zip_with_link(&files, "hello/node_modules/.bin/tool", "/bin/sh");
+    let done = import_zip(&disk, &ignored, "x.zip", &apps, true, &|_| {}).unwrap();
+    assert!(done.skipped.iter().any(|s| s.contains("a link")), "{:?}", done.skipped);
+    assert!(!apps.join("hello/node_modules").exists());
+    fs::remove_dir_all(apps.join("hello")).unwrap();
+
+    // Zip bombs: a file that says it is huge, files that say they add up past the limit, and a
+    // file that says it is small but unpacks to more than any file may.
+    let mut huge = app(&[("hello/big.bin", b"small")]);
+    claim_size(&mut huge, "hello/big.bin", 3_000_000_000);
+    refused(&huge, "at most 64 MB");
+    let parts: Vec<(String, Vec<u8>)> = (0..5).map(|i| (format!("hello/part{i}.bin"), vec![b'x'])).collect();
+    let mut many = app(&parts.iter().map(|(n, b)| (n.as_str(), b.as_slice())).collect::<Vec<_>>());
+    for (n, _) in &parts {
+        claim_size(&mut many, n, 60 * 1024 * 1024);
+    }
+    refused(&many, "more than 256 MB");
+    let zeros = vec![0u8; 65 * 1024 * 1024];
+    let mut liar = app(&[("hello/big.bin", &zeros)]);
+    assert!(liar.len() < 1024 * 1024, "a bomb: {} bytes that unpack to 65 MB", liar.len());
+    claim_size(&mut liar, "hello/big.bin", 1000);
+    refused(&liar, "more than 64 MB");
+
+    // The same package twice: by folder, by case, and by naming one file twice.
+    refused(&zip_of(&[("a/hello/app.wasm", EMPTY_WASM), ("b/hello/app.wasm", EMPTY_WASM)]), "two apps named");
+    refused(&zip_of(&[("hello/app.wasm", EMPTY_WASM), ("Hello/app.wasm", EMPTY_WASM)]), "two apps named");
+    let mut twice = zip_of(&[("hello/app.wasm", EMPTY_WASM), ("hello/index.html", b"<p>shown</p>"), ("hello/index.htmX", b"<p>hidden</p>")]);
+    rename_entry(&mut twice, "hello/index.htmX", "hello/index.html");
+    refused(&twice, "more than once");
+
+    assert!(!outside.exists(), "nothing was written outside the apps folder");
+    // A sound zip still imports.
+    import_zip(&disk, &app(&[]), "x.zip", &apps, false, &|_| {}).unwrap();
+    assert!(apps.join("hello/app.wasm").is_file());
+    let _ = fs::remove_dir_all(base);
+}
+
+#[test]
+fn hostile_data_in_a_wardian_file_is_refused_and_the_app_keeps_its_own() {
+    use crate::adapters::secondary::sqlite_store::SqliteStore;
+    use crate::ports::{db::Database, service::{Exports, ViewerState}};
+    use crate::usecases::{export::Exporter, history::History, import::import_zip, viewer_state::State};
+    use serde_json::json;
+
+    let disk: Arc<dyn FileSystem> = Arc::new(LocalDisk);
+    let data = tmp("hostile-data");
+    let apps = data.join("apps");
+    let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&disk), &data));
+    let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&data));
+    let history = Arc::new(History::new(Arc::clone(&disk), &data, &apps));
+    let ex = Exporter::new(Arc::clone(&disk), Arc::new(checker()), Arc::clone(&db), Arc::clone(&state), history, &apps, &data);
+
+    // The app is installed and has data of its own.
+    import_zip(&*disk, &zip_of(&[("hello/app.wasm", EMPTY_WASM)]), "hello.zip", &apps, false, &|_| {}).unwrap();
+    db.create_table("hello", "kept", &["a".into()], &["INTEGER"], true).unwrap();
+    db.insert_rows("hello", "kept", &["a".into()], &[vec![json!(7)]]).unwrap();
+    state.set_app_value("hello", "main", "k", json!("mine")).unwrap();
+
+    // A real database to carry.
+    let carried = data.join("carried.sqlite");
+    let c = rusqlite::Connection::open(&carried).unwrap();
+    c.execute_batch("CREATE TABLE t (x); INSERT INTO t VALUES (1);").unwrap();
+    drop(c);
+    let real = fs::read(&carried).unwrap();
+    let manifest = |package: &str| json!({"format": 1, "package": package, "includes": {"app": true, "data": true}}).to_string();
+    let storage = json!({"main": {"k": "theirs"}}).to_string();
+    let file = |folder: &str, package: &str, tables: &[u8]| {
+        let m = manifest(package);
+        let names = [format!("{folder}/app.wasm"), format!("{folder}/.wardian/export.json"), format!("{folder}/.wardian/data/storage.json"), format!("{folder}/.wardian/data/tables.sqlite")];
+        zip_of(&[(&names[0], EMPTY_WASM), (&names[1], m.as_bytes()), (&names[2], storage.as_bytes()), (&names[3], tables)])
+    };
+    let unchanged = |why: &str| {
+        assert_eq!(db.query("hello", "SELECT a FROM kept", &[]).unwrap()["rows"][0][0], 7, "{why}: the app keeps its tables");
+        assert_eq!(state.app_data("hello").unwrap()["main"]["k"], "mine", "{why}: the app keeps its storage");
+    };
+    let refused = |bytes: &[u8], why: &str, at_preview: bool| {
+        if at_preview {
+            let e = ex.preview_import(bytes).err().unwrap_or_else(|| panic!("{why}: the preview accepted it"));
+            assert!(e.contains(why), "preview: expected \"{why}\", got: {e}");
+        }
+        let e = ex.install_data("hello", bytes).err().unwrap_or_else(|| panic!("{why}: the data was installed"));
+        assert!(e.contains(why), "install: expected \"{why}\", got: {e}");
+        unchanged(why);
+    };
+
+    let mut oversize = file("hello", "hello", &real);
+    claim_size(&mut oversize, "hello/.wardian/data/tables.sqlite", 300 * 1024 * 1024);
+    refused(&oversize, "data files may be at most 256 MB", true);
+    refused(&file("hello", "hello", b"<html>not a database</html>"), "not an SQLite database", true);
+    let mut damaged = b"SQLite format 3\0".to_vec();
+    damaged.extend(std::iter::repeat_n(0xAB, 8192));
+    refused(&file("hello", "hello", &damaged), "tables were not installed", false);
+    refused(&file("hello", "other", &real), "names the app \"other\"", true);
+    let m = manifest("hello");
+    let two = zip_of(&[("hello/app.wasm", EMPTY_WASM), ("hello/.wardian/export.json", m.as_bytes()), ("hello2/app.wasm", EMPTY_WASM), ("hello2/.wardian/export.json", m.as_bytes())]);
+    refused(&two, "more than one exported app", true);
+    let linked = zip_with_link(&[("hello/app.wasm", EMPTY_WASM), ("hello/.wardian/export.json", m.as_bytes())], "hello/.wardian/data/tables.sqlite", "/etc/passwd");
+    refused(&linked, "not a plain file", true);
+
+    // The sound file installs.
+    let good = file("hello", "hello", &real);
+    ex.preview_import(&good).unwrap();
+    ex.install_data("hello", &good).unwrap();
+    assert_eq!(db.query("hello", "SELECT x FROM t", &[]).unwrap()["rows"][0][0], 1);
+    assert_eq!(state.app_data("hello").unwrap()["main"]["k"], "theirs");
+    let _ = fs::remove_dir_all(data);
+}

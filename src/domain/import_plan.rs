@@ -35,6 +35,64 @@ pub fn app_name_from(file_name: &str) -> String {
     clean.trim_matches(|c| c == '-' || c == '.').to_string()
 }
 
+/// The folder parts of a zip entry's name. A name that is absolute, starts with a drive, climbs out
+/// of its folder with `..` or holds a NUL is not a mistake but a hostile file, so the whole zip is
+/// refused, not just the entry. `\` counts as a folder separator, as Windows tools write it.
+pub fn entry_parts(name: &str) -> Result<Vec<String>, String> {
+    let refuse = |why: &str| Err(format!("the zip was refused: \"{}\" {why}. Nothing was installed.", name.escape_debug()));
+    let b = name.as_bytes();
+    if name.contains('\0') {
+        return refuse("holds a NUL character");
+    }
+    if name.starts_with(['/', '\\']) {
+        return refuse("is an absolute path");
+    }
+    if b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':' {
+        return refuse("names a drive");
+    }
+    let parts: Vec<String> = name.split(['/', '\\']).filter(|p| !p.is_empty() && *p != ".").map(String::from).collect();
+    if parts.iter().any(|p| p == "..") {
+        return refuse("leaves its folder (..)");
+    }
+    Ok(parts)
+}
+
+/// Checks the size an entry says it unpacks to, before anything is unpacked, and adds it to the
+/// running `total`. The sizes are only claims, so unpacking counts again (a zip bomb lies).
+pub fn within_limits(name: &str, size: u64, total: &mut u64) -> Result<(), String> {
+    if size > MAX_FILE_BYTES {
+        return Err(format!("the zip was refused: {name} unpacks to {} MB, and a file may be at most {} MB. Nothing was installed.", size / (1024 * 1024), MAX_FILE_BYTES / (1024 * 1024)));
+    }
+    *total = total.saturating_add(size);
+    if *total > MAX_TOTAL_BYTES {
+        return Err(format!("the zip was refused: its files unpack to more than {} MB. Nothing was installed.", MAX_TOTAL_BYTES / (1024 * 1024)));
+    }
+    Ok(())
+}
+
+/// How many entries a zip's end record says it holds (the zip64 one when the count overflows).
+/// A reader that keeps one entry per name sees fewer when a name repeats, and a file named twice
+/// can show one thing to one tool and another to Wardian, so the two counts must agree.
+pub fn entries_declared(zip: &[u8]) -> Option<u64> {
+    const END: [u8; 4] = [0x50, 0x4b, 0x05, 0x06];
+    let last = zip.len().checked_sub(22)?;
+    let at = (last.saturating_sub(65_535)..=last).rev().find(|&i| zip[i..i + 4] == END)?;
+    let total = u16::from_le_bytes([zip[at + 10], zip[at + 11]]);
+    if total != u16::MAX {
+        return Some(u64::from(total));
+    }
+    let locator = zip.get(at.checked_sub(20)?..at)?;
+    if locator[..4] != [0x50, 0x4b, 0x06, 0x07] {
+        return None;
+    }
+    let offset = usize::try_from(u64::from_le_bytes(locator[8..16].try_into().ok()?)).ok()?;
+    let record = zip.get(offset..offset.checked_add(40)?)?;
+    if record[..4] != [0x50, 0x4b, 0x06, 0x06] {
+        return None;
+    }
+    Some(u64::from_le_bytes(record[32..40].try_into().ok()?))
+}
+
 /// A zip entry that survived the path checks, split into its folder parts.
 pub struct Entry {
     pub index: usize,
@@ -114,10 +172,11 @@ pub fn plan(entries: &[Entry], zip_name: &str, skipped: &mut Vec<String>) -> Res
     if roots.is_empty() {
         return Err("no app found in the zip (expected a .wasm file or a suite.json)".into());
     }
+    // Names are compared without case: on a disk that ignores case, Hello and hello are one folder.
     let mut names = HashSet::new();
     for (name, _) in roots.values() {
-        if !names.insert(name) {
-            return Err(format!("the zip holds two apps named \"{name}\""));
+        if !names.insert(name.to_ascii_lowercase()) {
+            return Err(format!("the zip was refused: it holds two apps named \"{name}\" (names are compared without case). Nothing was installed."));
         }
     }
 
@@ -140,6 +199,12 @@ pub fn plan(entries: &[Entry], zip_name: &str, skipped: &mut Vec<String>) -> Res
     if outside > 0 {
         skipped.push(format!("{outside} file(s) outside any app folder"));
     }
+    for plan in plans.values() {
+        let mut seen = HashSet::new();
+        if let Some((_, rel)) = plan.files.iter().find(|(_, rel)| !seen.insert(rel.to_ascii_lowercase())) {
+            return Err(format!("the zip was refused: it holds {}/{rel} twice (names are compared without case). Nothing was installed.", plan.name));
+        }
+    }
     for (top, (_, main)) in &roots {
         let Some(main) = main else { continue };
         let plan = plans.get_mut(top).expect("an app folder holds at least its module");
@@ -150,4 +215,64 @@ pub fn plan(entries: &[Entry], zip_name: &str, skipped: &mut Vec<String>) -> Res
     let mut out: Vec<Plan> = plans.into_values().collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hostile_names_refuse_the_zip() {
+        assert_eq!(entry_parts("hello/./ui//x.js").unwrap(), ["hello", "ui", "x.js"]);
+        assert_eq!(entry_parts("hello\\app.wasm").unwrap(), ["hello", "app.wasm"], "a Windows separator");
+        for (name, why) in [
+            ("../evil/app.wasm", "leaves its folder"),
+            ("hello/../../evil", "leaves its folder"),
+            ("hello\\..\\..\\evil", "leaves its folder"),
+            ("/etc/hello/app.wasm", "absolute path"),
+            ("\\\\server\\share\\x", "absolute path"),
+            ("C:/Windows/x", "names a drive"),
+            ("hello/a\0b", "NUL"),
+        ] {
+            let e = entry_parts(name).unwrap_err();
+            assert!(e.contains(why) && e.contains("refused"), "{name}: {e}");
+        }
+    }
+
+    #[test]
+    fn declared_sizes_are_limited() {
+        let mut total = 0;
+        assert!(within_limits("a", MAX_FILE_BYTES, &mut total).is_ok());
+        assert!(within_limits("b", MAX_FILE_BYTES + 1, &mut total).unwrap_err().contains("at most 64 MB"));
+        let mut total = 0;
+        let r: Result<Vec<()>, String> = (0..5).map(|i| within_limits(&i.to_string(), 60 * 1024 * 1024, &mut total)).collect();
+        assert!(r.unwrap_err().contains("more than 256 MB"));
+        let mut total = u64::MAX - 1;
+        assert!(within_limits("c", 10, &mut total).is_err(), "the total cannot wrap around");
+    }
+
+    #[test]
+    fn the_end_record_gives_the_count() {
+        let mut zip = vec![0u8; 30];
+        zip.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 3, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(entries_declared(&zip), Some(3));
+        assert_eq!(entries_declared(b"not a zip"), None);
+    }
+
+    fn entry(index: usize, path: &str) -> Entry {
+        Entry { index, parts: path.split('/').map(String::from).collect() }
+    }
+
+    #[test]
+    fn duplicate_apps_and_files_refuse_the_zip() {
+        let mut skipped = Vec::new();
+        let two = [entry(0, "a/hello/app.wasm"), entry(1, "b/hello/app.wasm")];
+        assert!(plan(&two, "x.zip", &mut skipped).err().unwrap().contains("two apps named"));
+        let cased = [entry(0, "hello/app.wasm"), entry(1, "Hello/app.wasm")];
+        assert!(plan(&cased, "x.zip", &mut skipped).err().unwrap().contains("two apps named"), "Hello and hello are one folder on macOS");
+        let files = [entry(0, "hello/app.wasm"), entry(1, "hello/index.html"), entry(2, "hello/INDEX.html")];
+        assert!(plan(&files, "x.zip", &mut skipped).err().unwrap().contains("twice"));
+        let fine = [entry(0, "hello/app.wasm"), entry(1, "hello/index.html")];
+        assert_eq!(plan(&fine, "x.zip", &mut skipped).unwrap()[0].files.len(), 2);
+    }
 }

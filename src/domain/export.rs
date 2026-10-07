@@ -15,6 +15,8 @@ pub const DATA: &str = ".wardian/data";
 pub const STORAGE_FILE: &str = "storage.json";
 pub const LAYOUT_FILE: &str = "layout.json";
 pub const TABLES_FILE: &str = "tables.sqlite";
+/// The first bytes of every SQLite database.
+const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 /// The largest export, data included.
 pub const MAX_EXPORT_BYTES: u64 = 500 * 1024 * 1024;
 const FORMAT: u64 = 1;
@@ -90,6 +92,12 @@ pub fn read_manifest(bytes: &[u8]) -> Result<Manifest, String> {
     Ok(Manifest { package, data, value: v })
 }
 
+/// Whether a file's first bytes are an SQLite database's: what an imported `tables.sqlite` must be
+/// before Wardian hands it to SQLite.
+pub fn looks_like_sqlite(head: &[u8]) -> bool {
+    head.starts_with(SQLITE_HEADER)
+}
+
 /// The download's file name.
 pub fn file_name(package: &str) -> String {
     format!("{package}.wardian")
@@ -118,5 +126,6 @@ mod tests {
         assert!(read_manifest(br#"{"format":9,"package":"x"}"#).is_err(), "a newer format is refused");
         assert!(read_manifest(br#"{"format":1,"package":"../x"}"#).is_err(), "the name stays a name");
         assert!(!read_manifest(br#"{"format":1,"package":"x"}"#).unwrap().data, "no data unless it says so");
+        assert!(looks_like_sqlite(b"SQLite format 3\0\x10\0") && !looks_like_sqlite(b"SQLite format 3") && !looks_like_sqlite(b"PK\x03\x04"));
     }
 }

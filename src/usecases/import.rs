@@ -1,13 +1,13 @@
 //! Copies apps out of a zip file into a folder (the local apps folder, or a temporary one for
 //! `wardian check`). Which files go where is the domain's plan; this reads the zip and writes.
 
-use crate::domain::import_plan::{is_app_file, plan, Entry, Plan, MAX_ENTRIES, MAX_FILE_BYTES, MAX_TOTAL_BYTES};
+use crate::domain::import_plan::{entries_declared, entry_parts, is_app_file, plan, within_limits, Entry, Plan, MAX_ENTRIES, MAX_FILE_BYTES, MAX_TOTAL_BYTES};
 use crate::domain::package::{random_u32, unix_now};
 use crate::ports::storage::FileSystem;
 use serde::Serialize;
 use std::{
     io::{Cursor, Read},
-    path::{Component, Path},
+    path::Path,
 };
 
 #[derive(Serialize)]
@@ -21,8 +21,12 @@ pub struct Imported {
 /// history can keep the version that is going away.
 pub fn import_zip(fs: &dyn FileSystem, bytes: &[u8], zip_name: &str, root: &Path, replace: bool, before_replace: &dyn Fn(&str)) -> Result<Imported, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("not a valid zip: {e}"))?;
-    if zip.len() > MAX_ENTRIES {
-        return Err(format!("zip has more than {MAX_ENTRIES} entries"));
+    let declared = entries_declared(bytes).unwrap_or(zip.len() as u64);
+    if zip.len() > MAX_ENTRIES || declared > MAX_ENTRIES as u64 {
+        return Err(format!("the zip was refused: it has more than {MAX_ENTRIES} entries"));
+    }
+    if declared != zip.len() as u64 {
+        return Err("the zip was refused: it names the same file more than once, so different tools would unpack different files. Nothing was installed.".into());
     }
     let mut skipped = Vec::new();
     let entries = read_entries(&mut zip, &mut skipped)?;
@@ -43,29 +47,28 @@ pub fn import_zip(fs: &dyn FileSystem, bytes: &[u8], zip_name: &str, root: &Path
     Ok(Imported { apps: plans.into_iter().map(|p| p.name).collect(), skipped })
 }
 
-/// Lists the files in the zip as checked name parts. Entry paths are never
-/// joined onto a disk path as they are, so a hostile "../../x" entry cannot
-/// write outside the apps folder.
+/// Lists the files in the zip as checked name parts. Entry paths are never joined onto a disk path
+/// as they are, and a zip holding a path that leaves its folder, an absolute path, a link to be
+/// installed, or a file that says it unpacks past the limits is refused whole.
 fn read_entries(zip: &mut zip::ZipArchive<Cursor<&[u8]>>, skipped: &mut Vec<String>) -> Result<Vec<Entry>, String> {
     let mut out = Vec::new();
+    let mut total = 0u64;
     for index in 0..zip.len() {
-        let f = zip.by_index(index).map_err(|e| format!("reading zip: {e}"))?;
-        if f.is_dir() {
+        let f = zip.by_index_raw(index).map_err(|e| format!("reading zip: {e}"))?;
+        let parts = entry_parts(f.name())?;
+        if f.is_dir() || parts.is_empty() {
             continue;
         }
-        let parts: Option<Vec<String>> = f.enclosed_name().and_then(|path| {
-            path.components()
-                .map(|c| match c {
-                    Component::Normal(s) => s.to_str().map(str::to_string),
-                    _ => None,
-                })
-                .collect()
-        });
-        let Some(parts) = parts.filter(|p| !p.is_empty()) else {
-            skipped.push(format!("{} (unsafe path)", f.name()));
+        let installed = is_app_file(&parts);
+        if f.is_symlink() {
+            if installed {
+                return Err(format!("the zip was refused: {} is a symbolic link, and Wardian installs only plain files. Nothing was installed.", f.name()));
+            }
+            skipped.push(format!("{} (a link, in a folder that is never installed)", f.name()));
             continue;
-        };
-        if is_app_file(&parts) {
+        }
+        if installed {
+            within_limits(f.name(), f.size(), &mut total)?;
             out.push(Entry { index, parts });
         }
     }
@@ -83,11 +86,11 @@ fn stage(fs: &dyn FileSystem, zip: &mut zip::ZipArchive<Cursor<&[u8]>>, plans: &
             let mut buf = Vec::new();
             entry.take(MAX_FILE_BYTES + 1).read_to_end(&mut buf).map_err(|e| format!("unpacking {}/{rel}: {e}", plan.name))?;
             if buf.len() as u64 > MAX_FILE_BYTES {
-                return Err(format!("{}/{rel} is larger than 64 MB", plan.name));
+                return Err(format!("the zip was refused: {}/{rel} unpacks to more than 64 MB, more than it says. Nothing was installed.", plan.name));
             }
             total += buf.len() as u64;
             if total > MAX_TOTAL_BYTES {
-                return Err("the zip unpacks to more than 256 MB".into());
+                return Err("the zip was refused: it unpacks to more than 256 MB. Nothing was installed.".into());
             }
             if rel.ends_with(".wasm") && !buf.starts_with(b"\0asm") {
                 return Err(format!("{}/{rel} is not WebAssembly", plan.name));

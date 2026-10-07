@@ -204,6 +204,19 @@ impl Database for SqliteStore {
     }
 
     fn restore(&self, package: &str, src: &Path) -> Result<(), String> {
+        // The file came from someone else: check it whole, read-only, before it replaces anything.
+        let size = std::fs::metadata(src).map_err(|e| format!("reading the tables to install: {e}"))?.len();
+        if size > self.max_bytes {
+            return Err(format!("the tables are larger than an app's database may be ({} MB)", self.max_bytes / (1024 * 1024)));
+        }
+        {
+            let check = Connection::open_with_flags(src, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| format!("the tables could not be opened: {e}"))?;
+            walled(&check)?;
+            let verdict: String = check.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(|e| format!("the tables are not a usable SQLite database: {e}"))?;
+            if verdict != "ok" {
+                return Err(format!("the tables are damaged, so they were not installed: {verdict}"));
+            }
+        }
         let conn = self.conn(package)?;
         let mut conn = conn.lock().unwrap();
         conn.restore(rusqlite::MAIN_DB, src, None::<fn(rusqlite::backup::Progress)>).map_err(|e| format!("installing {package}'s tables: {e}"))
@@ -423,6 +436,29 @@ mod tests {
         }
         assert!(conn.execute_batch("PRAGMA writable_schema = 1; UPDATE sqlite_schema SET sql = 'x'").is_err(), "the schema cannot be written by hand");
         assert!(!out.exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Tables brought in by an import replace an app's only when they are a whole database within
+    /// the app's cap; otherwise the app keeps what it had.
+    #[test]
+    fn restore_takes_only_a_sound_database_within_the_cap() {
+        let (db, dir) = store("restore", 64 * 1024, 2000);
+        db.query("app", "CREATE TABLE kept (a)", &[]).unwrap();
+        db.query("app", "INSERT INTO kept VALUES (1)", &[]).unwrap();
+        let big = dir.join("big.sqlite");
+        let c = Connection::open(&big).unwrap();
+        c.execute_batch("CREATE TABLE t (x); INSERT INTO t VALUES (zeroblob(200000));").unwrap();
+        drop(c);
+        assert!(db.restore("app", &big).is_err_and(|e| e.contains("larger")), "past the cap");
+        let garbage = dir.join("garbage.sqlite");
+        let mut bytes = b"SQLite format 3\0".to_vec();
+        bytes.extend(std::iter::repeat_n(0xAB, 8192));
+        std::fs::write(&garbage, &bytes).unwrap();
+        assert!(db.restore("app", &garbage).is_err(), "a damaged database");
+        std::fs::write(&garbage, b"not a database at all").unwrap();
+        assert!(db.restore("app", &garbage).is_err(), "not a database");
+        assert_eq!(db.query("app", "SELECT a FROM kept", &[]).unwrap()["rows"][0][0], 1, "the app keeps its tables");
         let _ = std::fs::remove_dir_all(dir);
     }
 
