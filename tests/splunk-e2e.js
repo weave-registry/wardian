@@ -129,7 +129,15 @@ async function answer(page, re, yes, what) {
   ok(/all 50,000 rows, which they read/.test(await t.locator('#status').textContent()), 'the channel carries a reference to all of them');
   // The pager sits below a hundred rows; Chrome does not draw a sandboxed frame's parts out of
   // sight, so scroll to it first, as a person would.
-  const press = async sel => { await t.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center' })); await sleep(300); await t.locator(sel).click(); };
+  // The frame can still be growing when it first scrolls, so scroll until the button is in view.
+  const press = async sel => {
+    for (let i = 0; i < 5; i++) {
+      await t.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center' })); await sleep(300);
+      const box = await t.locator(sel).boundingBox();
+      if (box && box.y >= 0 && box.y + box.height <= tab.viewportSize().height) break;
+    }
+    await t.locator(sel).click();
+  };
   await press('#next');
   await t.locator('#pageInfo', { hasText: 'Rows 101–200' }).waitFor({ timeout: 5000 }).catch(() => {});
   ok(await t.locator('#out tbody tr:first-child td:first-child').textContent() === '101', 'Next shows rows 101–200');
