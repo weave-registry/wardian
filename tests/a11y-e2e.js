@@ -87,7 +87,7 @@ const api = async (p, body) => {
 };
 
 (async () => {
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(require('./browser')({ headless: true }));
   const ctx = await browser.newContext({ viewport: { width: 1360, height: 1000 } });
   const page = await ctx.newPage();
   const errors = [];

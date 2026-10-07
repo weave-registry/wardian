@@ -9,9 +9,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CHECK="$(basename "$0" .sh)"
 TMP=$(mktemp -d)
-WARDIAN_PID=
+WARDIAN_PIDS=()
 cleanup() {
-  if [ -n "$WARDIAN_PID" ]; then kill "$WARDIAN_PID" 2>/dev/null || true; wait "$WARDIAN_PID" 2>/dev/null || true; fi
+  for p in ${WARDIAN_PIDS[@]+"${WARDIAN_PIDS[@]}"}; do kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done
   if [ "${KEEP_TMP:-0}" = 1 ]; then echo "kept $TMP"; else rm -rf "$TMP"; fi
 }
 trap cleanup EXIT
@@ -20,7 +20,9 @@ skip() { echo "SKIP $CHECK: $*"; exit 0; }
 pass() { echo "PASS $CHECK: $*"; }
 fail() {
   echo "FAIL $CHECK: $*"
-  if [ -f "$TMP/server.log" ]; then echo "---- last lines of the server log"; tail -n 40 "$TMP/server.log"; fi
+  for log in "$TMP"/server*.log; do
+    if [ -f "$log" ]; then echo "---- last lines of $(basename "$log")"; tail -n 40 "$log"; fi
+  done
   exit 1
 }
 say() { echo "  $*"; }
@@ -34,23 +36,25 @@ build() {
 # start_wardian APPS_DIR [VAR=value ...]
 # Starts Wardian serving APPS_DIR with a fresh DATA_DIR and a clean environment: none of the
 # caller's AWS, Splunk, Drive or Anthropic variables leak in unless passed as VAR=value. Sets BASE.
+# INSTANCE=b start_wardian ... starts a second one, with $TMP/data-b and $TMP/server-b.log.
 start_wardian() {
   local apps="$1"; shift
+  local sfx="${INSTANCE:+-$INSTANCE}"
   build
-  mkdir -p "$TMP/data"
+  mkdir -p "$TMP/data$sfx"
   env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" \
-    DATA_DIR="$TMP/data" ADDR="127.0.0.1:0" "$@" \
-    "$BIN" "$apps" >"$TMP/server.log" 2>&1 &
-  WARDIAN_PID=$!
+    DATA_DIR="$TMP/data$sfx" ADDR="127.0.0.1:0" "$@" \
+    "$BIN" "$apps" >"$TMP/server$sfx.log" 2>&1 &
+  WARDIAN_PIDS+=($!)
   BASE=
   for _ in $(seq 100); do
-    BASE=$(sed -n 's#^listening on \(http://[0-9.:]*\).*#\1#p' "$TMP/server.log" | head -n 1)
+    BASE=$(sed -n 's#^listening on \(http://[0-9.:]*\).*#\1#p' "$TMP/server$sfx.log" | head -n 1)
     [ -n "$BASE" ] && curl -sf "$BASE/api/status" >/dev/null && break
     BASE=
     sleep 0.1
   done
   [ -n "$BASE" ] || fail "Wardian did not start"
-  say "Wardian at $BASE, data in $TMP/data"
+  say "Wardian${INSTANCE:+ $INSTANCE} at $BASE, data in $TMP/data$sfx"
 }
 
 # api METHOD PATH [JSON]  -> prints the body; the HTTP status goes to $TMP/status.

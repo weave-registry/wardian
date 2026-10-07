@@ -20,7 +20,7 @@ Needs: bash, curl, python3 and cargo.
 | `bedrock.sh sigv4` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and `AWS_SESSION_TOKEN` for temporary keys), `AWS_REGION` | The same, signed with Wardian's own SigV4 code: the first real AWS call it makes. |
 | `splunk.sh` | `SPLUNK_URL`, and `SPLUNK_TOKEN` or `SPLUNK_USERNAME` + `SPLUNK_PASSWORD`; `SPLUNK_INSECURE_TLS=1` or `SPLUNK_CA_FILE` for a self-signed certificate | A search of at least 100,000 rows loads into the Splunk table app's database through a real search job, and pages: first, last, sorted pages that line up across the 50,000-row chunks Wardian reads in, and a filtered page. |
 | `drive.sh` | `GDRIVE_SA_KEY` (path of a service account key) and `LIVE_GDRIVE_FOLDER_ID` (or `GDRIVE_FOLDER_ID`) | The key signs in, Settings' folder browser lists folders, the folder's apps are listed, Wardian serves from the folder, and an app (`LIVE_GDRIVE_APP`, or the first) opens: its page, its `app.wasm`, or every frame of its suite, fetched from Drive. |
-| `export-400mb.sh` | nothing; `LIVE_EXPORT=0` skips it, `LIVE_EXPORT_MB` sets the size | An app with ~240 MB of incompressible files and ~160 MB of table rows downloads as one `.wardian` file of ~400 MB, served as `application/vnd.wardian+zip`, every entry's CRC good and every file identical. Needs ~1.5 GB of free disk. |
+| `export-100mb.sh` | nothing; `LIVE_EXPORT=0` skips it, `LIVE_EXPORT_MB` (default 95) sets the size aimed at | An app with ~50 MB of incompressible files and ~45 MB of table rows downloads as one `.wardian` file just under the 100 MB limit, served as `application/vnd.wardian+zip`, every entry's CRC good. A second Wardian with an empty data folder imports it with its data and ends up with the same files, saved data and table. One file more takes the app over the limit, and the export is refused with a message. Needs ~600 MB of free disk. |
 
 The Bedrock model is Wardian's default unless `WARDIAN_BEDROCK_MODEL` / `WARDIAN_BEDROCK_QUICK_MODEL`
 are set; it must be enabled for the account in that region. The Splunk search defaults to one that
@@ -36,11 +36,11 @@ version. Paste those lines into the release's section of `CHANGELOG.md`, so it s
 
 ## What the checks found so far
 
-- **Export of 400 MB** (2026-10-07, macOS, Apple silicon): 404 MB written in about 10 s, every entry
-  intact. A package's own files may hold at most 64 MB each and 256 MB in all (`wardian check`), so
-  an export that large is mostly the app's database. Import accepts at most 100 MB
-  (`MAX_ZIP_BYTES`), so such a file cannot be imported again: Wardian answers "the zip is larger
-  than 100 MB". The check records this and does not fail on it.
+- **Export just under 100 MB** (2026-10-07, macOS, Apple silicon): a 100,315,335-byte file (95.7 MB)
+  written in about 2 s, every entry intact, imported into an empty Wardian with its 37,000 rows. An
+  8 MB file more is refused: "makes a file larger than 100 MB, the most Wardian imports".
+  An earlier version of this check exported 404 MB, when the limit was 500 MB; such a file could not
+  be imported again, which is why the limit is now what import accepts.
 - **Bedrock, Splunk, Drive**: not yet run against the real services; they need the credentials
   above. Each was run against the fakes in `tests/fixtures/` to check the script itself.
 

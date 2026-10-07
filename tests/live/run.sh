@@ -4,7 +4,7 @@
 # any check failed; skipped checks do not fail the run.
 set -uo pipefail
 cd "$(dirname "$0")"
-checks=("bedrock.sh api-key" "bedrock.sh sigv4" "splunk.sh" "drive.sh" "export-400mb.sh")
+checks=("bedrock.sh api-key" "bedrock.sh sigv4" "splunk.sh" "drive.sh" "export-100mb.sh")
 summary=()
 failed=0
 for c in "${checks[@]}"; do
