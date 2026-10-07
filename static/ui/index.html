@@ -80,7 +80,7 @@
     <div class="demo col"><div class="grid2">
       <div class="w-field">
         <label class="w-label" for="f-name">Table name</label>
-        <input class="w-input" id="f-name" placeholder="queries, last 7 days">
+        <input class="w-input" id="f-name" placeholder="Checkout requests, last 7 days">
         <p class="w-hint">Other apps see this name.</p>
       </div>
       <div class="w-field">
@@ -154,7 +154,7 @@
         </div>
         <div role="tabpanel">Every row the search returned.</div>
         <div role="tabpanel">Throughput against load.</div>
-        <div role="tabpanel"><code>index=web | stats count BY n</code></div>
+        <div role="tabpanel"><code>index=web | stats count BY status</code></div>
       </div>
     </div>
   </section>
@@ -166,7 +166,7 @@
       <dialog class="w-dialog" id="dlg" aria-labelledby="dlg-t">
         <h2 class="w-dialog-title" id="dlg-t">Rename this table</h2>
         <p class="w-dialog-description">Other apps see the new name the next time you send it.</p>
-        <input class="w-input" aria-label="New name" value="queries">
+        <input class="w-input" aria-label="New name" value="Checkout requests">
         <div class="w-dialog-footer">
           <button class="w-button" data-variant="outline" data-w-close>Cancel</button>
           <button class="w-button" data-w-close="save">Save</button>

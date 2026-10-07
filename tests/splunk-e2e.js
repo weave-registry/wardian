@@ -92,25 +92,25 @@ async function answer(page, re, yes, what) {
   ok(/Splunk search/.test(aboutText) && /The column “concurrency”/.test(aboutText) && /Splunk table app/.test(aboutText), 'the chart says where the data came from');
 
   console.log('== a ready-made search: the lab updates live, with labels and the minutes column');
-  await t.locator('#preset').selectOption('live-query');
-  ok((await t.locator('#spl').inputValue()).includes('table n x r minutes') && await t.locator('#range').inputValue() === '-7d', 'the query search keeps the minutes column, over 7 days');
+  await t.locator('#preset').selectOption('traffic');
+  ok((await t.locator('#spl').inputValue()).includes('table n x r minutes') && await t.locator('#range').inputValue() === '-7d|', 'the traffic template search keeps the minutes column, over 7 days');
   await t.locator('#btnRun').click();
   await t.locator('#status', { hasText: '6 rows from Splunk' }).waitFor({ timeout: 5000 }).catch(async () => console.log('STATUS', await t.locator('#status').textContent()));
   ok(await tab.locator('.wardian-perm').count() === 0, 'no second question');
   ok((await t.locator('#out th').allTextContents()).join(',') === 'n,x,r,minutes', 'the minutes behind each row are visible');
-  await inputs.locator('#tblName', { hasText: 'query' }).waitFor({ timeout: 5000 });
+  await inputs.locator('#tblName', { hasText: 'Requests in production' }).waitFor({ timeout: 5000 });
   ok(await inputs.locator('#colN').inputValue() === 'n' && await inputs.locator('#colR').inputValue() === 'r', 'the lab picks n, x, r');
   await useTable(inputs); await sleep(1500);
-  ok(await inputs.locator('#nUnit').inputValue() === 'queries in progress', 'and the units');
+  ok(await inputs.locator('#nUnit').inputValue() === 'requests in progress', 'and the units');
   aboutText = await frameOf(lab, 'chart').locator('#about').textContent();
-  ok(/queries on the app server/.test(aboutText) && /Little's Law/.test(aboutText) && /Last 7 days/.test(aboutText), 'the query data is labelled');
+  ok(/Requests in production/.test(aboutText) && /Little's Law/.test(aboutText) && /Last 7 days/.test(aboutText), 'the traffic data is labelled');
   await inputs.locator('#data').fill((await inputs.locator('#data').inputValue()) + '\n70, 9000');
   await sleep(1200);
   ok(/changed the numbers by hand/.test(await frameOf(lab, 'chart').locator('#about').textContent()), 'editing by hand is noted');
   await lab.reload(); await sleep(3000);
   inputs = frameOf(lab, 'inputs');
   await inputs.locator('#tblPick').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-  ok(await lab.locator('.wardian-perm').count() === 0 && /query/.test(await inputs.locator('#tblName').textContent()), 'after a reload the lab listens again without asking');
+  ok(await lab.locator('.wardian-perm').count() === 0 && /Requests in production/.test(await inputs.locator('#tblName').textContent()), 'after a reload the lab listens again without asking');
 
   console.log('== Splunk errors are shown');
   await t.locator('#spl').fill('| badsyntax');

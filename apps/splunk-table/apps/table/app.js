@@ -1,4 +1,5 @@
 /* table: runs a Splunk search on the Wardian server and shows every row it returns.
+   The time range can be a ready-made one, "last N minutes/hours/days…", two dates, or Splunk time codes.
    Sends the table on the channel "splunk.table", so other apps (the USL lab) can use it.
    Capabilities: storage, splunk, claude:sample, claude:downloads.  Channels: sends splunk.table. */
 Kernel.register({
@@ -15,12 +16,69 @@ Kernel.register({
     const isNum = v => v !== null && v !== '' && !Array.isArray(v) && isFinite(Number(String(v).replace(/,/g, '')));
     const num = v => Number(String(v).replace(/,/g, ''));
 
+    // ---------- time range ----------
+    // Ready-made options hold "earliest|latest" in Splunk time codes. "rel", "abs" and "adv" read the extra fields.
+    const UNITS = {m: ['minute', 'minutes'], h: ['hour', 'hours'], d: ['day', 'days'], w: ['week', 'weeks'], mon: ['month', 'months']};
+    const CODE = /^[A-Za-z0-9@+\-:\/._]{1,40}$/;   // what a Splunk time code may look like
+    const fmtTime = t => new Date(t).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'});
+    const pad = n => String(n).padStart(2, '0');
+    const toLocalInput = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+
+    // Returns {earliest, latest, label}, or {error} with a short message.
+    function readRange(){
+      const v = $('#range').value;
+      if (v === 'rel'){
+        const n = Number($('#relN').value), u = $('#relUnit').value;
+        if (!Number.isInteger(n) || n < 1 || n > 100000 || !UNITS[u]) return {error: 'Type a whole number of 1 or more under How many.'};
+        return {earliest: '-' + n + u, latest: '', label: 'Last ' + n + ' ' + UNITS[u][n === 1 ? 0 : 1]};
+      }
+      if (v === 'abs'){
+        const a = $('#absFrom').value, b = $('#absTo').value;
+        const ta = a ? new Date(a).getTime() : NaN, tb = b ? new Date(b).getTime() : Date.now();
+        if (!a || isNaN(ta)) return {error: 'Choose the date and time to start from.'};
+        if (isNaN(tb)) return {error: 'The end date is not valid.'};
+        if (tb <= ta) return {error: 'The end must be after the start.'};
+        return {earliest: String(Math.floor(ta / 1000)), latest: b ? String(Math.floor(tb / 1000)) : '',
+          label: fmtTime(ta) + ' to ' + (b ? fmtTime(tb) : 'now')};
+      }
+      if (v === 'adv'){
+        const e = $('#advE').value.trim(), l = $('#advL').value.trim();
+        if ((e && !CODE.test(e)) || (l && !CODE.test(l))) return {error: 'Splunk time codes look like -2d@d, @w1, -90m or now.'};
+        return {earliest: e, latest: l, label: 'Splunk time ' + (e || 'all time') + ' to ' + (l || 'now')};
+      }
+      const [e = '', l = ''] = v.split('|');
+      const opt = $('#range').selectedOptions[0];
+      return {earliest: e, latest: l, label: opt ? opt.textContent : ''};
+    }
+
+    // Shows the extra fields for the chosen kind of range, and what it means or what is wrong.
+    function showRange(){
+      const v = $('#range').value;
+      $('#rangeRel').hidden = v !== 'rel'; $('#rangeAbs').hidden = v !== 'abs'; $('#rangeAdv').hidden = v !== 'adv';
+      const hint = $('#rangeHint');
+      if (!['rel', 'abs', 'adv'].includes(v)){ hint.textContent = ''; hint.className = 'w-hint range-hint'; return; }
+      const r = readRange();
+      hint.className = 'w-hint range-hint' + (r.error ? ' warn' : '');
+      hint.textContent = r.error || ('Searches: ' + r.label + '.');
+    }
+
+    // Picks the time range for a Splunk "earliest" code (from a ready-made search or from Claude).
+    function setEarliest(e){
+      e = typeof e === 'string' ? e.trim() : '-7d';
+      const v = e + '|';
+      if ([...$('#range').options].some(o => o.value === v)) $('#range').value = v;
+      else if (CODE.test(e)){ $('#range').value = 'adv'; $('#advE').value = e; $('#advL').value = ''; }
+      else $('#range').value = '-7d|';
+      showRange();
+    }
+
     // ---------- ready-made searches ----------
-    // Production traffic has no load level, so the live-traffic ones measure it once a minute with
-    // Little's Law: requests in progress = throughput x average time per request. "minutes" says
-    // how many minutes each row averages, so you can see which rows rest on little data.
-    const LITTLE = (filter, minMinutes) => filter +
-      ' | bin _time span=1m | stats count AS reqs avg(em) AS r_ms BY _time' +
+    // Templates only: change the index and field names to match your data. Production traffic has no
+    // load level, so the traffic one measures it once a minute with Little's Law: requests in progress
+    // = throughput x average time per request. "minutes" says how many minutes each row averages, so
+    // you can see which rows rest on little data.
+    const LITTLE = (filter, durationField, minMinutes) => filter +
+      ' | bin _time span=1m | stats count AS reqs avg(' + durationField + ') AS r_ms BY _time' +
       ' | eval x=reqs/60, n=x*r_ms/1000 | eval n=round(n*2)/2 | where n>0' +
       ' | stats count AS minutes avg(x) AS x avg(r_ms) AS r BY n | where minutes>=' + minMinutes +
       ' | sort n | table n x r minutes';
@@ -30,22 +88,14 @@ Kernel.register({
         note: 'Change the index and field names to match your load test, then run it.',
         about: {title: 'Load test from Splunk', load: 'Concurrent users in each step of the test', throughput: 'Requests completed per second in that step',
           response: 'Average response time in that step, in milliseconds', method: 'Each point is one load level of the test, averaged over all its samples.'}},
-      'live-api': {search: LITTLE('index=web sourcetype=app_requests t=AFTER em=* em<60000', 10),
+      traffic: {search: LITTLE('index=web sourcetype=app_requests status=200 duration_ms=*', 'duration_ms', 10),
         range: '-7d', units: {n: 'requests in progress', x: 'req/s', r: 'ms'}, use: {load: 'n', throughput: 'x', response: 'r'},
-        note: 'Every API request except long-polls (over 60 s). The minutes column shows how many minutes each row averages.',
-        about: {title: 'All API requests to the app server (live production traffic)',
-          load: 'How many API requests were being handled at the same time, on average, during a minute',
-          throughput: 'API requests finished per second during those minutes',
+        note: 'Change the index, sourcetype and duration field to match your request logs: one event per finished request, with its time in milliseconds. The minutes column shows how many minutes each row averages.',
+        about: {title: 'Requests in production (live traffic)',
+          load: 'How many requests were being handled at the same time, on average, during a minute',
+          throughput: 'Requests finished per second during those minutes',
           response: 'Average time to answer one request, in milliseconds',
-          method: 'Not a load test: real users made this traffic. Splunk counts the finished requests in each minute and their average time. Requests in progress = requests per second × seconds per request (Little\'s Law). Minutes with the same load are averaged into one point; a load seen in fewer than 10 minutes is left out. Long-polls (over 60 s) are left out.'}},
-      'live-query': {search: LITTLE('index=web sourcetype=app_requests t=AFTER up=/query sc=200 em<600000', 15),
-        range: '-7d', units: {n: 'queries in progress', x: 'queries/s', r: 'ms'}, use: {load: 'n', throughput: 'x', response: 'r'},
-        note: 'Successful queries only. The minutes column shows how many minutes each row averages.',
-        about: {title: 'queries on the app server (live production traffic)',
-          load: 'How many queries were running at the same time, on average, during a minute',
-          throughput: 'queries finished per second during those minutes',
-          response: 'Average time for one query, in milliseconds',
-          method: 'Not a load test: real users ran these queries. Splunk counts the successful queries (status 200, under 10 minutes) that finished in each minute, and their average time. Queries in progress = queries per second × seconds per query (Little\'s Law). Minutes with the same load are averaged into one point; a load seen in fewer than 15 minutes is left out.'}},
+          method: 'Not a load test: real users made this traffic. Splunk counts the finished requests in each minute and their average time. Requests in progress = requests per second × seconds per request (Little\'s Law). Minutes with the same load are averaged into one point; a load seen in fewer than 10 minutes is left out.'}},
     };
 
     // What the search in the box means, for the apps that use the table. Cleared when you edit the search.
@@ -55,23 +105,44 @@ Kernel.register({
 
     const saved = ctx.store.get('state') || {};
     $('#spl').value = typeof saved.s === 'string' ? saved.s : '';
-    if (typeof saved.t === 'string') $('#range').value = saved.t;
+    // Default dates for "Between two dates": from the start of yesterday until now.
+    const dayAgo = new Date(); dayAgo.setDate(dayAgo.getDate() - 1); dayAgo.setHours(0, 0, 0, 0);
+    $('#absFrom').value = toLocalInput(dayAgo);
+    const tr = saved.tr && typeof saved.tr === 'object' ? saved.tr : {};
+    if (typeof tr.n === 'string' || typeof tr.n === 'number') $('#relN').value = tr.n;
+    if (UNITS[tr.u]) $('#relUnit').value = tr.u;
+    if (typeof tr.from === 'string' && tr.from) $('#absFrom').value = tr.from;
+    if (typeof tr.to === 'string') $('#absTo').value = tr.to;
+    if (typeof tr.e === 'string') $('#advE').value = tr.e;
+    if (typeof tr.l === 'string') $('#advL').value = tr.l;
+    if (typeof saved.t === 'string'){
+      // Older versions saved only the earliest code, such as "-24h".
+      const t = saved.t.includes('|') || ['rel', 'abs', 'adv'].includes(saved.t) ? saved.t : saved.t + '|';
+      $('#range').value = t;
+      if ($('#range').value !== t) $('#range').value = '-24h|';
+    }
     $('#title').value = typeof saved.name === 'string' ? saved.name : '';
     if (saved.meta && typeof saved.meta === 'object') meta = saved.meta;
     if (saved.table && Array.isArray(saved.table.fields)) table = saved.table;
     function persist(){
-      const state = {s: $('#spl').value, t: $('#range').value, name: $('#title').value, meta, table};
+      const state = {s: $('#spl').value, t: $('#range').value, name: $('#title').value, meta, table,
+        tr: {n: $('#relN').value, u: $('#relUnit').value, from: $('#absFrom').value, to: $('#absTo').value, e: $('#advE').value, l: $('#advL').value}};
       // A big table may not fit in this browser's storage: then keep the search and drop the rows.
       if (JSON.stringify(state).length > 1500000) state.table = null;
       ctx.store.set('state', state);
     }
     $('#spl').addEventListener('input', () => { meta = null; persist(); });
-    $('#range').addEventListener('change', persist);
+    $('#range').addEventListener('change', () => { showRange(); persist(); });
+    for (const id of ['#relN', '#relUnit', '#absFrom', '#absTo', '#advE', '#advL']){
+      $(id).addEventListener('input', () => { showRange(); persist(); });
+      $(id).addEventListener('change', () => { showRange(); persist(); });
+    }
     $('#title').addEventListener('input', persist);
+    showRange();
 
     function useSearch(p){
       $('#spl').value = p.search;
-      if (p.range !== undefined) $('#range').value = p.range;
+      if (p.range !== undefined) setEarliest(p.range);
       if (p.about && p.about.title) $('#title').value = p.about.title;
       meta = {about: p.about || null, units: p.units || null, use: p.use || null};
       persist();
@@ -167,6 +238,8 @@ Kernel.register({
       const splunk = await ctx.cap('splunk');
       const search = $('#spl').value.trim();
       if (!search){ status('Type a search first, or pick one under Start from.', 'warn'); $('#spl').focus(); return; }
+      const range = readRange();
+      if (range.error){ status(range.error, 'warn'); showRange(); return; }
       persist();
       $('#btnRun').disabled = true;
       // Splunk does not say how far a search has got, so the bar shows a clock rather than a share.
@@ -174,13 +247,14 @@ Kernel.register({
       else bar.update({label: 'Running the search', detail: ''});
       status('');
       try {
-        const res = await splunk.search({search, earliest: $('#range').value});
-        const opt = $('#range').selectedOptions[0];
+        const q = {search, earliest: range.earliest};
+        if (range.latest) q.latest = range.latest;
+        const res = await splunk.search(q);
         const m = meta || {};
         table = {
           title: $('#title').value.trim() || (m.about && m.about.title) || 'Splunk search',
           fields: res.fields || [], rows: res.rows || [], truncated: !!res.truncated,
-          search, range: $('#range').value, rangeLabel: opt ? opt.textContent : '',
+          search, range: range.earliest, latest: range.latest, rangeLabel: range.label,
           at: new Date().toISOString(), seconds: res.seconds || 0,
           about: m.about || null, units: m.units || null, use: m.use || null,
         };
@@ -244,7 +318,7 @@ Kernel.register({
             ',"method":"two or three plain sentences: how the search turns events into rows, for someone who does not know Splunk"}');
           if (!out || typeof out.search !== 'string') throw new Error('Claude did not return a search.');
           const str = v => typeof v === 'string' ? v.slice(0, 600) : '';
-          useSearch({search: out.search.trim(), range: ['-60m', '-24h', '-7d', '-30d', ''].includes(out.earliest) ? out.earliest : '-7d',
+          useSearch({search: out.search.trim(), range: typeof out.earliest === 'string' ? out.earliest : '-7d',
             units: usl ? {n: str(out.loadUnit), x: str(out.throughputUnit), r: out.responseUnit === 's' ? 's' : 'ms'} : null,
             about: {title: str(out.title) || 'Search written by Claude', load: str(out.load), throughput: str(out.throughput), response: str(out.response),
               method: str(out.method) + ' Claude wrote this search from: “' + what.slice(0, 200) + '”.'}});

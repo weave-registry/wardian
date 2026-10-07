@@ -4,14 +4,13 @@
   <select class="w-input" id="preset">
     <option value="">My own search</option>
     <option value="loadtest">A load test (template, for the USL lab)</option>
-    <option value="live-api">Live traffic: all API requests (live traffic, for the USL lab)</option>
-    <option value="live-query">Live traffic: queries (live traffic, for the USL lab)</option>
+    <option value="traffic">Live traffic: requests in progress (template, for the USL lab)</option>
   </select>
 </div>
 <details class="ai" id="aiAsk" hidden>
   <summary>Describe what you want, and Claude writes the search</summary>
   <div class="w-field">
-    <textarea class="w-input" id="aiWhat" rows="2" aria-label="What you want" placeholder="For example: how query throughput holds up as more queries run at once"></textarea>
+    <textarea class="w-input" id="aiWhat" rows="2" aria-label="What you want" placeholder="For example: how API request throughput holds up as more requests run at once"></textarea>
   </div>
   <div class="w-field"><label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch" id="aiUsl" checked> The table is for the USL lab: load, throughput and response time</label></div>
   <div class="btnrow"><button class="w-button" data-variant="outline" id="btnAi" type="button">Write with AI</button></div>
@@ -24,14 +23,53 @@
 <div class="grid">
   <div class="w-field"><label class="w-label" for="range">Time range</label>
     <select class="w-input" id="range">
-      <option value="-60m">Last 60 minutes</option>
-      <option value="-24h" selected>Last 24 hours</option>
-      <option value="-7d">Last 7 days</option>
-      <option value="-30d">Last 30 days</option>
-      <option value="">All time</option>
+      <optgroup label="Recent">
+        <option value="-15m|">Last 15 minutes</option>
+        <option value="-60m|">Last 60 minutes</option>
+        <option value="-4h|">Last 4 hours</option>
+        <option value="-24h|" selected>Last 24 hours</option>
+        <option value="-7d|">Last 7 days</option>
+        <option value="-30d|">Last 30 days</option>
+        <option value="-90d|">Last 90 days</option>
+      </optgroup>
+      <optgroup label="Calendar">
+        <option value="@d|">Today</option>
+        <option value="-1d@d|@d">Yesterday</option>
+        <option value="@w1|">This week (from Monday)</option>
+        <option value="-1w@w1|@w1">Last week</option>
+        <option value="@mon|">This month</option>
+        <option value="-1mon@mon|@mon">Last month</option>
+        <option value="@y|">This year</option>
+      </optgroup>
+      <optgroup label="Choose your own">
+        <option value="rel">Last … (pick a number)</option>
+        <option value="abs">Between two dates</option>
+        <option value="adv">Splunk time codes (advanced)</option>
+      </optgroup>
+      <option value="|">All time</option>
     </select></div>
-  <div class="w-field"><label class="w-label" for="title">Name of this table</label><input class="w-input" type="text" id="title" placeholder="For example: queries, last 7 days"></div>
+  <div class="w-field"><label class="w-label" for="title">Name of this table</label><input class="w-input" type="text" id="title" placeholder="For example: checkout requests, last 7 days"></div>
 </div>
+<div class="grid range-more" id="rangeRel" hidden>
+  <div class="w-field"><label class="w-label" for="relN">How many</label><input class="w-input" type="number" id="relN" min="1" step="1" value="3"></div>
+  <div class="w-field"><label class="w-label" for="relUnit">Unit</label>
+    <select class="w-input" id="relUnit">
+      <option value="m">Minutes</option>
+      <option value="h">Hours</option>
+      <option value="d" selected>Days</option>
+      <option value="w">Weeks</option>
+      <option value="mon">Months</option>
+    </select></div>
+</div>
+<div class="grid range-more" id="rangeAbs" hidden>
+  <div class="w-field"><label class="w-label" for="absFrom">From</label><input class="w-input" type="datetime-local" id="absFrom"></div>
+  <div class="w-field"><label class="w-label" for="absTo">To (empty means now)</label><input class="w-input" type="datetime-local" id="absTo"></div>
+</div>
+<div class="grid range-more" id="rangeAdv" hidden>
+  <div class="w-field"><label class="w-label" for="advE">Earliest</label><input class="w-input" type="text" id="advE" spellcheck="false" placeholder="-2d@d"></div>
+  <div class="w-field"><label class="w-label" for="advL">Latest (empty means now)</label><input class="w-input" type="text" id="advL" spellcheck="false" placeholder="@d"></div>
+</div>
+<p class="w-hint range-hint" id="rangeHint"></p>
 <div class="btnrow">
   <button class="w-button" id="btnRun" type="button">Run search</button>
   <button class="w-button" data-variant="outline" id="btnSend" type="button" disabled>Send to other apps</button>
