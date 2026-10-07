@@ -1,0 +1,13 @@
+{
+  "sessions": {
+    "83691a10-4167-4fc7-8957-1fc310b86632": {
+      "adr": "ADR-2610071055",
+      "evidence": "hexa analyze . --grade A 2>&1 | grep -E 'Architecture grade|coverage|violations'",
+      "gate": "cargo build --release && cargo test --release && hexa analyze . --grade A",
+      "pid": 56812,
+      "pid_start": null,
+      "stage": "done",
+      "updated": "2026-10-07T15:00:43.229675+00:00"
+    }
+  }
+}

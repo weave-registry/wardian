@@ -154,7 +154,7 @@ my-suite/
 
 A host MAY let each viewer rearrange a suite's panels for themselves: change their order, move
 them between the two columns, hide them, or use one column. Wardian calls this **Arrange** and keeps
-the layout in the viewer's browser only. A hidden panel's app still runs. So an app MUST NOT depend on
+the layout for the viewer, not in the package. A hidden panel's app still runs. So an app MUST NOT depend on
 where its panel sits, or on being visible.
 
 ### 6.2. `suite.json`
@@ -355,7 +355,7 @@ packages, the user decides, the way a phone asks before an app uses the camera.
 4. **Deliver.** The host sends each message to every package that is allowed to receive on that
    channel, in every Wardian tab of this browser, except the sender. It stamps each message with
    the sending package's name, so a package cannot pretend to be another.
-5. **Keep the latest.** The host keeps the latest message on each channel in this browser. A
+5. **Keep the latest.** The host keeps the latest message on each channel. A
    package that starts receiving gets it first, like a retained topic.
 
 Data MUST be JSON-compatible and at most 256 KB. A package may send at most 100 messages in 10
@@ -415,7 +415,7 @@ the library.
 ### 6.11. Arrange
 
 Every app offers **Arrange**: each viewer may reorder its panels, move them between two columns,
-hide them, or use one column. The layout belongs to that viewer, in that browser; the package never
+hide them, or use one column. The layout belongs to the viewer and the host keeps it; the package never
 changes. A hidden panel's code still runs, so an app MUST NOT depend on where a panel sits or on
 being visible. All three kinds use the same script, `ui/arrange.js`:
 
@@ -427,6 +427,9 @@ being visible. All three kinds use the same script, `ui/arrange.js`:
   cannot keep the layout, so the script asks the host page with
   `postMessage({wardian: 'layout', k: 'get' | 'set', id, layout})`, and the host replies
   `{wardian: 'layout', id, layout}`. Outside a host, the layout lasts until the page closes.
+
+Wardian keeps layouts, each app's `storage` data and the latest channel messages in its data folder
+(`state/`), with a copy in the browser for a viewer the host does not let write (ADR-2610071055).
   `wardian check` warns about a page with no `data-panel`.
 - **Module app.** The host draws one card per function, and arranges those.
 

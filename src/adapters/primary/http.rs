@@ -37,6 +37,7 @@ const INDEX_HTML: &str = include_str!("../../../static/index.html");
 const KERNEL_HTML: &str = include_str!("../../../static/kernel.html");
 const LOGO_SVG: &str = include_str!("../../../static/logo.svg");
 const CHANNELS_JS: &str = include_str!("../../../static/channels.js");
+const STATE_JS: &str = include_str!("../../../static/state.js");
 /// Channels for page apps, and the standard components (the same ones suite frames get).
 const SDK_JS: &str = concat!(include_str!("../../../static/sdk.js"), "\n", include_str!("../../../static/ui/progress.js"));
 const MAX_BODY_BYTES: u64 = 64 * 1024;
@@ -153,16 +154,23 @@ fn result_resp(r: Result<Value, String>) -> Response<std::io::Cursor<Vec<u8>>> {
 /// form posts from other sites, since browsers must ask first (CORS
 /// preflight) before sending JSON, and this server never says yes.
 fn read_json(req: &mut Request) -> Result<Value, String> {
+    read_json_upto(req, MAX_BODY_BYTES)
+}
+
+/// The viewer's state can be larger than a setting: an app may keep up to 1 MB (ADR-2610071055).
+const MAX_STATE_BODY_BYTES: u64 = 2 * 1024 * 1024;
+
+fn read_json_upto(req: &mut Request, max: u64) -> Result<Value, String> {
     let ct = req_header(req, "Content-Type").unwrap_or("");
     if !ct.starts_with("application/json") {
         return Err("expected Content-Type: application/json".into());
     }
     let mut body = String::new();
     req.as_reader()
-        .take(MAX_BODY_BYTES + 1)
+        .take(max + 1)
         .read_to_string(&mut body)
         .map_err(|e| e.to_string())?;
-    if body.len() as u64 > MAX_BODY_BYTES {
+    if body.len() as u64 > max {
         return Err("body too large".into());
     }
     serde_json::from_str(&body).map_err(|e| format!("invalid JSON: {e}"))
@@ -249,6 +257,19 @@ fn api_post(path: &str, body: Value, s: &Services) -> Result<Value, String> {
     }
 }
 
+/// A change to the viewer's state: /api/state/layout/<package>, /api/state/apps/<package> or
+/// /api/state/channel/<name>.
+fn post_state(kind: &str, name: &str, body: Value, s: &Services) -> Result<Value, String> {
+    let st = &s.state;
+    match kind {
+        "layout" => st.set_layout(name, body["layout"].clone()),
+        "apps" if body.get("merge").is_some() => st.merge_app_data(name, &body["merge"]),
+        "apps" => st.set_app_value(name, body["app"].as_str().unwrap_or(""), body["key"].as_str().unwrap_or(""), body["value"].clone()),
+        "channel" => st.set_channel(name, body["message"].clone()),
+        _ => Err("not found".into()),
+    }
+}
+
 fn handle(mut req: Request, s: &Services, token: Option<&str>) {
     let (hub, studio, splunk) = (&s.catalog, &s.builder, &s.searches);
     let url = req.url().to_string();
@@ -261,6 +282,14 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
             let name = query(&url, "name").unwrap_or("imported.zip");
             hub.import(&bytes, name, query(&url, "replace") == Some("1"))
         })),
+        // The viewer's state, kept by the host. Like the settings it needs admin; without it the
+        // page keeps the state in the browser instead.
+        (Method::Post, ["api", "state", kind, name]) if admin => {
+            result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| post_state(kind, name, body, s)))
+        }
+        (Method::Get, ["api", "state", "layout", name]) if admin => result_resp(s.state.layout(name)),
+        (Method::Get, ["api", "state", "apps", name]) if admin => result_resp(s.state.app_data(name)),
+        (Method::Get, ["api", "state", "channel", name]) if admin => json_resp(200, json!({ "message": s.state.channel(name) })),
         (Method::Post, ["api", ..]) => {
             if !admin {
                 json_resp(403, json!({ "error": "settings are locked; see ADMIN_TOKEN in the README" }))
@@ -300,6 +329,10 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
         // throwaway origin, so it carries the CORS header like app files. sdk/rustle.js is its
         // name from before the rename.
         (Method::Get, ["channels.js"]) => Response::from_string(CHANNELS_JS)
+            .with_header(header("Content-Type", "text/javascript"))
+            .with_header(header("Cache-Control", "no-cache")),
+        // The viewer's state, kept by the server: Wardian's own pages load it (ADR-2610071055).
+        (Method::Get, ["state.js"]) => Response::from_string(STATE_JS)
             .with_header(header("Content-Type", "text/javascript"))
             .with_header(header("Cache-Control", "no-cache")),
         (Method::Get, ["sdk", "wardian.js" | "rustle.js"]) => Response::from_string(SDK_JS)

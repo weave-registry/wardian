@@ -43,6 +43,24 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   const saved = await order(page, 'main');
   ok(saved.join() === dragged.join() && (await order(page, 'aside')).join() === 'inputs,checks' && await page.locator('#suite.w-arrange-swap').count() === 1, 'the layout survives a reload');
   ok(await page.evaluate(() => Kernel.faults().length) === 0, 'no kernel faults with the new layout');
+
+  console.log('== kept by the server: another browser sees it, and a browser\'s own copy moves over');
+  // A fresh browser context has empty storage, like a new browser, profile or cleared site data.
+  const fresh = await (await browser.newContext({ viewport: { width: 1360, height: 1000 } })).newPage();
+  fresh.on('pageerror', e => errors.push(e.message));
+  await fresh.goto(B + '/run/usl-lab/'); await sleep(3000);
+  ok((await order(fresh, 'main')).join() === saved.join() && await fresh.locator('#suite.w-arrange-swap').count() === 1, 'an empty browser gets the same layout from the server');
+  const served = await (await fetch(B + '/api/state/layout/usl-lab')).json();
+  ok(served && served.columns && served.columns.aside.join() === 'inputs,checks', 'the server holds it: ' + JSON.stringify(served && served.columns));
+  // A browser that arranged before the server kept layouts: its copy is uploaded once.
+  const old = await browser.newContext({ viewport: { width: 1360, height: 1000 } });
+  await old.addInitScript(() => { if (location.pathname.startsWith('/run/loan-planner')) localStorage.setItem('wardian-layout:loan-planner', JSON.stringify({ v: 1, mode: 'two', columns: { aside: ['inputs'], main: ['chart', 'summary', 'export'] }, hidden: ['export'] })); });
+  const oldPage = await old.newPage();
+  await oldPage.goto(B + '/run/loan-planner/'); await sleep(2500);
+  ok(await oldPage.locator('[data-arrange-panel=export]').isHidden() && (await order(oldPage, 'main'))[0] === 'chart', 'the browser\'s old layout still applies');
+  const moved = await (await fetch(B + '/api/state/layout/loan-planner')).json();
+  ok(moved && moved.hidden && moved.hidden[0] === 'export', 'and is now on the server too');
+  await old.close(); await fresh.close();
   ok(await page.frames().find(f => f.url().endsWith('/chart')).locator('#chart circle.pt').count() > 0, 'the apps still work: the chart has points');
 
   console.log('== Reset, and one column');

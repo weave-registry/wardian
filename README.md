@@ -98,7 +98,7 @@ Capabilities:
 
 | Capability | What the app gets |
 |---|---|
-| `storage` | `ctx.store.get/set`, kept by the host for each app in this browser |
+| `storage` | `ctx.store.get/set`, kept by the host for each app, in its data folder |
 | `worker` | `ctx.spawn(code)`, a Web Worker inside the app's frame |
 | `source` | `ctx.source(id)`, the text of an inlined script, e.g. `"engine-src"` |
 | `claude:downloads` | `ctx.cap("downloads")` → `save({filename, data})` saves a file |
@@ -209,7 +209,8 @@ Chats live in the server's memory. A restart ends them, but the apps they saved 
 
 Press **Arrange** at the bottom left of any app to change its layout for yourself. Drag panels or use
 their buttons, move them between the columns, hide the ones you do not need, or use one column.
-Wardian keeps your layout in this browser; the app and everyone else's view stay the same. **Reset**
+Wardian keeps your layout in its data folder, so a restart, another browser or cleared site data does
+not lose it; the app itself never changes. **Reset**
 brings back the app's own layout. Suites and module apps get Arrange from Wardian. A page app marks its
 parts with `data-panel` and runs `wardian add arrange` (SPEC.md 6.11).
 

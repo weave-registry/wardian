@@ -45,6 +45,13 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
   await page.reload(); await sleep(3500);
   chart = frameOf(page, 'chart');
   ok(await chart.locator('#chart circle.pt').count() === 6, '6 points after reload');
+  // The app's data is kept by the server, so an empty browser gets it too.
+  const kept = await (await fetch(B + '/api/state/apps/usl-lab')).json();
+  ok(JSON.stringify(kept.inputs || {}).includes('16,7000'), 'the server keeps the inputs app\'s data');
+  const other = await (await browser.newContext({ viewport: { width: 1360, height: 1000 } })).newPage();
+  await other.goto(B + '/run/usl-lab/'); await sleep(3500);
+  ok(await frameOf(other, 'chart').locator('#chart circle.pt').count() === 6, 'an empty browser shows the same 6 points');
+  await other.close();
 
   console.log('== export -> claude:downloads -> a real file');
   const exp = frameOf(page, 'export');

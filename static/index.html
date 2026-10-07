@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wardian</title>
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
+<script src="/state.js"></script>
 <script src="/channels.js"></script>
 <!-- The component library and Arrange, the same ones apps copy in with `wardian add`.
      A module app has no page of its own, so Wardian draws it with them here. -->
@@ -689,13 +690,12 @@ function functionTable(name, instance, size, missing) {
     kids[0] = tools;
     kids.push(list);
     // Arrange: each viewer may reorder and hide the functions, like the panels of any app.
-    const key = `wardian-layout:${name}`;
     queueMicrotask(async () => {
       moduleArrange?.destroy();
       moduleArrange = await WardianArrange.init({
         columns: [{ id: 'main', el: list, label: 'Main' }], panels: cards, buttonIn: tools, barIn: $('runner'),
-        load: () => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } },
-        save: (l) => { try { if (l) localStorage.setItem(key, JSON.stringify(l)); else localStorage.removeItem(key); } catch {} },
+        load: () => WardianState.layout.load(name),
+        save: (l) => WardianState.layout.save(name, l),
       });
     });
   } else {
@@ -735,21 +735,18 @@ function watchPageFrame(frame, pkg) {
 }
 
 // A page app's Arrange (ui/arrange.js) keeps the viewer's layout here: the app is sandboxed and
-// cannot keep anything itself. Each app has its own layout, in this browser only.
-addEventListener('message', (e) => {
+// cannot keep anything itself. Wardian keeps it in its data folder (state.js, ADR-2610071055).
+addEventListener('message', async (e) => {
   const m = e.data;
   const p = m && m.wardian === 'layout' && pageFrames.get(e.source);
   if (!p || typeof m.id !== 'string') return;
-  const key = `wardian-layout:${p.pkg}`;
+  const win = e.source;
   let layout = null;
-  try {
-    if (m.k === 'set') {
-      if (m.layout && JSON.stringify(m.layout).length < 20000) localStorage.setItem(key, JSON.stringify(m.layout));
-      else localStorage.removeItem(key);
-    }
-    layout = JSON.parse(localStorage.getItem(key) || 'null');
-  } catch { /* storage blocked: the layout lasts until the page closes */ }
-  e.source.postMessage({ wardian: 'layout', id: m.id, layout }, '*');
+  if (m.k === 'set') {
+    layout = m.layout && JSON.stringify(m.layout).length < 20000 ? m.layout : null;
+    WardianState.layout.save(p.pkg, layout);
+  } else layout = await WardianState.layout.load(p.pkg);
+  win.postMessage({ wardian: 'layout', id: m.id, layout }, '*');
 });
 
 addEventListener('message', async (e) => {

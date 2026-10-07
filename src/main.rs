@@ -16,6 +16,7 @@ mod domain {
     pub mod splunk;
     pub mod studio;
     pub mod suite;
+    pub mod viewer_state;
 }
 mod ports {
     pub mod assets;
@@ -35,6 +36,7 @@ mod usecases {
     pub mod scaffold;
     pub mod splunk;
     pub mod studio;
+    pub mod viewer_state;
 }
 mod adapters {
     pub mod primary {
@@ -63,6 +65,7 @@ use usecases::{
     scaffold::Scaffold,
     splunk::Splunk,
     studio::Studio,
+    viewer_state::State,
 };
 
 fn main() {
@@ -93,6 +96,6 @@ fn main() {
     let splunk = Splunk::new(Arc::clone(&fs), Arc::new(SplunkRest), &cfg.data_dir, cfg.splunk.clone());
     hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone());
 
-    let services = Services { catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
+    let services = Services { state: Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir)), catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
     http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
 }

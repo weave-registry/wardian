@@ -36,6 +36,7 @@
 </style>
 <div class="suite" id="suite"></div>
 <div id="faults" hidden></div>
+<script src="/state.js"></script>
 <script src="/channels.js"></script>
 <script src="/ui/arrange.js" data-manual></script>
 <script>
@@ -98,11 +99,14 @@
   WardianChannels.setPrompt(WardianChannels.promptBar(document.body));
 
   // ---------- per-app storage, kept by the host for this viewer ----------
-  const storeKey = app => `kernel:${suiteName}:${app}`;
-  function loadStore(app){ try { return JSON.parse(localStorage.getItem(storeKey(app)) || '{}') || {}; } catch { return {}; } }
+  // Kept by the Wardian server in its data folder, with a copy in this browser (state.js,
+  // ADR-2610071055). Loaded once, before any app starts, so every app boots with its data.
+  let stored = {};
+  function loadStore(app){ return structuredClone(stored[app] || {}); }
   function saveStore(app, key, value){
-    const all = loadStore(app); all[key] = value;
-    try { localStorage.setItem(storeKey(app), JSON.stringify(all)); } catch { /* storage full or blocked */ }
+    const all = stored[app] = stored[app] || {};
+    if (value === undefined || value === null) delete all[key]; else all[key] = value;
+    WardianState.apps.save(suiteName, app, key, value, all);
   }
 
   // ---------- capabilities the host can grant ----------
@@ -283,6 +287,8 @@
     if (h) h(app, m); else fault(app, 'unknown message: ' + String(m.k));
   });
 
+  stored = await WardianState.apps.load(suiteName);
+
   // ---------- layout ----------
   const grid = document.getElementById('suite');
   // A variable, not an inline grid style, so the narrow-screen rule can still switch to one column.
@@ -308,7 +314,6 @@
 
   // Each viewer may arrange the panels (Arrange, /ui/arrange.js): which column, what order, which
   // are hidden. Kept in this browser only; the package never changes. Apps without a slot have no panel.
-  const layoutKey = 'wardian-layout:' + suiteName;
   const panels = [];
   for (const a of suite.apps){
     if (!a || typeof a.name !== 'string' || !/^[\w.-]+$/.test(a.name) || frames.has(a.name)){ fault('kernel', 'bad or duplicate app entry in suite.json'); continue; }
@@ -326,8 +331,8 @@
   const arranged = await WardianArrange.init({
     columns: [{id: 'aside', el: aside, label: 'Side'}, {id: 'main', el: main, label: 'Main'}],
     panels, grid,
-    load: () => { try { return JSON.parse(localStorage.getItem(layoutKey) || 'null'); } catch { return null; } },
-    save: l => { try { if (l) localStorage.setItem(layoutKey, JSON.stringify(l)); else localStorage.removeItem(layoutKey); } catch {} },
+    load: () => WardianState.layout.load(suiteName),
+    save: l => WardianState.layout.save(suiteName, l),
     // moveBefore keeps a frame running; without it, moving a frame restarts its app, so reload instead.
     canMoveLive: !!Element.prototype.moveBefore,
     reload: () => { try { sessionStorage.setItem('wardian-arranging', suiteName); } catch {} location.reload(); },

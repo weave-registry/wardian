@@ -11,3 +11,4 @@ service-account.json
 /apps/*/target
 /apps/*/Cargo.lock
 /templates/*/target
+.hexa/loop.lock

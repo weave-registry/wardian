@@ -8,7 +8,7 @@
      server (Settings → App permissions lists every answer and can take it back).
    - Messages go between Wardian tabs in this browser through a BroadcastChannel. The host stamps each
      message with the sending package's name, so an app cannot pretend to be another.
-   - The latest message on each channel is kept, so an app that starts later still gets it. */
+   - The latest message on each channel is kept by the server, so an app that starts later still gets it. */
 const WardianChannels = (() => {
   'use strict';
   const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -68,9 +68,9 @@ const WardianChannels = (() => {
   }
   bus.onmessage = e => { if (e.data && typeof e.data.channel === 'string') deliver(e.data); };
 
-  function latest(channel){
-    try { return JSON.parse(localStorage.getItem('wardian-channel:' + channel) || 'null'); } catch { return null; }
-  }
+  // The latest message, kept by the Wardian server (state.js), so an app that starts later, in any
+  // browser, still gets it.
+  const latest = channel => WardianState.channel.latest(channel);
 
   /** Sends `data` (JSON-compatible) on `channel` for package `pkg`. Rejects if the user said no. */
   async function send(pkg, channel, data){
@@ -83,7 +83,7 @@ const WardianChannels = (() => {
     if (!(await allowed(pkg, channel, 'send'))) throw new Error(`not allowed to send on "${channel}"`);
     times.push(now); sent.set(pkg, times);
     const msg = {channel, from: pkg, at: now, data: JSON.parse(json)};
-    try { localStorage.setItem('wardian-channel:' + channel, JSON.stringify(msg)); } catch { /* full or blocked: live delivery still works */ }
+    WardianState.channel.keep(channel, msg);   // live delivery below does not wait for it
     bus.postMessage(msg);
     deliver(msg);
   }
@@ -96,7 +96,7 @@ const WardianChannels = (() => {
     const s = {pkg, fn};
     if (!subs.has(channel)) subs.set(channel, new Set());
     subs.get(channel).add(s);
-    const last = latest(channel);
+    const last = await latest(channel);
     if (last && last.from !== pkg) setTimeout(() => { try { fn(last.data, {from: last.from, at: last.at}); } catch (e) { console.error(e); } }, 0);
     return () => subs.get(channel).delete(s);
   }

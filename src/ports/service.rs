@@ -62,10 +62,28 @@ pub trait Pages: Send + Sync {
     fn gallery(&self) -> &'static str;
 }
 
+/// The viewer's state, kept by the host (ADR-2610071055): Arrange layouts, each suite app's saved
+/// data, and the latest message per channel.
+pub trait ViewerState: Send + Sync {
+    fn layout(&self, package: &str) -> Result<Value, String>;
+    /// Keeps a layout; null forgets it.
+    fn set_layout(&self, package: &str, layout: Value) -> Result<Value, String>;
+    /// {app: {key: value}} for one package.
+    fn app_data(&self, package: &str) -> Result<Value, String>;
+    /// Sets one key of one app; null removes it.
+    fn set_app_value(&self, package: &str, app: &str, key: &str, value: Value) -> Result<Value, String>;
+    /// Adds what a browser held that the host does not have yet; returns the package's data.
+    fn merge_app_data(&self, package: &str, data: &Value) -> Result<Value, String>;
+    fn channel(&self, channel: &str) -> Value;
+    /// Keeps the latest message on a channel; null forgets it.
+    fn set_channel(&self, channel: &str, message: Value) -> Result<Value, String>;
+}
+
 /// Everything the web server serves.
 #[derive(Clone)]
 pub struct Services {
     pub catalog: Arc<dyn Catalog>,
+    pub state: Arc<dyn ViewerState>,
     pub builder: Arc<dyn Builder>,
     pub searches: Arc<dyn Searches>,
     pub pages: Arc<dyn Pages>,

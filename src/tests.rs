@@ -211,3 +211,40 @@ fn private_files_are_written_whole() {
     }
     let _ = fs::remove_dir_all(dir);
 }
+
+// ---------- the viewer's state (ADR-2610071055) ----------
+
+#[test]
+fn viewer_state_is_kept_private_on_disk() {
+    use crate::ports::service::ViewerState;
+    use crate::usecases::viewer_state::State;
+    use serde_json::json;
+    let dir = tmp("state");
+    let state = State::new(Arc::new(LocalDisk), &dir);
+
+    // Layouts: kept, read back, forgotten.
+    assert_eq!(state.layout("usl-lab").unwrap(), Value::Null);
+    state.set_layout("usl-lab", json!({"v": 1, "hidden": ["meaning"]})).unwrap();
+    assert_eq!(state.layout("usl-lab").unwrap()["hidden"][0], "meaning");
+    assert!(state.set_layout("../evil", json!({})).is_err(), "names stay inside the state folder");
+
+    // App data: one key at a time, and a browser's data merged without overwriting the host's.
+    state.set_app_value("usl-lab", "inputs", "state", json!({"d": "1,1000"})).unwrap();
+    let merged = state.merge_app_data("usl-lab", &json!({"inputs": {"state": "old", "tableLink": true}})).unwrap();
+    assert_eq!(merged["added"], 1);
+    let data = state.app_data("usl-lab").unwrap();
+    assert_eq!(data["inputs"]["state"]["d"], "1,1000");
+    assert_eq!(data["inputs"]["tableLink"], true);
+
+    // Channels: the latest message.
+    state.set_channel("splunk.table", json!({"rows": [[1, 2]]})).unwrap();
+    assert_eq!(state.channel("splunk.table")["rows"][0][1], 2);
+
+    // Every file is private, like the keys.
+    #[cfg(unix)]
+    for f in ["state/layouts.json", "state/apps/usl-lab.json", "state/channels.json"] {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(fs::metadata(dir.join(f)).unwrap().permissions().mode() & 0o777, 0o600, "{f}");
+    }
+    let _ = fs::remove_dir_all(dir);
+}
