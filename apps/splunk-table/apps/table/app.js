@@ -132,6 +132,8 @@ Kernel.register({
     // What the search in the box means, for the apps that use the table. Cleared when you edit the search.
     let meta = null;                           // {about, units, use}
     let table = null;                          // the latest result, as sent on the channel
+    let pending = null;                        // the search running as a job: what it is for
+    let handled = '';                          // the id of the last job whose table is shown
     let sort = {col: -1, dir: 1};
     let shown = [];                            // rows that match "Find in results", in sorted order
 
@@ -159,8 +161,10 @@ Kernel.register({
     if (saved.preset === 'find'){ $('#preset').value = 'find'; $('#findWords').hidden = false; }
     if (saved.meta && typeof saved.meta === 'object') meta = saved.meta;
     if (saved.table && Array.isArray(saved.table.fields)) table = saved.table;
+    if (saved.pending && typeof saved.pending === 'object' && typeof saved.pending.search === 'string') pending = saved.pending;
+    if (typeof saved.handled === 'string') handled = saved.handled;
     function persist(){
-      const state = {s: $('#spl').value, t: $('#range').value, name: $('#title').value, meta, table,
+      const state = {s: $('#spl').value, t: $('#range').value, name: $('#title').value, meta, table, pending, handled,
         preset: $('#preset').value, words: $('#words').value, wordsIndex: $('#wordsIndex').value,
         tr: {n: $('#relN').value, u: $('#relUnit').value, from: $('#absFrom').value, to: $('#absTo').value, e: $('#advE').value, l: $('#advL').value}};
       // A big table may not fit in this browser's storage: then keep the search and drop the rows.
@@ -465,6 +469,67 @@ Kernel.register({
     }
 
     // ---------- running the search ----------
+    // The host runs each search as a background job (ADR-2610072118), so leaving this app does not
+    // stop it. What the search is for is kept as `pending` until it ends; opening the app again
+    // finds the job, shows its progress, and shows the table when it is done.
+    let jobNow = null;                         // the id of the job this page is waiting on
+    const kindOf = p => p.db ? 'splunk.into' : 'splunk.search';
+    // The newest job of this app that matches `p`, the search waiting to finish.
+    async function findJob(splunk, p){
+      const jobs = await splunk.jobs().catch(() => []);
+      return (jobs || []).find(j => j.app === 'table' && j.kind === kindOf(p) && j.started >= p.at - 60000) || null;
+    }
+    // Waits for `promise` (the search or load), showing the rows loaded so far, as the host reports them.
+    async function follow(promise, splunk, p){
+      let busy = false;
+      const tick = setInterval(async () => {
+        if (busy) return;
+        busy = true;
+        try {
+          const j = await findJob(splunk, p);
+          if (j && j.state === 'running'){
+            jobNow = j.id;
+            if (j.progress != null) bar.update({detail: j.progress.toLocaleString() + (j.progress === 1 ? ' row' : ' rows') + ' loaded so far'});
+          }
+        } finally { busy = false; }
+      }, 2000);
+      try { return await promise; } finally { clearInterval(tick); jobNow = null; }
+    }
+    bar.addEventListener('cancel', async () => {
+      const splunk = await ctx.cap('splunk').catch(() => null);
+      if (!splunk || !pending) return;
+      const id = jobNow || ((await findJob(splunk, pending)) || {}).id;
+      if (id) await splunk.cancel(id).catch(e => status('Could not stop the search: ' + (e && e.message || e), 'warn'));
+    });
+
+    // Shows a finished search: `res` is what the host answered, `p` what the search was for.
+    async function finish(res, p, why){
+      pending = null;
+      handled = res.job || handled;
+      table = {
+        title: p.title, fields: res.fields || [], rows: p.db ? [] : (res.rows || []), truncated: !!res.truncated,
+        search: p.search, range: p.range, latest: p.latest, rangeLabel: p.rangeLabel,
+        at: new Date().toISOString(), seconds: res.seconds || 0,
+        about: p.about || null, units: p.units || null, use: p.use || null,
+      };
+      if (p.db) table.dataset = {table: res.table, total: res.total || 0, columns: res.columns || []};
+      sort = {col: -1, dir: 1}; pageAt = 0;
+      $('#find').value = '';
+      persist(); draw();
+      const n = p.db ? table.dataset.total : table.rows.length;
+      bar.done(n.toLocaleString() + (n === 1 ? ' row' : ' rows') + ' in ' + bar.seconds + ' s');
+      const msgs = (res.messages || []).filter(Boolean);
+      const sent = n ? await share() : '';
+      status([why, n.toLocaleString() + (n === 1 ? ' row' : ' rows') + ' from Splunk' + (p.db ? ', kept in this app\'s database.' : '.'), sent, msgs.length ? 'Splunk says: ' + msgs.join(' ') : ''].filter(Boolean).join(' '),
+        table.truncated || !n ? 'warn' : '');
+    }
+    function failed(e){
+      pending = null; persist();
+      if (/^cancelled/.test(String(e && e.message || e))){ bar.fail('Stopped'); status('You stopped the search.' + (table ? ' The table below is the one from before.' : ''), 'warn'); return; }
+      bar.fail('Search failed');
+      status('Search failed: ' + (e && e.message || e), 'warn');
+    }
+
     async function run(why){
       const splunk = await ctx.cap('splunk').catch(() => null);
       if (!splunk){ status('Splunk is not set up in this Wardian.', 'warn'); return; }
@@ -473,58 +538,48 @@ Kernel.register({
       if (!search){ status('Type a search first, or pick one under Start from.', 'warn'); $('#spl').focus(); return; }
       const range = readRange();
       if (range.error){ status(range.error, 'warn'); showRange(); return; }
-      persist();
       $('#btnRun').disabled = true;
       // Splunk does not say how far a search has got, so the bar shows a clock rather than a share.
-      if (!why) bar.start('Searching Splunk', {detail: 'A search over many days can take a few minutes. Wardian stops it after 15.'});
+      if (!why) bar.start('Searching Splunk', {detail: 'A search over many days can take a few minutes. You may leave this app meanwhile; Wardian stops it after 15.', cancelable: true});
       else bar.update({label: 'Running the search', detail: ''});
       status('');
+      const m = meta || {};
+      const p = {search, range: range.earliest, latest: range.latest, rangeLabel: range.label, db: !!db, at: Date.now(),
+        title: $('#title').value.trim() || (m.about && m.about.title) || 'Splunk search',
+        about: m.about || null, units: m.units || null, use: m.use || null};
+      pending = p;
+      persist();
       try {
         const q = {search, earliest: range.earliest};
         if (range.latest) q.latest = range.latest;
-        const m = meta || {};
-        if (db){
-          // Into this app's database, read from Splunk in chunks; the page then shows 100 rows at a time.
-          const res = await db.searchInto(Object.assign({table: TABLE_NAME}, q));
-          table = {
-            title: $('#title').value.trim() || (m.about && m.about.title) || 'Splunk search',
-            fields: res.fields || [], rows: [], truncated: !!res.truncated,
-            dataset: {table: res.table, total: res.total || 0, columns: res.columns || []},
-            search, range: range.earliest, latest: range.latest, rangeLabel: range.label,
-            at: new Date().toISOString(), seconds: res.seconds || 0,
-            about: m.about || null, units: m.units || null, use: m.use || null,
-          };
-          sort = {col: -1, dir: 1}; pageAt = 0;
-          $('#find').value = '';
-          persist(); draw();
-          const n = table.dataset.total;
-          bar.done(n.toLocaleString() + (n === 1 ? ' row' : ' rows') + ' in ' + bar.seconds + ' s');
-          const msgs = (res.messages || []).filter(Boolean);
-          const sent = n ? await share() : '';
-          status([why, n.toLocaleString() + (n === 1 ? ' row' : ' rows') + ' from Splunk, kept in this app\'s database.', sent, msgs.length ? 'Splunk says: ' + msgs.join(' ') : ''].filter(Boolean).join(' '),
-            table.truncated || !n ? 'warn' : '');
-          return;
-        }
-        const res = await splunk.search(q);
-        table = {
-          title: $('#title').value.trim() || (m.about && m.about.title) || 'Splunk search',
-          fields: res.fields || [], rows: res.rows || [], truncated: !!res.truncated,
-          search, range: range.earliest, latest: range.latest, rangeLabel: range.label,
-          at: new Date().toISOString(), seconds: res.seconds || 0,
-          about: m.about || null, units: m.units || null, use: m.use || null,
-        };
-        sort = {col: -1, dir: 1};
-        $('#find').value = '';
-        persist(); draw();
-        bar.done(table.rows.length + (table.rows.length === 1 ? ' row' : ' rows') + ' in ' + bar.seconds + ' s');
-        const msgs = (res.messages || []).filter(Boolean);
-        const sent = table.rows.length ? await share() : '';
-        status([why, table.rows.length + (table.rows.length === 1 ? ' row' : ' rows') + ' from Splunk.', sent, msgs.length ? 'Splunk says: ' + msgs.join(' ') : ''].filter(Boolean).join(' '),
-          table.truncated || !table.rows.length ? 'warn' : '');
+        // With the database, the rows go into this app's table, read from Splunk in chunks; the page
+        // then shows 100 rows at a time.
+        const res = await follow(db ? db.searchInto(Object.assign({table: TABLE_NAME}, q)) : splunk.search(q), splunk, p);
+        await finish(res, p, why);
       } catch (e) {
-        bar.fail('Search failed');
-        status('Search failed: ' + (e && e.message || e), 'warn');
+        failed(e);
       } finally { $('#btnRun').disabled = false; }
+    }
+
+    // Opening the app again: a search started earlier may still be running, or have finished
+    // while the app was closed.
+    async function resume(splunk){
+      const p = pending;
+      if (!p) return false;
+      const j = await findJob(splunk, p);
+      if (!j){
+        pending = null; persist();
+        status('The search you started earlier was lost: Wardian restarted while it ran. Run it again.', 'warn');
+        return true;
+      }
+      if (j.id === handled) return false;
+      $('#btnRun').disabled = true;
+      bar.start(j.state === 'running' ? 'Searching Splunk (started earlier)' : 'Reading the finished search',
+        {detail: j.progress != null ? j.progress.toLocaleString() + ' rows loaded so far' : 'You may leave this app meanwhile.', cancelable: j.state === 'running'});
+      try { await finish(await follow(splunk.wait(j.id), splunk, p), p, ''); }
+      catch (e) { failed(e); }
+      finally { $('#btnRun').disabled = false; }
+      return true;
     }
     $('#btnRun').addEventListener('click', () => run());
 
@@ -594,8 +649,9 @@ Kernel.register({
       const splunk = await ctx.cap('splunk').catch(() => null);
       const ready = splunk && (await splunk.status().catch(() => ({ready: false}))).ready;
       if (!ready){ $('#btnRun').disabled = true; status('Splunk is not set up in this Wardian. An admin adds it in Settings → Splunk.', 'warn'); return; }
-      if (table) status('This is the last table you fetched. Press Send to other apps to use it again, or run the search for fresh rows.');
       setupAi();
+      if (await resume(splunk)) return;
+      if (table) status('This is the last table you fetched. Press Send to other apps to use it again, or run the search for fresh rows.');
     })();
   }
 });

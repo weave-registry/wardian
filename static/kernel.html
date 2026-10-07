@@ -46,7 +46,8 @@
    - Retained topics are replayed to apps that start listening late.
    - Calls to a method whose app has not started yet wait for it (up to 15 s) instead of failing.
    - Capabilities are granted here: storage (kept per app), asset (files from this package),
-     claude:downloads (a file download), splunk (searches the server runs), db (the package's own
+     claude:downloads (a file download), splunk (searches the server runs, as background jobs the
+     kernel waits on: ADR-2610072118), db (the package's own
      SQLite database, ADR-2610071219) and claude:sample (Claude,
      with the server's Anthropic key). The user allows splunk and Claude once per package first.
    - Channels to other packages (channels.js): only those declared in suite.json, and only once the
@@ -136,9 +137,14 @@
         const {search, earliest = '', latest = ''} = args || {};
         if (typeof search !== 'string' || !search.trim()) throw new Error('the search is empty');
         if (![earliest, latest].every(t => typeof t === 'string' && t.length <= 64)) throw new Error('bad time range');
-        return hostPost('/api/splunk/search', 'splunk', app, {search, earliest, latest})
+        return runJob('/api/splunk/search', 'splunk', app, {search, earliest, latest})
           .catch(e => { throw new Error(String(e.message).replace(/^not_granted: you did not allow this app to use splunk$/, 'you did not allow this app to run Splunk searches')); });
       },
+      // Background jobs (ADR-2610072118): this package's recent jobs, newest first, and waiting on
+      // or cancelling one, so an app opened again can pick up a load it started earlier.
+      async jobs(args, app){ return (await hostGet('/api/jobs?package=' + enc(suiteName))).jobs; },
+      async wait(args, app){ return waitJob(jobId(args)); },
+      async cancel(args, app){ return hostPost('/api/jobs/' + enc(jobId(args)) + '/cancel', '', app, {}); },
     },
     // db: the package's own SQLite database, kept by the server (ADR-2610071219). No question for
     // its own tables; reading another package's tables asks the user once ("tables.<package>"),
@@ -158,7 +164,7 @@
       async searchInto(args, app){
         const {search, earliest = '', latest = '', table = 'search'} = args || {};
         if (typeof search !== 'string' || !search.trim()) throw new Error('the search is empty');
-        return hostPost('/api/db/search-into', 'splunk', app, {search, earliest, latest, table})
+        return runJob('/api/db/search-into', 'splunk', app, {search, earliest, latest, table})
           .catch(e => { throw new Error(String(e.message).replace(/^not_granted: you did not allow this app to use splunk$/, 'you did not allow this app to run Splunk searches')); });
       },
     },
@@ -167,8 +173,8 @@
     // and the server checks that again.
     // Errors start with a code ("rate_limited: …") that the frame turns into e.code.
     sample: {
-      async text(args, app){ return hostPost('/api/ai/sample', 'ai', app, {prompt: (args || {}).prompt, tier: (args || {}).tier, json: false}); },
-      async json(args, app){ return (await hostPost('/api/ai/sample', 'ai', app, {prompt: (args || {}).prompt, tier: (args || {}).tier, json: true})).value; },
+      async text(args, app){ return runJob('/api/ai/sample', 'ai', app, {prompt: (args || {}).prompt, tier: (args || {}).tier, json: false}); },
+      async json(args, app){ return (await runJob('/api/ai/sample', 'ai', app, {prompt: (args || {}).prompt, tier: (args || {}).tier, json: true})).value; },
     },
   };
   async function hostStatus(){
@@ -186,6 +192,38 @@
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || `${r.status} ${r.statusText}`);
     return j;
+  }
+  // ---------- long calls run as background jobs (ADR-2610072118) ----------
+  // A Splunk search, a load into a table, or a question to Claude can take minutes. The server runs it
+  // as a job and answers at once; the kernel asks how it is going with short requests (every second
+  // at first, then every two), so no connection stays held and other pages keep loading.
+  // The app still gets one promise, which settles with the job's result (and its id, as `job`).
+  async function hostGet(path){
+    const headers = {};
+    try { const t = sessionStorage.getItem('adminToken'); if (t) headers['X-Admin-Token'] = t; } catch { /* blocked */ }
+    const r = await fetch(path, {headers, cache: 'no-store'});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `${r.status} ${r.statusText}`);
+    return j;
+  }
+  const jobId = a => { const id = typeof a === 'string' ? a : a && a.id; if (typeof id !== 'string' || !/^[\w-]{1,64}$/.test(id)) throw new Error('which job? give its id'); return id; };
+  async function runJob(path, grant, app, body){
+    const {job} = await hostPost(path, grant, app, Object.assign({}, body, {background: true}));
+    return waitJob(job);
+  }
+  async function waitJob(id){
+    const t0 = Date.now();
+    let misses = 0;
+    for (let first = true; ; first = false){
+      const since = Date.now() - t0;
+      await new Promise(r => setTimeout(r, first ? 250 : since < 10000 ? 1000 : 2000));
+      let j;
+      try { j = await hostGet('/api/jobs/' + enc(id) + '?package=' + enc(suiteName)); misses = 0; }
+      catch (e) { if (/^no job/.test(e.message) || ++misses > 5) throw e; continue; }   // a blip: ask again
+      if (j.state === 'done') return (j.result && typeof j.result === 'object' && !Array.isArray(j.result)) ? Object.assign({}, j.result, {job: id}) : j.result;
+      if (j.state === 'failed') throw new Error(j.error || 'the job failed');
+      if (j.state === 'cancelled') throw new Error('cancelled');
+    }
   }
   // Capabilities this host provides under their own name (not "claude:…").
   const HOST_CAPS = ['splunk', 'db'];

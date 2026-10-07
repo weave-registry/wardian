@@ -1,9 +1,14 @@
 # A fake Splunk management port for tests: server info and oneshot searches.
 # Token "test-token". A search containing "badsyntax" fails like Splunk does.
-import json, sys, urllib.parse
-from http.server import BaseHTTPRequestHandler, HTTPServer
+# A search containing "slowtable" stays running for SLOW seconds (ADR-2610072118), and a job can be
+# cancelled (POST .../control action=cancel); GET /fake/cancelled lists the cancelled job ids.
+import json, sys, time, urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 TOKEN = "Bearer test-token"
+SLOW = 12
 JOBS = {}
+READY_AT = {}    # sid -> when a slow job is done
+CANCELLED = []
 class H(BaseHTTPRequestHandler):
     def reply(self, code, obj):
         b = json.dumps(obj).encode(); self.send_response(code)
@@ -13,6 +18,8 @@ class H(BaseHTTPRequestHandler):
             self.reply(401, {"messages": [{"type": "WARN", "text": "call not properly authenticated"}]}); return False
         return True
     def do_GET(self):
+        if self.path == "/fake/cancelled":
+            return self.reply(200, CANCELLED)
         # Like real Splunk: server/info answers anyone; everything else needs the token.
         if self.path.startswith("/services/search/jobs/"):
             if not self.authed(): return
@@ -27,6 +34,10 @@ class H(BaseHTTPRequestHandler):
                 rows = job[1]["results"]
                 page = rows[offset:] if count == 0 else rows[offset:offset + count]
                 return self.reply(200, dict(job[1], results=page))
+            if sid in CANCELLED:
+                return self.reply(200, {"entry": [{"content": {"isDone": False, "isFailed": False, "dispatchState": "FINALIZING"}}]})
+            if time.time() < READY_AT.get(sid, 0):
+                return self.reply(200, {"entry": [{"content": {"isDone": False, "isFailed": False, "dispatchState": "RUNNING"}}]})
             failed = job[0] != 200
             return self.reply(200, {"entry": [{"content": {"isDone": True, "isFailed": failed, "dispatchState": "FAILED" if failed else "DONE",
                                                             "messages": job[1].get("messages", []) if failed else []}}]})
@@ -44,7 +55,15 @@ class H(BaseHTTPRequestHandler):
             code, body = self.answer(form)
             sid = "job%d" % (len(JOBS) + 1)
             JOBS[sid] = (code, body)
+            if "slowtable" in form["search"][0]:
+                READY_AT[sid] = time.time() + SLOW
             return self.reply(201, {"sid": sid})
+        if self.path.startswith("/services/search/jobs/") and self.path.endswith("/control"):
+            sid = self.path.split("/")[4]
+            if form.get("action") == ["cancel"] and sid in JOBS:
+                CANCELLED.append(sid)
+                sys.stderr.write("CANCEL %s\n" % sid)
+                return self.reply(200, {"messages": [{"type": "INFO", "text": "Search job cancelled."}]})
         self.reply(404, {})
 
     def reply_to(self, code, obj):
@@ -75,6 +94,10 @@ class H(BaseHTTPRequestHandler):
             for i in range(50000):
                 rows.append({"n": str(i + 1), "host": "web-%d" % (i % 7), "status": "500" if i % 10 == 0 else "200", "ms": "%.1f" % (10 + (i * 37) % 900)})
             return self.reply(200, {"fields": [{"name": "n"}, {"name": "host"}, {"name": "status"}, {"name": "ms"}], "results": rows, "messages": []})
+        if "slowtable" in q:  # 300 rows, after SLOW seconds
+            for i in range(300):
+                rows.append({"n": str(i + 1), "host": "web-%d" % (i % 3)})
+            return self.reply(200, {"fields": [{"name": "n"}, {"name": "host"}], "results": rows, "messages": []})
         if "minutes" in q:  # a ready-made Little's Law search: n x r minutes
             for i, n in enumerate([0.5, 1, 1.5, 2, 3, 4]):
                 x = 3 * n / (1 + 0.1 * (n - 1))
@@ -84,4 +107,4 @@ class H(BaseHTTPRequestHandler):
             x = 1000 * n / (1 + 0.05 * (n - 1) + 0.0004 * n * (n - 1))
             rows.append({"concurrency": str(n), "x": "%.1f" % x, "r": "%.2f" % (n / x * 1000), "_time": "2026-10-06"})
         return self.reply(200, {"fields": [{"name": "concurrency"}, {"name": "x"}, {"name": "r"}, {"name": "_time"}], "results": rows, "messages": []})
-HTTPServer(("127.0.0.1", int(sys.argv[1]) if len(sys.argv) > 1 else 18089), H).serve_forever()
+ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1]) if len(sys.argv) > 1 else 18089), H).serve_forever()

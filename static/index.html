@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="/ui/button.css">
 <link rel="stylesheet" href="/ui/field.css">
 <link rel="stylesheet" href="/ui/tabs.css">
+<link rel="stylesheet" href="/ui/badge.css">
 <script src="/ui/arrange.js" data-manual></script>
 <script src="/ui/tabs.js"></script>
 <style>
@@ -167,6 +168,24 @@
   .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 1rem; }
   details summary { cursor: pointer; font-weight: 600; margin-bottom: .5rem; }
 
+  /* Background jobs (ADR-2610072118): the badge next to Make an app, and its list. */
+  .jobs-wrap { position: relative; }
+  #jobsBtn { white-space: nowrap; display: inline-flex; align-items: center; gap: .4rem; }
+  #jobsBtn[data-state="finished"] { box-shadow: 0 0 0 2px var(--ok); }
+  #jobsBtn .w-badge { font-size: 11px; padding: 0 7px; }
+  .jobs-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(30rem, calc(100vw - 2rem));
+                max-height: 70vh; overflow: auto; padding: .75rem 1rem; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+  .jobs-head { display: flex; align-items: center; gap: .5rem; }
+  .jobs-head h2 { margin: 0; font-size: 1rem; flex: 1; }
+  .jobs-note { font-size: .85rem; margin: .35rem 0 .6rem; }
+  #jobsList { list-style: none; margin: 0; padding: 0; }
+  #jobsList li { display: grid; grid-template-columns: 1fr auto; gap: .15rem .75rem; padding: .5rem 0; border-top: 1px solid var(--line); }
+  #jobsList .job-app { font-weight: 600; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+  #jobsList .job-label { grid-column: 1; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); overflow-wrap: anywhere; }
+  #jobsList .job-meta { grid-column: 1; font-size: .85rem; color: var(--muted); }
+  #jobsList .job-acts { grid-column: 2; grid-row: 1 / span 3; align-self: center; display: flex; gap: .35rem; }
+  #jobsList .job-acts button { font-size: .85rem; }
+
   /* Make an app (Claude) */
   .ai-wrap { display: grid; gap: .75rem; }
   #chat { display: flex; flex-direction: column; gap: .5rem; max-height: 55vh; overflow: auto; padding: .25rem; }
@@ -223,6 +242,14 @@
   <span class="spacer"></span>
   <a href="/docs" target="_blank" rel="noopener" class="docslink">Docs</a>
   <a href="/ui" target="_blank" rel="noopener" class="docslink">Components</a>
+  <span class="jobs-wrap">
+    <button id="jobsBtn" class="hidden" aria-expanded="false" aria-controls="jobsPanel">Jobs</button>
+    <div id="jobsPanel" class="w-card jobs-panel hidden" role="region" aria-label="Background jobs">
+      <div class="jobs-head"><h2>Background jobs</h2><button id="jobsClose" aria-label="Close the job list">Close</button></div>
+      <p class="muted jobs-note">Long Splunk searches and Claude requests run on the server while you use other apps.</p>
+      <ul id="jobsList"></ul>
+    </div>
+  </span>
   <button id="aiBtn" class="primary" title="Describe an app and Claude builds it">Make an app</button>
   <button id="refreshBtn" title="Re-read the app list now">Refresh</button>
   <button id="settingsBtn">Settings</button>
@@ -686,6 +713,7 @@ async function openApp(app) {
   endSetup();
   current = name;
   renderApps();
+  if (typeof renderJobs === 'function') renderJobs();
   const tools = el('span', { className: 'row' });
   if (status.admin && status.source === 'local') {
     tools.append(el('button', { textContent: 'Change this app', onclick: () => openAi({ app: name }) }));
@@ -1540,6 +1568,111 @@ async function showPreview(name) {
   if (app.page) { watchPageFrame(frame, name); frame.src = appUrl(name, app.page); }
 }
 
+// ---------- background jobs (ADR-2610072118) ----------
+// Long Splunk searches and Claude requests run as jobs on the server. The badge next to Make an app
+// says how many are running; its list shows each job's app, what it is, how far it got and for how
+// long, with Cancel. A job that finishes while its app is not open turns the badge into a "done"
+// notice, and pressing it opens that app.
+let jobs = [], jobsTimer = null, jobsOpen = false;
+const jobsSeenKey = 'jobsSeen';
+const jobState = {};                     // id -> the state last seen, to notice a job finishing
+let jobsDone = [];                       // jobs that finished while their app was not open
+try { jobsDone = JSON.parse(sessionStorage.getItem(jobsSeenKey) || '[]'); } catch {}
+const saveJobsDone = () => { try { sessionStorage.setItem(jobsSeenKey, JSON.stringify(jobsDone)); } catch {} };
+const KIND_WORDS = { 'splunk.search': 'Splunk search', 'splunk.into': 'Splunk load into a table', 'ai.sample': 'Claude request' };
+const appTitle = (name) => (apps.find((a) => a.name === name) || {}).title || name;
+function wBadge(text, variant, extra = '') {
+  const b = el('span', { className: `w-badge ${extra}`.trim(), textContent: text });
+  b.dataset.variant = variant;
+  return b;
+}
+function clockOf(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`;
+}
+
+function renderJobs() {
+  const btn = $('jobsBtn');
+  const running = jobs.filter((j) => j.state === 'running');
+  jobsDone = jobsDone.filter((d) => d.package !== current && jobs.some((j) => j.id === d.id));
+  saveJobsDone();
+  btn.classList.toggle('hidden', !jobs.length && !jobsOpen);
+  const done = jobsDone[jobsDone.length - 1];
+  btn.dataset.state = done ? 'finished' : running.length ? 'running' : '';
+  btn.replaceChildren('Jobs');
+  if (done) {
+    btn.append(wBadge('done', 'success'));
+    btn.setAttribute('aria-label', `${appTitle(done.package)} finished a background job. Open it`);
+    btn.title = `${KIND_WORDS[done.kind] || 'A job'} of ${appTitle(done.package)} finished. Press to open the app.`;
+  } else {
+    if (running.length) btn.append(wBadge(`${running.length} running`, 'secondary', 'working'));
+    btn.setAttribute('aria-label', running.length ? `Background jobs: ${running.length} running` : 'Background jobs');
+    btn.title = 'Long searches and Claude requests that run while you use other apps';
+  }
+  $('jobsList').replaceChildren(...(jobs.length ? jobs : []).map((j) => {
+    const what = KIND_WORDS[j.kind] || j.kind;
+    const stateWords = { running: 'running', done: 'done', failed: 'failed', cancelled: 'cancelled' }[j.state] || j.state;
+    const variant = { running: 'secondary', done: 'success', failed: 'destructive', cancelled: 'outline' }[j.state] || 'outline';
+    const meta = [what, j.progress != null ? `${Number(j.progress).toLocaleString()} rows` : '', clockOf(j.elapsed),
+      j.state === 'failed' && j.error ? j.error : ''].filter(Boolean).join(' · ');
+    const acts = el('span', { className: 'job-acts' });
+    if (j.state === 'running') {
+      acts.append(el('button', { textContent: 'Cancel', ariaLabel: `Cancel the ${what.toLowerCase()} of ${appTitle(j.package)}`, onclick: () => cancelJob(j) }));
+    }
+    const app = apps.find((a) => a.name === j.package);
+    if (app && j.package !== current) acts.append(el('button', { textContent: 'Open', ariaLabel: `Open ${appTitle(j.package)}`, onclick: () => { showJobs(false); openApp(app); } }));
+    const li = el('li', {},
+      el('span', { className: 'job-app' }, appTitle(j.package), wBadge(stateWords, variant)),
+      acts,
+      el('span', { className: 'job-label', textContent: j.label || '' }),
+      el('span', { className: 'job-meta', textContent: meta }));
+    li.dataset.job = j.id; li.dataset.state = j.state;
+    return li;
+  }));
+  if (!jobs.length) $('jobsList').append(el('li', { className: 'muted', textContent: 'No jobs in the last hour.' }));
+}
+
+async function cancelJob(j) {
+  try { await api(`/api/jobs/${encodeURIComponent(j.id)}/cancel`, {}); log(`cancelled ${KIND_WORDS[j.kind] || j.kind} of ${j.package}`, 'a'); }
+  catch (e) { log(`cancel: ${e.message}`, 'e'); }
+  jobsWatch();
+}
+
+function showJobs(open) {
+  jobsOpen = open;
+  $('jobsPanel').classList.toggle('hidden', !open);
+  $('jobsBtn').setAttribute('aria-expanded', String(open));
+  renderJobs();
+  if (open) jobsWatch();
+}
+$('jobsBtn').onclick = () => {
+  const done = jobsDone[jobsDone.length - 1];
+  const app = done && apps.find((a) => a.name === done.package);
+  if (app) { jobsDone = jobsDone.filter((d) => d.package !== done.package); saveJobsDone(); showJobs(false); openApp(app); return; }
+  showJobs(!jobsOpen);
+};
+$('jobsClose').onclick = () => { showJobs(false); $('jobsBtn').focus(); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && jobsOpen) { showJobs(false); $('jobsBtn').focus(); } });
+
+async function jobsWatch() {
+  clearTimeout(jobsTimer);
+  let delay = 15000;
+  try {
+    if (!status.admin) return;
+    jobs = (await api('/api/jobs')).jobs || [];
+    for (const j of jobs) {
+      if (jobState[j.id] === 'running' && j.state === 'done' && j.package !== current && !jobsDone.some((d) => d.id === j.id)) {
+        jobsDone.push({ id: j.id, package: j.package, kind: j.kind });
+        log(`${appTitle(j.package)}: ${KIND_WORDS[j.kind] || j.kind} finished`, 'a');
+      }
+      jobState[j.id] = j.state;
+    }
+    renderJobs();
+    if (jobsOpen || jobs.some((j) => j.state === 'running')) delay = 2000;
+  } catch { /* no admin token in this tab, or the server is away: try again later */ }
+  finally { jobsTimer = setTimeout(jobsWatch, delay); }
+}
+
 // ---------- making an app in the background ----------
 // Claude works on the server, so you may use other apps, or close the tab, while it works.
 // Every open Wardian tab watches your chat: it shows the state on the Make an app button, and
@@ -1838,6 +1971,7 @@ function leaveSetup() {
 Promise.all([loadStatus(), loadApps()]).then(() => {
   if (!current && !chat) { if (status.first_run && status.admin) showSetup(); else showHome(); }
   aiWatch();
+  jobsWatch();
 });
 // Drive refreshes in the background, so pick up new apps and health now and then.
 setInterval(() => { loadStatus(); loadApps(); }, 30000);

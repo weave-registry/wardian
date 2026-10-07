@@ -160,6 +160,91 @@ async function answer(page, re, yes, what) {
   const undeclared = await post('/api/db/page', { package: 'usl-lab', app: 'chart', table: 'search', source: 'splunk-table' });
   ok(/does not declare/.test(undeclared.body.error || ''), 'an app that does not declare db is refused on the server');
 
+  console.log('== long loads run as background jobs (ADR-2610072118)');
+  // A slow fake search ("slowtable") stays running for 12 s. Meanwhile the app list and another app
+  // load as usual, the user leaves the table app, and comes back to find the load finished.
+  const home = await context.newPage();
+  home.on('pageerror', e => pageErrors.push(e.message));
+  await home.goto(B + '/');
+  await home.locator('#apps button', { hasText: 'Splunk table' }).click();
+  await sleep(2500);
+  let ht = frameOf(home, 'table');
+  await ht.locator('#preset').selectOption('');
+  await ht.locator('#spl').fill('index=big slowtable | table n host');
+  await ht.locator('#title').fill('Slow table');
+  await ht.locator('#btnRun').click();
+  await sleep(1000);
+  ok(await ht.locator('wardian-progress').getAttribute('state') !== 'done' && /Searching Splunk/.test(await ht.locator('wardian-progress').getAttribute('label')), 'the slow load is running');
+  // Six more long searches from this browser: each answers at once, so none holds a connection.
+  const started = await home.evaluate(async () => Promise.all([...Array(6)].map(async () => {
+    const t = Date.now();
+    const r = await fetch('/api/splunk/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ package: 'splunk-table', app: 'table', search: 'index=x slowtable', background: true }) });
+    return { ms: Date.now() - t, body: await r.json() };
+  })));
+  ok(started.every(x => /^j\d+-/.test(x.body.job || '') && x.ms < 2000), 'six more long searches start at once: ' + started.map(x => x.ms + ' ms').join(', '));
+  let mine = (await (await fetch(B + '/api/jobs?package=splunk-table')).json()).jobs;
+  ok(mine.filter(j => j.state === 'running').length === 7 && mine.some(j => j.kind === 'splunk.into' && j.label === 'index=big slowtable | table n host'), 'seven jobs run for the table app');
+  ok((await (await fetch(B + '/api/jobs?package=usl-lab')).json()).jobs.length === 0, 'another package sees none of them');
+  ok((await fetch(B + '/api/jobs/' + mine[0].id + '?package=usl-lab')).status === 400, 'nor any one of them');
+  let at = Date.now();
+  await home.reload();
+  await home.locator('#apps button', { hasText: 'USL' }).waitFor({ timeout: 10000 });
+  const listMs = Date.now() - at;
+  ok(listMs < 4000, 'the app list loads while they run: ' + listMs + ' ms');
+  at = Date.now();
+  await home.locator('#apps button', { hasText: 'USL' }).click();
+  let labInputs = null;
+  for (let i = 0; i < 100 && !labInputs; i++) { await sleep(100); labInputs = frameOf(home, 'inputs'); }
+  // The lab is running once it has the latest table from the channel.
+  await labInputs.locator('#tblName', { hasText: 'rows' }).waitFor({ timeout: 10000 });
+  const labMs = Date.now() - at;
+  ok(labMs < 5000, 'and another app opens: ' + labMs + ' ms');
+  await home.locator('#jobsBtn', { hasText: 'running' }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok(/7 running/.test(await home.locator('#jobsBtn').textContent()), 'the jobs badge counts them: ' + await home.locator('#jobsBtn').textContent());
+  await home.locator('#jobsBtn').click();
+  await home.locator('#jobsPanel').waitFor({ state: 'visible', timeout: 3000 });
+  const rows = await home.locator('#jobsList li[data-state="running"]').allTextContents();
+  ok(rows.length === 7 && rows.some(r => /Splunk table/.test(r) && /slowtable/.test(r) && /Splunk load into a table/.test(r)), 'the list names the app, the search and the kind');
+  ok(await home.locator('#jobsList li button', { hasText: 'Cancel' }).count() === 7, 'each running job has a Cancel button');
+  await home.locator('#jobsClose').click();
+  await home.locator('#jobsBtn[data-state="finished"]').waitFor({ timeout: 25000 }).catch(() => {});
+  ok(/done/.test(await home.locator('#jobsBtn').textContent()) && /Splunk table finished/.test(await home.locator('#jobsBtn').getAttribute('aria-label')),
+    'when the load finishes while its app is not open, the badge says so: ' + await home.locator('#jobsBtn').getAttribute('aria-label'));
+  await home.locator('#jobsBtn').click();
+  await sleep(2500);
+  ht = frameOf(home, 'table');
+  await ht.locator('#status', { hasText: '300 rows from Splunk' }).waitFor({ timeout: 10000 }).catch(() => {});
+  ok(/300 rows from Splunk, kept in this app's database/.test(await ht.locator('#status').textContent()), 'pressing it opens the table app with the load finished: ' + await ht.locator('#status').textContent());
+  await ht.locator('#pageInfo', { hasText: 'of 300' }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok(/Rows 1–100 of 300/.test(await ht.locator('#pageInfo').textContent()) && /Slow table/.test(await ht.locator('#facts').textContent()), 'with its table and its name');
+  ok(!/done/.test(await home.locator('#jobsBtn').textContent()), 'and the notice is gone');
+
+  console.log('== a cancel stops the load, and the search on Splunk');
+  const cancelledBefore = (await (await fetch(SPLUNK + '/fake/cancelled')).json()).length;
+  await ht.locator('#btnRun').click();
+  await sleep(1500);
+  await home.locator('#jobsBtn').click();
+  await home.locator('#jobsPanel').waitFor({ state: 'visible', timeout: 3000 });
+  const live = home.locator('#jobsList li[data-state="running"]');
+  await live.first().waitFor({ timeout: 5000 }).catch(() => {});
+  ok(await live.count() === 1, 'the new load is in the list');
+  await live.locator('button', { hasText: 'Cancel' }).click();
+  for (let i = 0; i < 50 && (await (await fetch(SPLUNK + '/fake/cancelled')).json()).length === cancelledBefore; i++) await sleep(200);
+  ok((await (await fetch(SPLUNK + '/fake/cancelled')).json()).length === cancelledBefore + 1, 'the search job on Splunk was cancelled');
+  await ht.locator('#status', { hasText: 'You stopped the search' }).waitFor({ timeout: 8000 }).catch(() => {});
+  ok(/You stopped the search/.test(await ht.locator('#status').textContent()) && await ht.locator('wardian-progress').getAttribute('state') === 'error', 'the app says it was stopped: ' + await ht.locator('#status').textContent());
+  mine = (await (await fetch(B + '/api/jobs?package=splunk-table')).json()).jobs;
+  ok(mine[0].state === 'cancelled', 'and the job is cancelled');
+  await home.locator('#jobsClose').click();
+  // The app's own Stop button does the same.
+  await ht.locator('#btnRun').click();
+  await sleep(1500);
+  await ht.locator('wardian-progress button', { hasText: 'Stop' }).click();
+  await ht.locator('#status', { hasText: 'You stopped the search' }).waitFor({ timeout: 8000 }).catch(() => {});
+  ok(/You stopped the search/.test(await ht.locator('#status').textContent()), 'the progress bar\'s Stop button cancels too');
+  ok((await home.evaluate(() => [...document.querySelectorAll('iframe')].map(f => f.contentWindow.Kernel && f.contentWindow.Kernel.faults()).filter(Boolean).flat())).length === 0, 'no kernel faults in the app list\'s table app');
+  await home.close();
+
   console.log('== Splunk errors are shown');
   await t.locator('#spl').fill('| badsyntax');
   await t.locator('#btnRun').click();
