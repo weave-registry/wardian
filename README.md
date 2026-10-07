@@ -131,7 +131,9 @@ repository, Wardian says so at start, since changes made in the app then show up
 A Wardian you keep running should not run from `target/release` while you work on Wardian itself:
 each `cargo build` replaces that file, and macOS can stop a program whose file was replaced under it.
 Install a copy instead, with `cargo install --path .` (then run `wardian`), or copy
-`target/release/wardian` somewhere else and run the copy.
+`target/release/wardian` somewhere else and run the copy. On macOS, remove the old copy before
+copying a new one over it (`rm -f bin/wardian && cp target/release/wardian bin/`): a program file
+rewritten in place keeps its old signature record, and macOS kills it when it starts.
 
 ## Connect Google Drive (from the browser)
 
