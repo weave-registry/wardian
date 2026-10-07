@@ -297,3 +297,8 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 | `WARDIAN_AI_MODEL` | `claude-opus-5-5` | The Claude model that writes apps |
 | `GDRIVE_API_BASE` | Google | For tests only |
 | `ANTHROPIC_BASE_URL` | Anthropic | For tests only |
+
+## License
+
+MIT. See [LICENSE](LICENSE). The components in `static/ui/` are under the same license, so apps
+that copy them in with `wardian add` may use them freely.
