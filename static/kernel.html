@@ -70,7 +70,10 @@
     console.error('[' + app + ']', message);
     const box = document.getElementById('faults');
     box.hidden = false;
-    box.textContent = faults.slice(-8).map(f => f.app + ': ' + f.message).join('\n');
+    // A fault that repeats shows once, with a count (ADR-2610071110).
+    const lines = new Map();
+    for (const f of faults){ const t = f.app + ': ' + f.message; lines.set(t, (lines.get(t) || 0) + 1); }
+    box.textContent = [...lines].slice(-8).map(([t, n]) => n > 1 ? t + ' ×' + n : t).join('\n');
   }
   const send = (app, m) => { const f = frames.get(app); if (f) f.win.postMessage(m, '*'); };
   const reply = (app, id, ok, valueOrError) => send(app, ok ? {k: 'reply', id, ok, value: valueOrError} : {k: 'reply', id, ok, error: valueOrError});

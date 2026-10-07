@@ -53,6 +53,18 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
   ok(await frameOf(other, 'chart').locator('#chart circle.pt').count() === 6, 'an empty browser shows the same 6 points');
   await other.close();
 
+  console.log('== browser notices are not faults; real errors are, and repeats are counted');
+  const chartF = frameOf(page, 'chart');
+  const before = await page.evaluate(() => Kernel.faults().length);
+  await chartF.evaluate(() => window.dispatchEvent(new ErrorEvent('error', { message: 'ResizeObserver loop completed with undelivered notifications.' })));
+  await sleep(300);
+  ok(await page.evaluate(() => Kernel.faults().length) === before, 'the ResizeObserver loop notice is not a fault');
+  await chartF.evaluate(() => { for (let i = 0; i < 3; i++) window.dispatchEvent(new ErrorEvent('error', { message: 'test fault', error: new Error('test fault') })); });
+  await sleep(300);
+  ok(await page.evaluate(() => Kernel.faults().length) === before + 3, 'a real error is a fault, each time');
+  ok(/chart: test fault ×3/.test(await page.locator('#faults').textContent()), 'the box shows it once, with a count: ' + await page.locator('#faults').textContent());
+  await page.reload(); await sleep(3500);
+
   console.log('== export -> claude:downloads -> a real file');
   const exp = frameOf(page, 'export');
   // Chrome stops drawing a sandboxed frame while it is off screen, and Playwright waits for the

@@ -14,7 +14,10 @@ const Kernel = (() => {
   const fault = e => { post({k: 'fault', message: String(e && e.message || e)}); console.error(e); };
   const safe = fn => { try { const r = fn(); if (r && r.catch) r.catch(fault); } catch (e) { fault(e); } };
   // Errors outside the kernel's own calls (a typo in app.js, a broken event handler) are faults too.
-  addEventListener('error', e => fault(e.error || e.message));
+  // The browser's ResizeObserver loop notice is not a failure: it says some size notices moved to
+  // the next frame (ADR-2610071110). Every other error is the app's.
+  const NOTICE = /^ResizeObserver loop (completed with undelivered notifications|limit exceeded)/;
+  addEventListener('error', e => { if (!e.error && NOTICE.test(String(e.message || ''))) return; fault(e.error || e.message); });
   addEventListener('unhandledrejection', e => fault(e.reason));
   const request = m => new Promise((res, rej) => { const id = nextId++; pending.set(id, {res, rej}); post(Object.assign({id}, m)); });
 
@@ -104,7 +107,17 @@ const Kernel = (() => {
         },
       });
     }
-    function observe(el, cb){ if (typeof ResizeObserver !== 'undefined') new ResizeObserver(cb).observe(el); }
+    // cb runs on the next animation frame, at most once per frame, so a redraw that changes the
+    // size cannot feed back into the same frame's notices.
+    function observe(el, cb){
+      if (typeof ResizeObserver === 'undefined') return;
+      let queued = false;
+      new ResizeObserver(entries => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; safe(() => cb(entries)); });
+      }).observe(el);
+    }
     // The bytes of a file in this suite's package, fetched by the kernel (the frame itself has no network).
     function asset(path){ allow('asset'); return request({k: 'asset', path}); }
     function source(id){ allow('source'); const el = document.getElementById(id); return el ? el.textContent : ''; }
