@@ -19,7 +19,9 @@ usage:
   wardian check PACKAGE...       check packages (folders, .zip or .wardian files) against SPEC.md
   wardian --version
 
-settings come from environment variables; see README.md";
+settings come from environment variables; see README.md
+ADDR other than 127.0.0.1, ::1 or localhost needs ADMIN_TOKEN: without it every program on this
+machine is an admin, so Wardian refuses to listen where other machines can reach it";
 
 /// What the arguments ask for.
 pub enum Command {

@@ -4,9 +4,10 @@ services:
     restart: unless-stopped
     ports: ["8000:8000"]
     environment:
-      # Required in Docker to use Settings: requests arrive from the Docker
-      # network, not from this machine, so they need the token.
-      ADMIN_TOKEN: "${ADMIN_TOKEN}"
+      # Required in Docker: Wardian listens on 0.0.0.0 there, and refuses any
+      # address but loopback without a token (requests arrive from the Docker
+      # network, not from this machine).
+      ADMIN_TOKEN: "${ADMIN_TOKEN:?set ADMIN_TOKEN to a long random string}"
       # Optional: start on a Drive folder without using Settings.
       GDRIVE_FOLDER_ID: "${GDRIVE_FOLDER_ID:-}"
       REFRESH_SECS: "60"

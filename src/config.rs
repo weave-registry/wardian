@@ -19,6 +19,35 @@ pub fn data_dir() -> PathBuf {
     PathBuf::from(env("DATA_DIR").unwrap_or_else(|| "data".into()))
 }
 
+/// Who counts as an admin, said at start; or, when Wardian must not start, why (ADR-2610072033).
+/// Without ADMIN_TOKEN every program on this machine is an admin. That is safe only while Wardian
+/// listens on a loopback address, so any other address without a token is refused, not warned about.
+pub fn admins(addr: &str, token_set: bool) -> Result<String, String> {
+    if token_set {
+        return Ok("admin: whoever sends ADMIN_TOKEN (Settings asks for it); without it, settings are locked from every address, this machine included".into());
+    }
+    if is_loopback(addr) {
+        return Ok(format!("admin: every program and browser on this machine (no ADMIN_TOKEN is set, and {addr} is reachable only from here)"));
+    }
+    Err(format!(
+        "Wardian will not listen on {addr} without ADMIN_TOKEN: other machines could reach it, and without a token \
+         every program on this machine is an admin.\nSet ADMIN_TOKEN to a long random string (Settings then asks for it), \
+         or listen on this machine only, e.g. ADDR={ADDR_EXAMPLE}."
+    ))
+}
+
+/// Whether ADDR names a loopback address: 127.0.0.0/8, ::1 or localhost.
+fn is_loopback(addr: &str) -> bool {
+    let host = match addr.strip_prefix('[') {
+        Some(rest) => match rest.split_once(']') {
+            Some((host, _)) => host,
+            None => return false,
+        },
+        None => addr.rsplit_once(':').map_or(addr, |(host, _)| host),
+    };
+    host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
 /// The repository's example apps, which seed the working folder on the first start.
 pub const SOURCE_APPS: &str = "apps";
 
@@ -96,6 +125,31 @@ impl Settings {
                 insecure_tls: env("SPLUNK_INSECURE_TLS").is_some_and(|v| v == "1" || v == "true"),
                 ca_file: env("SPLUNK_CA_FILE").unwrap_or_default(),
             }),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn without_a_token_only_loopback_starts() {
+        for addr in ["127.0.0.1:8000", "127.0.0.1:0", "127.1.2.3:80", "localhost:8000", "LOCALHOST:1", "[::1]:8000", DEFAULT_ADDR, ADDR_EXAMPLE] {
+            let who = admins(addr, false).unwrap_or_else(|e| panic!("{addr}: {e}"));
+            assert!(who.contains("this machine"), "{addr}: {who}");
+        }
+        for addr in ["0.0.0.0:8000", "[::]:8000", "192.168.1.5:8000", "10.0.0.1:0", "example.com:80", "localhost.example.com:80", ":8000", "[::ffff:10.0.0.1]:1", "[::1:8000", ""] {
+            let why = admins(addr, false).expect_err(addr);
+            assert!(why.contains("set ADMIN_TOKEN") || why.contains("Set ADMIN_TOKEN"), "{addr}: {why}");
+            assert!(why.contains(&format!("listen on {addr} ")), "{addr}: {why}");
+        }
+    }
+
+    #[test]
+    fn with_a_token_any_address_starts() {
+        for addr in ["0.0.0.0:8000", "127.0.0.1:0", "[::]:80"] {
+            assert!(admins(addr, true).unwrap().contains("whoever sends ADMIN_TOKEN"));
         }
     }
 }

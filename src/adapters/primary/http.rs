@@ -24,9 +24,6 @@ pub fn serve(addr: &str, addr_example: &str, admin_token: Option<String>, servic
         Some(bound) => println!("listening on http://{bound}"),
         None => println!("listening on http://{addr}"),
     }
-    if admin_token.is_none() {
-        println!("settings: only from a browser on this machine (set ADMIN_TOKEN to allow others)");
-    }
     for req in server.incoming_requests() {
         let (services, token) = (services.clone(), admin_token.clone());
         thread::spawn(move || handle(req, &services, token.as_deref()));

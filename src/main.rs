@@ -103,6 +103,14 @@ fn main() {
     };
 
     let cfg = Settings::from_env(apps_folder.as_deref());
+    // Before anything else: an address other machines can reach needs ADMIN_TOKEN (ADR-2610072033).
+    match config::admins(&cfg.addr, cfg.admin_token.is_some()) {
+        Ok(who) => println!("{who}"),
+        Err(why) => {
+            eprintln!("{why}");
+            std::process::exit(2);
+        }
+    }
     // The working folder (ADR-2610071122): filled from the repository's apps on the first start,
     // and the repository is never changed. A folder named on the command line is served as it is.
     if cfg.chosen_folder {

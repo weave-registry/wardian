@@ -332,9 +332,17 @@ stopped.
 
 ## Who can change settings
 
-With no `ADMIN_TOKEN`, only a browser on the same machine can change settings or browse Drive.
-Set `ADMIN_TOKEN` to allow other machines. Settings then asks for the token.
-Docker needs the token, because its requests do not come from the same machine.
+With no `ADMIN_TOKEN`, every program and browser on the same machine is an admin: it can change
+settings, import and export apps, and browse Drive. That is fine for one person on a laptop, so
+Wardian then listens on this machine only: `ADDR` must be a loopback address (`127.0.0.0/8`, `::1`
+or `localhost`). Asked to listen anywhere else without a token, Wardian refuses to start and says
+to set `ADMIN_TOKEN`.
+
+Set `ADMIN_TOKEN` to a long random string to listen on other addresses. Then whoever sends the
+token is an admin, and nobody else is, this machine included. Settings asks for the token.
+At start Wardian prints who counts as an admin.
+Docker needs the token, because it listens on `0.0.0.0` and its requests do not come from the
+same machine.
 
     ADMIN_TOKEN=<long random string> docker compose up -d --build
 
@@ -356,9 +364,9 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ADDR` | `127.0.0.1:8000` | Address to listen on |
+| `ADDR` | `127.0.0.1:8000` | Address to listen on; anything but `127.0.0.0/8`, `::1` or `localhost` needs `ADMIN_TOKEN` |
 | `DATA_DIR` | `data` | Where settings, the working folder of apps and their history are kept |
-| `ADMIN_TOKEN` | none | Lets other machines change settings |
+| `ADMIN_TOKEN` | none | Whoever sends it is an admin, and nobody else; required to listen on a non-loopback address |
 | `REFRESH_SECS` | `60` | How often to re-read the Drive folder |
 | `GDRIVE_FOLDER_ID` | none | Start on this folder; wins over the saved one |
 | `GDRIVE_SA_KEY` | none | Key file path, used only if no key was uploaded |
