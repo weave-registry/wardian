@@ -1,13 +1,13 @@
 {
   "sessions": {
     "83691a10-4167-4fc7-8957-1fc310b86632": {
-      "adr": "ADR-2610071110",
+      "adr": "ADR-2610071122",
       "evidence": "bash tests/run-suite-e2e.sh 2>&1 | grep -E 'notice|each time|count|passed'",
       "gate": "cargo build --release && cargo test --release && hexa analyze . --grade A",
       "pid": 56812,
       "pid_start": null,
-      "stage": "done",
-      "updated": "2026-10-07T15:05:32.263478+00:00"
+      "stage": "build",
+      "updated": "2026-10-07T15:22:49.682018+00:00"
     }
   }
 }
