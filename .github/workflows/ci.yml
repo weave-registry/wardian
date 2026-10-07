@@ -1,0 +1,88 @@
+# CI for Wardian (ADR-2610072033, "Release basics"): unit tests, hexa's two gates, and every
+# browser suite, on each push and pull request.
+#
+# hexa lives at https://git.local/gary/hexa, which GitHub's runners cannot reach. Its steps run only
+# when the repository variable HEXA_INSTALL holds a shell command that installs `hexa` on the
+# runner (for example `cargo install --git <a reachable mirror> hexa`). Without it the job prints a
+# notice and skips them; run `tests/run-all.sh` on a machine with hexa to cover them.
+#
+# The checks against real services (tests/live/) are not run here: they need credentials and are
+# run by hand once per release.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      # The suites launch Google Chrome by default; on the runner they use Playwright's Chromium.
+      WARDIAN_BROWSER: chromium
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install -g playwright
+          npx --yes playwright install --with-deps chromium
+          echo "NODE_PATH=$(npm root -g)" >> "$GITHUB_ENV"
+
+      - name: cargo test --release
+        run: cargo test --release
+
+      - name: Install hexa
+        id: hexa
+        env:
+          HEXA_INSTALL: ${{ vars.HEXA_INSTALL }}
+        run: |
+          if [ -z "$HEXA_INSTALL" ]; then
+            echo "::notice title=hexa skipped::hexa lives at https://git.local/gary/hexa, which this runner cannot reach. Set the repository variable HEXA_INSTALL to a command that installs it, or run tests/run-all.sh where hexa is installed."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            bash -c "$HEXA_INSTALL"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: hexa analyze . --grade A
+        if: steps.hexa.outputs.ok == 'true'
+        run: hexa analyze . --grade A
+
+      - name: hexa adr gates
+        if: steps.hexa.outputs.ok == 'true'
+        run: hexa adr gates
+
+      - name: Browser suites
+        run: |
+          for runner in tests/run-*-e2e.sh; do
+            echo "::group::$runner"
+            "$runner"
+            echo "::endgroup::"
+          done
+
+      - name: Browser suites through a fake Amazon Bedrock
+        run: |
+          for runner in tests/run-splunk-e2e.sh tests/run-background-e2e.sh; do
+            echo "::group::PROVIDER=bedrock $runner"
+            PROVIDER=bedrock "$runner"
+            echo "::endgroup::"
+          done
