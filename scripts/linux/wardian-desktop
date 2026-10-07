@@ -1,0 +1,37 @@
+#!/bin/sh
+# Opens Wardian from the desktop (wardian.desktop): starts the server if none answers, then opens it
+# in the browser. Given a .wardian file, it says how to install it: Wardian's Import shows what a
+# file holds before installing anything.
+#
+# DATA_DIR defaults to ~/.local/share/wardian and ADDR to 127.0.0.1:8000; the server's output goes
+# to $DATA_DIR/wardian.log.
+here=$(cd "$(dirname "$0")" && pwd)
+share="$here/../share/wardian"
+DATA_DIR=${DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wardian}
+ADDR=${ADDR:-127.0.0.1:8000}
+export DATA_DIR ADDR
+url="http://$ADDR/"
+mkdir -p "$DATA_DIR"
+
+if ! curl -sf "${url}api/status" >/dev/null 2>&1; then
+  # From the shared folder, so the example apps there fill the working folder on the first start.
+  (cd "$share" && nohup "$here/wardian" >>"$DATA_DIR/wardian.log" 2>&1 &)
+  i=0
+  until curl -sf "${url}api/status" >/dev/null 2>&1; do
+    i=$((i + 1))
+    if [ "$i" -gt 100 ]; then
+      echo "Wardian did not start; see $DATA_DIR/wardian.log" >&2
+      command -v notify-send >/dev/null && notify-send Wardian "Wardian did not start; see $DATA_DIR/wardian.log"
+      exit 1
+    fi
+    sleep 0.1
+  done
+fi
+xdg-open "$url" >/dev/null 2>&1 || echo "Wardian is at $url"
+
+for f in "$@"; do
+  msg="To install $(basename "$f"), choose Import in Wardian and pick the file: $f"
+  echo "$msg"
+  command -v notify-send >/dev/null && notify-send Wardian "$msg"
+done
+exit 0
