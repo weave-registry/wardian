@@ -72,3 +72,13 @@ versions with Claude's reasons, that a restore brings the first back, and that `
 
 - ADR-2610071055 (viewer state on the server)
 - SPEC.md 7 (distribution), README "Make apps with Claude"
+
+## Evidence
+
+`bash -c 'cargo test --release 2>&1 | grep "test result: ok. [1-9]"; hexa analyze . --grade A 2>&1 | grep -E "Architecture grade|coverage"'` at ca0aaca with uncommitted changes on 2026-10-07 15:55 UTC:
+
+```text
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+  ⬡ Architecture grade: A+ — score 100/100
+    coverage 39/39 files in a layer
+```
