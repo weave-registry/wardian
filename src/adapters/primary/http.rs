@@ -3,31 +3,30 @@
 
 use crate::ports::service::{export_file_name, safe_rel, safe_segment, Services, EXPORT_MIME, FRAME_CSP, MAX_ZIP_BYTES};
 use serde_json::{json, Value};
-use std::{io::Read, path::Path, thread};
-use tiny_http::{Header, Method, Request, Response, Server};
+use super::http_server::{Header, Method, Request, Response, Server};
+use std::{io::Read, path::Path, sync::Arc};
 
-/// Listens on `addr` and answers every request in its own thread. `admin_token` (ADMIN_TOKEN)
+/// Listens on `addr` and answers every connection in its own thread. `admin_token` (ADMIN_TOKEN)
 /// lets other machines change settings; without it, only a browser on this machine may.
-/// `addr_example` is shown when the address is taken.
-pub fn serve(addr: &str, addr_example: &str, admin_token: Option<String>, services: Services) {
-    let server = match Server::http(addr) {
+/// Returns why it stopped: the address could not be taken (with `addr_example` in the message),
+/// or the system stopped accepting connections.
+pub fn serve(addr: &str, addr_example: &str, admin_token: Option<String>, services: Services) -> String {
+    let server = match Server::bind(addr) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Wardian: cannot listen on {addr}: {e}");
-            eprintln!("Another program (perhaps another Wardian) is using that address.");
-            eprintln!("Stop it, or pick another port, e.g. ADDR={addr_example} wardian");
-            std::process::exit(1);
+            return format!(
+                "cannot listen on {addr}: {e}. Another program (perhaps another Wardian) is using that address. \
+                 Stop it, or pick another port, e.g. ADDR={addr_example} wardian"
+            )
         }
     };
     // Print the address actually bound: with port 0 the system picks a free port.
-    match server.server_addr().to_ip() {
-        Some(bound) => println!("listening on http://{bound}"),
-        None => println!("listening on http://{addr}"),
+    match server.local_addr() {
+        Ok(bound) => println!("listening on http://{bound}"),
+        Err(_) => println!("listening on http://{addr}"),
     }
-    for req in server.incoming_requests() {
-        let (services, token) = (services.clone(), admin_token.clone());
-        thread::spawn(move || handle(req, &services, token.as_deref()));
-    }
+    let e = server.run(Arc::new(move |req: &mut Request<'_>| handle(req, &services, admin_token.as_deref())));
+    format!("stopped accepting connections on {addr}: {e}")
 }
 
 const INDEX_HTML: &str = include_str!("../../../static/index.html");
@@ -40,7 +39,7 @@ const SDK_JS: &str = concat!(include_str!("../../../static/sdk.js"), "\n", inclu
 const MAX_BODY_BYTES: u64 = 64 * 1024;
 
 fn header(k: &str, v: &str) -> Header {
-    Header::from_bytes(k.as_bytes(), v.as_bytes()).unwrap()
+    Header::new(k, v)
 }
 
 fn mime(path: &Path) -> &'static str {
@@ -67,7 +66,7 @@ fn mime(path: &Path) -> &'static str {
 /// origin, and it cannot call this server's settings API or read its
 /// replies, even when opened in its own tab. The CORS header lets such a
 /// sandboxed page still load its own scripts and .wasm files from here.
-fn app_file(bytes: Vec<u8>, rel: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn app_file(bytes: Vec<u8>, rel: &str) -> Response {
     let ct = mime(Path::new(rel));
     let mut resp = Response::from_data(bytes)
         .with_header(header("Content-Type", ct))
@@ -101,8 +100,8 @@ fn with_probe(bytes: Vec<u8>) -> Vec<u8> {
     format!("{}{PROBE}{}", &html[..at], &html[at..]).into_bytes()
 }
 
-fn req_header<'a>(req: &'a Request, name: &str) -> Option<&'a str> {
-    req.headers().iter().find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name)).map(|h| h.value.as_str())
+fn req_header<'a>(req: &'a Request<'_>, name: &str) -> Option<&'a str> {
+    req.header(name)
 }
 
 fn query<'a>(url: &'a str, key: &str) -> Option<&'a str> {
@@ -120,7 +119,7 @@ fn same_bytes(a: &str, b: &str) -> bool {
 /// sends it in `X-Admin-Token`. Without it, only a browser on this machine:
 /// the peer must be loopback, and the Host header must name loopback too, so
 /// a hostile web page cannot reach the API through DNS rebinding.
-fn is_admin(req: &Request, token: Option<&str>) -> bool {
+fn is_admin(req: &Request<'_>, token: Option<&str>) -> bool {
     if let Some(token) = token {
         return req_header(req, "X-Admin-Token").is_some_and(|t| same_bytes(t, token));
     }
@@ -133,14 +132,14 @@ fn is_admin(req: &Request, token: Option<&str>) -> bool {
     peer_local && matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
-fn json_resp(code: u16, v: Value) -> Response<std::io::Cursor<Vec<u8>>> {
+fn json_resp(code: u16, v: Value) -> Response {
     Response::from_data(v.to_string().into_bytes())
         .with_status_code(code)
         .with_header(header("Content-Type", "application/json"))
         .with_header(header("Cache-Control", "no-store"))
 }
 
-fn result_resp(r: Result<Value, String>) -> Response<std::io::Cursor<Vec<u8>>> {
+fn result_resp(r: Result<Value, String>) -> Response {
     match r {
         Ok(v) => json_resp(200, v),
         Err(e) => json_resp(400, json!({ "error": e })),
@@ -150,14 +149,14 @@ fn result_resp(r: Result<Value, String>) -> Response<std::io::Cursor<Vec<u8>>> {
 /// Reads a JSON body. Requiring the JSON content type also blocks plain HTML
 /// form posts from other sites, since browsers must ask first (CORS
 /// preflight) before sending JSON, and this server never says yes.
-fn read_json(req: &mut Request) -> Result<Value, String> {
+fn read_json(req: &mut Request<'_>) -> Result<Value, String> {
     read_json_upto(req, MAX_BODY_BYTES)
 }
 
 /// The viewer's state can be larger than a setting: an app may keep up to 1 MB (ADR-2610071055).
 const MAX_STATE_BODY_BYTES: u64 = 2 * 1024 * 1024;
 
-fn read_json_upto(req: &mut Request, max: u64) -> Result<Value, String> {
+fn read_json_upto(req: &mut Request<'_>, max: u64) -> Result<Value, String> {
     let ct = req_header(req, "Content-Type").unwrap_or("");
     if !ct.starts_with("application/json") {
         return Err("expected Content-Type: application/json".into());
@@ -175,7 +174,7 @@ fn read_json_upto(req: &mut Request, max: u64) -> Result<Value, String> {
 
 /// Reads an uploaded zip. Like the JSON check above, the zip content type is
 /// one a browser will not send across sites without asking first.
-fn read_zip(req: &mut Request) -> Result<Vec<u8>, String> {
+fn read_zip(req: &mut Request<'_>) -> Result<Vec<u8>, String> {
     if req_header(req, "Content-Type") != Some("application/zip") {
         return Err("expected Content-Type: application/zip".into());
     }
@@ -302,15 +301,15 @@ fn post_db(op: &str, body: Value, s: &Services) -> Result<Value, String> {
     }
 }
 
-fn handle(mut req: Request, s: &Services, token: Option<&str>) {
+fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response {
     let (hub, studio, splunk) = (&s.catalog, &s.builder, &s.searches);
     let url = req.url().to_string();
     let path = url.split('?').next().unwrap_or("/");
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
-    let admin = is_admin(&req, token);
+    let admin = is_admin(req, token);
 
-    let resp = match (req.method().clone(), parts.as_slice()) {
-        (Method::Post, ["api", "import"]) if admin => result_resp(read_zip(&mut req).and_then(|bytes| {
+    match (req.method().clone(), parts.as_slice()) {
+        (Method::Post, ["api", "import"]) if admin => result_resp(read_zip(req).and_then(|bytes| {
             let name = query(&url, "name").unwrap_or("imported.zip");
             let replace = query(&url, "replace") == Some("1");
             // A .wardian file's data is installed only when asked (ADR-2610071248).
@@ -330,7 +329,7 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
             Ok(out)
         })),
         // What a .wardian file holds, before anything is installed.
-        (Method::Post, ["api", "import", "preview"]) if admin => result_resp(read_zip(&mut req).and_then(|bytes| s.exports.preview_import(&bytes))),
+        (Method::Post, ["api", "import", "preview"]) if admin => result_resp(read_zip(req).and_then(|bytes| s.exports.preview_import(&bytes))),
         // An app as a .wardian file; `preview=1` lists what it would hold without building it.
         (Method::Get, ["api", "apps", app, "export"]) if admin => {
             let with_data = query(&url, "data") == Some("1");
@@ -349,10 +348,10 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
         // The viewer's state, kept by the host. Like the settings it needs admin; without it the
         // page keeps the state in the browser instead.
         (Method::Post, ["api", "db", op]) if admin => {
-            result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| post_db(op, body, s)))
+            result_resp(read_json_upto(req, MAX_STATE_BODY_BYTES).and_then(|body| post_db(op, body, s)))
         }
         (Method::Post, ["api", "state", kind, name]) if admin => {
-            result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| post_state(kind, name, body, s)))
+            result_resp(read_json_upto(req, MAX_STATE_BODY_BYTES).and_then(|body| post_state(kind, name, body, s)))
         }
         // Each local app's history (ADR-2610071122): versions, what changed, restore.
         (Method::Get, ["api", "history", app]) if admin => result_resp(s.history.versions(app)),
@@ -360,7 +359,7 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
             Ok(n) => result_resp(s.history.diff(app, n)),
             Err(_) => json_resp(400, json!({ "error": "not a version number" })),
         },
-        (Method::Post, ["api", "history", app, "restore"]) if admin => result_resp(read_json(&mut req).and_then(|body| {
+        (Method::Post, ["api", "history", app, "restore"]) if admin => result_resp(read_json(req).and_then(|body| {
             let n = body["n"].as_u64().ok_or("which version? send {\"n\": <number>}")?;
             s.history.restore(app, n)
         })),
@@ -371,7 +370,7 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
             if !admin {
                 json_resp(403, json!({ "error": "settings are locked; see ADMIN_TOKEN in the README" }))
             } else {
-                result_resp(read_json(&mut req).and_then(|body| api_post(path, body, s)))
+                result_resp(read_json(req).and_then(|body| api_post(path, body, s)))
             }
         }
         // no-cache: the page and the API change together, so an old page
@@ -486,8 +485,5 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
         }
         (Method::Get, _) => Response::from_string("not found").with_status_code(404),
         _ => Response::from_string("method not allowed").with_status_code(405),
-    };
-    if let Err(e) = req.respond(resp) {
-        eprintln!("response error: {e}");
     }
 }

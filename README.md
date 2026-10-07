@@ -356,6 +356,10 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 - `grants.json` — your answers to channel and Splunk permission questions
 - `splunk.json` — the Splunk address and account, readable by its owner only
 - `apps/` — the working folder: the apps Wardian serves and saves
+- `wardian.log` — every start and stop of the server, with the time in UTC: Ctrl-C, SIGTERM, a
+  closed terminal (SIGHUP, caught only when stderr is a terminal), a panic, an address already in
+  use. A start with no stop before it means the previous run was killed (SIGKILL, out of memory,
+  the machine stopped). Past 1 MB it moves to `wardian.log.1`.
 - `history/<app>/` — each app's versions, with `log.json` saying when, by what and why
 - `state/` — layouts, apps' saved data and the latest channel messages
 - `db/<app>.sqlite` — each app's own database (the `db` capability), readable by its owner only
