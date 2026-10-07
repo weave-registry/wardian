@@ -103,7 +103,7 @@ Capabilities:
 | `source` | `ctx.source(id)`, the text of an inlined script, e.g. `"engine-src"` |
 | `claude:downloads` | `ctx.cap("downloads")` → `save({filename, data})` saves a file |
 | `claude:sample` | `ctx.cap("sample")` → `sample(prompt, opts)` and `sample.json(prompt, opts)`, through the Claude provider set up in Settings (Anthropic API or Amazon Bedrock), after the user allows it; `null` when none is set up |
-| `splunk` | `ctx.cap("splunk")` → `status()`, `search({search, earliest, latest})`; see [Splunk](#splunk) |
+| `splunk` | `ctx.cap("splunk")` → `status()`, `search({search, earliest, latest})`, `jobs()`, `wait(id)`, `cancel(id)`; see [Splunk](#splunk) |
 | `db` | `ctx.cap("db")` → the app's own SQLite database: `query`, `page`, `insertRows`, `tables`, `readPage`, `searchInto`; see [Large tables](#large-tables) |
 
 Debug in the browser console on the suite page: `Kernel.apps()`, `Kernel.trace()`, `Kernel.faults()`.
@@ -305,6 +305,28 @@ when there were more. A search that does not start with `|` or `search` gets `se
 
 Splunk searches run only for an admin (see the next section): from a browser on this machine,
 or with `ADMIN_TOKEN`.
+
+### Long searches run in the background
+
+A search over weeks of data can take minutes, so Wardian runs Splunk searches, loads into a table
+and Claude requests as background jobs on the server (ADR-2610072118). The app's promise works as
+before, but no browser connection waits on it: you can open other apps meanwhile, and leaving the
+app does not stop the search. The **Jobs** button next to **Make an app** shows how many are
+running, and its list shows each one's app, search, rows loaded and time, with **Cancel**. When a
+job finishes while its app is closed, the button says so; press it to open the app. The Splunk
+table app shows the rows loaded so far, has a **Stop** button, and when you open it again picks up
+a load that is still running or shows the one that finished.
+
+```js
+const jobs = await splunk.jobs();                // this app's jobs of the last hour, newest first
+const running = jobs.find(j => j.state === 'running' && j.kind === 'splunk.into');
+if (running) { const big = await splunk.wait(running.id); /* the same answer searchInto gives */ }
+await splunk.cancel(id);                         // also cancels the search on the Splunk server
+```
+
+Jobs are kept in memory for an hour, at most 50 per app; restarting Wardian forgets them. A script
+that calls `/api/splunk/search`, `/api/db/search-into` or `/api/ai/sample` itself can still wait
+for the answer; with `"background": true` it gets `{job}` at once and reads `/api/jobs/<id>`.
 
 ## Large tables
 

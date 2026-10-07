@@ -70,6 +70,14 @@ is pruned, and is not visible to another package; then `tests/run-splunk-e2e.sh`
 fake search runs while the app list and another app load normally, the user leaves and returns to the
 Splunk table app and finds the load finished, and a cancel stops it.
 
+## Enforced-By: hexa adr gates (run on demand)
+
+## Gate
+
+`env CARGO_TARGET_DIR=target/verify cargo test --release jobs`
+
+Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy of Wardian a user runs.
+
 ## References
 
 - ADR-2610072033 (what must be true before 1.0: the page hang)

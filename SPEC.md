@@ -287,8 +287,21 @@ between apps. A value that cannot be copied, such as a function, makes `emit` or
 | `source` | `ctx.source` | the frame |
 | `claude:downloads` | `ctx.cap('downloads')` → `{ save({ filename, data }) }`. `filename` matches `[A-Za-z0-9_. -]{1,120}`. `data` is a string, `Blob`, `ArrayBuffer` or typed array. Resolves to `{ status: 'saved' }`. | kernel |
 | `claude:sample` | `ctx.cap('sample')` → a function `sample(prompt, {signal, onText, modelTier})` resolving to `{ text, truncated }`, and `sample.json(prompt, opts)` resolving to parsed JSON. Errors carry `e.code` (`not_granted`, `rate_limited`, `refused`, `invalid_json`, `prompt_too_large`, `cancelled`, `error`). Wardian answers through the Claude provider set up in Settings, the Anthropic API or Amazon Bedrock, and resolves to `null` when there is none, so apps MUST handle `null`. The user allows each package once, as for `splunk`. | host server |
-| `splunk` | `ctx.cap('splunk')` → `{ status(), search({ search, earliest?, latest? }) }`. `status()` resolves to `{ ready }`. `search` resolves to `{ fields, rows, truncated, messages }`, at most 10 000 rows. The server runs the search with its own Splunk account; the app never sees it. | host server |
+| `splunk` | `ctx.cap('splunk')` → `{ status(), search({ search, earliest?, latest? }), jobs(), wait(id), cancel(id) }`. `status()` resolves to `{ ready }`. `search` resolves to `{ fields, rows, truncated, messages, job }`, at most 10 000 rows. The server runs the search with its own Splunk account; the app never sees it. `jobs()` resolves to this package's background jobs of the last hour, newest first: `{ id, app, kind, label, state, progress, started, ended, elapsed, error }`, `kind` one of `splunk.search`, `splunk.into`, `ai.sample`, `state` one of `running`, `done`, `failed`, `cancelled`, `progress` the rows loaded so far or `null`. `wait(id)` resolves to a job's result when it is done, as the call that started it would have; `cancel(id)` stops it (6.6.1). | host server |
 | `db` | `ctx.cap('db')` → the package's own SQLite database, kept by the host (ADR-2610071219): `query({ sql, params })` → `{ columns, rows, changed, truncated }` for one statement, at most 1 000 rows; `page({ table, offset, limit, orderBy, desc, where, params })` → `{ columns, rows, total, offset }`, `limit` at most 1 000, `where` a condition with `?` (or `?N`) placeholders, read-only; `insertRows({ table, columns, rows, create, replace })`; `tables()`; `readPage({ package, ...page })` reads another package's table, read-only, after the user allows it once (asked as `tables.<package>`); `searchInto({ search, earliest, latest, table })` loads a Splunk search into a table, up to 1 000 000 rows (needs `splunk` too). The host refuses ATTACH, DETACH, loading extensions and pragmas that set anything; a database may hold 1 GB and a statement may run 10 seconds. | host server |
+
+#### 6.6.1. Long calls run as background jobs
+
+A Splunk search, a load into a table (`searchInto`) and a `claude:sample` request can take minutes
+(ADR-2610072118). The host MUST NOT hold one HTTP request open for them: the kernel asks the server
+to start a job, which answers with its id at once, then asks how the job is going with short
+requests (every second at first, then every two) and settles the app's promise with the result.
+Apps see the same promises as before; the result also carries the job's id as `job`. A job keeps
+running when its app is closed, so an app MAY look for its own job with `jobs()` when it opens and
+pick it up with `wait(id)`. A job is shown only to the package that started it (and to the host's
+own pages); the server runs the same permission checks before it starts one. Finished jobs are
+kept for an hour, at most 50 per package, and a restart of the host forgets them. Cancelling a
+Splunk job also cancels the search on the Splunk server; rows already loaded into a table stay.
 
 A `splunk` search MUST NOT run until the user allows the package, the same way as a channel
 (6.9), with the answer kept under mode `use`. The server MUST check that answer, and that the
