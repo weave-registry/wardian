@@ -249,6 +249,23 @@ fn viewer_state_is_kept_private_on_disk() {
     let _ = fs::remove_dir_all(dir);
 }
 
+// ---------- the first-run setup (ADR-2610072033) ----------
+
+#[test]
+fn first_run_marker_only_on_an_empty_data_folder() {
+    use crate::usecases::workspace::{mark_first_run, FIRST_RUN_MARKER};
+    let dir = tmp("first-run");
+    let disk = LocalDisk;
+    let data = dir.join("data");
+    assert!(mark_first_run(&disk, &data).unwrap(), "a missing data folder is a first start");
+    assert!(disk.is_file(&data.join(FIRST_RUN_MARKER)));
+    disk.remove_file(&data.join(FIRST_RUN_MARKER));
+    disk.write(&data.join("grants.json"), b"[]").unwrap();
+    assert!(!mark_first_run(&disk, &data).unwrap(), "a used data folder is not");
+    assert!(!disk.exists(&data.join(FIRST_RUN_MARKER)), "and the setup is not shown again");
+    let _ = fs::remove_dir_all(dir);
+}
+
 // ---------- the working folder and each app's history (ADR-2610071122) ----------
 
 #[test]

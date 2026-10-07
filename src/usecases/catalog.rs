@@ -5,6 +5,7 @@
 
 use super::history::History;
 use super::import::import_zip;
+use super::workspace::FIRST_RUN_MARKER;
 use crate::domain::grants::{self, Answer};
 use crate::domain::import_plan::{app_name_from, MAX_ZIP_BYTES};
 use crate::domain::package::{app_info, drive_file_id, safe_rel, safe_segment, trash_entry, unix_now, valid_drive_id, AppInfo, SourceChoice, APP_MARKERS};
@@ -177,7 +178,7 @@ impl Hub {
     pub fn status(&self) -> Value {
         let client_email = self.client.lock().unwrap().as_ref().map(|c| c.client_email());
         let apps = self.list_apps().len();
-        match &*self.serving() {
+        let mut status = match &*self.serving() {
             Serving::Local => json!({
                 "source": "local",
                 "local_root": self.local_root.display().to_string(),
@@ -196,7 +197,21 @@ impl Hub {
                 "status": d.status(),
                 "now": unix_now(),
             }),
-        }
+        };
+        status["first_run"] = json!(self.first_run());
+        status
+    }
+
+    /// True until the first-run setup is skipped or finished (ADR-2610072033). The marker is left
+    /// by a start with an empty data folder (`workspace::mark_first_run`).
+    pub fn first_run(&self) -> bool {
+        self.fs.is_file(&self.data_dir.join(FIRST_RUN_MARKER))
+    }
+
+    /// The first-run setup was skipped or finished: it is not shown again, in any browser.
+    pub fn setup_done(&self) -> Result<Value, String> {
+        self.fs.remove_file(&self.data_dir.join(FIRST_RUN_MARKER));
+        Ok(json!({ "first_run": false }))
     }
 
     // ---------- Google Drive ----------
@@ -441,6 +456,9 @@ impl Catalog for Hub {
     }
     fn set_grant(&self, body: &Value) -> Result<Value, String> {
         Hub::set_grant(self, body)
+    }
+    fn setup_done(&self) -> Result<Value, String> {
+        Hub::setup_done(self)
     }
     fn check_host_cap(&self, package: &str, app: &str, cap: &str, grant: &str) -> Result<(), String> {
         Hub::check_host_cap(self, package, app, cap, grant)

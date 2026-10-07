@@ -55,6 +55,7 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
 
   // Revoke in Settings: the next send asks again; "Don't allow" is remembered and refuses.
   await b.click('#settingsBtn');
+  await b.click('#setTab-permissions');
   await b.locator('#permList li:has-text("chan-sender") button').click();
   await b.waitForFunction(() => document.querySelectorAll('#permList li').length === 1);
   await b.click('#closeSettings');

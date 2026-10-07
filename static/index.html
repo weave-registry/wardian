@@ -12,7 +12,9 @@
 <link rel="stylesheet" href="/ui/card.css">
 <link rel="stylesheet" href="/ui/button.css">
 <link rel="stylesheet" href="/ui/field.css">
+<link rel="stylesheet" href="/ui/tabs.css">
 <script src="/ui/arrange.js" data-manual></script>
+<script src="/ui/tabs.js"></script>
 <style>
   :root {
     color-scheme: light dark;
@@ -120,7 +122,21 @@
   dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: 0; }
   dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; word-break: break-all; }
   .tabs { display: flex; gap: .25rem; margin-bottom: .75rem; }
-  .tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .tabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  /* Settings sections (ADR-2610072033): the library's tabs, kept in view above the scrolling body. */
+  .settings-nav { padding: .6rem 1rem 0; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .settings-nav [role="tablist"] { display: flex; flex-wrap: wrap; margin-bottom: .6rem; }
+  #settingsTabs [role="tabpanel"] { padding-top: 0; }
+  #settings.is-admin .locked-note, #settings:not(.is-drive) .drive-note { display: none; }
+  /* Keyboard users see where they are on every control. */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* First-run setup (ADR-2610072033). */
+  .setup { display: grid; gap: 1rem; }
+  .setup h2:focus { outline: none; }
+  .setup .w-card-title { margin: 0; }
+  .setup .w-card-content { padding-top: var(--w-space-3); }
+  .setup .w-card-content > p:first-child { margin-top: 0; }
+  .setup .acts { display: flex; gap: .5rem; flex-wrap: wrap; }
   .step { border-left: 3px solid var(--line); padding-left: .75rem; margin: .75rem 0; }
   .step.done { border-color: var(--ok); }
   .crumbs { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; margin-bottom: .5rem; }
@@ -224,19 +240,33 @@
     <div class="card">
       <div class="row" style="margin-bottom:.5rem">
         <h2 style="margin:0;flex:1">Output</h2>
-        <button id="clearLog">Clear</button>
+        <button id="clearLog" aria-label="Clear output">Clear</button>
       </div>
       <pre id="log"></pre>
     </div>
   </section>
 </main>
 
-<dialog id="settings">
+<dialog id="settings" aria-labelledby="settingsTitle">
   <div class="dlg-head">
-    <h2>Settings</h2>
+    <h2 id="settingsTitle">Settings</h2>
     <button id="closeSettings">Close</button>
   </div>
+  <!-- Sections a reader can jump between (ADR-2610072033): the library's tabs, with arrow keys. -->
+  <div class="w-tabs" id="settingsTabs">
+  <div class="settings-nav">
+    <div role="tablist" aria-label="Settings sections">
+      <button role="tab" id="setTab-status">Status</button>
+      <button role="tab" id="setTab-source">App source</button>
+      <button role="tab" id="setTab-claude">Claude</button>
+      <button role="tab" id="setTab-splunk">Splunk</button>
+      <button role="tab" id="setTab-permissions">Permissions</button>
+      <button role="tab" id="setTab-trash">Removed apps</button>
+      <button role="tab" id="setTab-import">Import</button>
+    </div>
+  </div>
   <div class="dlg-body">
+    <div role="tabpanel" data-section="status">
     <div class="card">
       <div class="row" style="margin-bottom:.5rem">
         <h2 style="margin:0;flex:1">Status</h2>
@@ -253,12 +283,15 @@
         <button id="tokenSave" class="primary">Unlock</button>
       </div>
     </div>
+    </div>
 
+    <div role="tabpanel" data-section="source" data-admin>
+    <p class="muted locked-note">Unlock Settings in Status to change where apps come from.</p>
     <div class="card" id="sourceCard">
       <h2>App source</h2>
-      <div class="tabs">
-        <button data-tab="local">Local folder</button>
-        <button data-tab="drive">Google Drive</button>
+      <div class="tabs" role="group" aria-label="Where apps come from">
+        <button data-tab="local" aria-pressed="false">Local folder</button>
+        <button data-tab="drive" aria-pressed="false">Google Drive</button>
       </div>
 
       <div id="tab-local">
@@ -295,9 +328,12 @@
           <button class="primary" id="connect" disabled>Connect to this folder</button>
         </div>
       </div>
-      <p id="sourceMsg"></p>
+      <p id="sourceMsg" role="status"></p>
+    </div>
     </div>
 
+    <div role="tabpanel" data-section="claude" data-admin>
+    <p class="muted locked-note">Unlock Settings in Status to set up Claude.</p>
     <div class="card" id="aiCard">
       <h2>Make apps with Claude</h2>
       <p id="aiKeyState" class="muted"></p>
@@ -339,9 +375,12 @@
         </div>
         <p class="muted" style="font-size:.85rem">Claude through your AWS account, billed by AWS, in the region you choose. The model must be enabled for the account in that region (Bedrock console → Model access). Wardian tests the settings with one tiny request before it saves them, keeps them on this server only, and never sends a key or secret back to the browser. Leave a key field empty to keep the saved one.</p>
       </div>
-      <p id="aiKeyMsg"></p>
+      <p id="aiKeyMsg" role="status"></p>
+    </div>
     </div>
 
+    <div role="tabpanel" data-section="splunk" data-admin>
+    <p class="muted locked-note">Unlock Settings in Status to set up Splunk.</p>
     <div class="card" id="splunkCard">
       <h2>Splunk</h2>
       <p id="splunkState" class="muted"></p>
@@ -363,9 +402,11 @@
         <button id="splunkRemove" class="hidden">Remove</button>
       </div>
       <p class="muted" style="font-size:.85rem">Apps that declare the <code>splunk</code> capability ask you once, then Wardian runs their searches with this account. The token never comes back to the browser. Give the account a read-only role that sees only the indexes these apps need.</p>
-      <p id="splunkMsg"></p>
+      <p id="splunkMsg" role="status"></p>
+    </div>
     </div>
 
+    <div role="tabpanel" data-section="permissions">
     <div class="card" id="permCard">
       <h2>App permissions</h2>
       <p class="muted" style="font-size:.85rem">Apps ask before they use a channel to talk to other apps. Your answers are listed here. Revoke one, and the app asks again next time.</p>
@@ -373,7 +414,11 @@
       <ul id="permList" class="trash"></ul>
       <p id="permMsg" class="err"></p>
     </div>
+    </div>
 
+    <div role="tabpanel" data-section="trash" data-admin>
+    <p class="muted locked-note">Unlock Settings in Status to see removed apps.</p>
+    <p class="muted drive-note">Apps served from Google Drive are removed in Drive, so nothing waits here.</p>
     <div class="card" id="trashCard">
       <h2>Removed apps</h2>
       <p id="trashEmpty" class="muted">Nothing removed.</p>
@@ -381,7 +426,10 @@
       <p class="muted" style="font-size:.85rem">Removed apps wait in <code id="trashFolder"></code>. To delete them for good, empty that folder.</p>
       <p id="trashMsg" class="err"></p>
     </div>
+    </div>
 
+    <div role="tabpanel" data-section="import" data-admin>
+    <p class="muted locked-note">Unlock Settings in Status to import apps.</p>
     <div class="card" id="importCard">
       <h2>Import from a zip</h2>
       <p class="muted" style="font-size:.85rem">Copies the apps in a zip into <code class="localRootName"></code>. The zip can hold an <code>app.wasm</code>, a single <code>.wasm</code> file, or one folder per app.</p>
@@ -394,8 +442,10 @@
       </div>
       <label class="row"><input type="checkbox" id="zipReplace"> Replace apps that already exist</label>
       <div id="importPreview" class="hidden"></div>
-      <p id="importMsg"></p>
+      <p id="importMsg" role="status"></p>
     </div>
+    </div>
+  </div>
   </div>
 </dialog>
 
@@ -474,6 +524,8 @@ function renderStatus() {
 
   $('localRoot').textContent = s.local_root || '';
   document.querySelectorAll('.localRootName').forEach((n) => (n.textContent = s.local_root || ''));
+  $('settings').classList.toggle('is-admin', !!s.admin);
+  $('settings').classList.toggle('is-drive', s.source === 'drive');
   $('importCard').classList.toggle('hidden', !s.admin);
   $('trashCard').classList.toggle('hidden', !s.admin || s.source !== 'local');
   $('lockedCard').classList.toggle('hidden', !!s.admin);
@@ -631,6 +683,7 @@ async function openApp(app) {
   const { name } = app;
   clearPageFrames();
   moduleArrange?.destroy(); moduleArrange = null;
+  endSetup();
   current = name;
   renderApps();
   const tools = el('span', { className: 'row' });
@@ -715,6 +768,7 @@ const kb = (n) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` :
 async function openExport(app) {
   clearPageFrames();
   moduleArrange?.destroy(); moduleArrange = null;
+  endSetup();
   current = app.name;
   renderApps();
   const withData = el('input', { type: 'checkbox', id: 'exportData' });
@@ -769,6 +823,7 @@ async function openExport(app) {
 async function openHistory(app) {
   clearPageFrames();
   moduleArrange?.destroy(); moduleArrange = null;
+  endSetup();
   current = app.name;
   renderApps();
   const list = el('div', { className: 'history-list', id: 'historyList' }, el('p', { className: 'muted', textContent: 'Loading…' }));
@@ -788,10 +843,10 @@ async function openHistory(app) {
   list.replaceChildren(...data.versions.map((v) => {
     const box = el('div', { className: 'diffbox', hidden: true });
     const acts = el('span', { className: 'acts' });
-    const compare = el('button', { textContent: 'Compare with current', onclick: () => showDiff(app.name, v.n, box, compare) });
+    const compare = el('button', { textContent: 'Compare with current', ariaLabel: `Compare version ${v.n} with current`, ariaExpanded: 'false', onclick: () => showDiff(app.name, v.n, box, compare) });
     if (!v.current) acts.append(compare);
     if (!v.current) {
-      const restore = el('button', { textContent: 'Restore', onclick: () => {
+      const restore = el('button', { textContent: 'Restore', ariaLabel: `Restore version ${v.n}…`, onclick: () => {
         // Two steps, so a stray click changes nothing.
         acts.replaceChildren(el('span', { className: 'muted', textContent: `Put version ${v.n} back? ` }),
           el('button', { className: 'primary', textContent: `Restore version ${v.n}`, onclick: async () => {
@@ -802,6 +857,7 @@ async function openHistory(app) {
             openApp(apps.find((a) => a.name === app.name) || app);
           } }),
           el('button', { textContent: 'Cancel', onclick: () => openHistory(app) }));
+        acts.querySelector('button.primary').focus();
       } });
       acts.append(restore);
     }
@@ -820,8 +876,8 @@ async function openHistory(app) {
 }
 
 async function showDiff(name, n, box, btn) {
-  if (!box.hidden) { box.hidden = true; btn.textContent = 'Compare with current'; return; }
-  box.hidden = false; btn.textContent = 'Hide changes';
+  if (!box.hidden) { box.hidden = true; btn.textContent = 'Compare with current'; btn.ariaLabel = `Compare version ${n} with current`; btn.ariaExpanded = 'false'; return; }
+  box.hidden = false; btn.textContent = 'Hide changes'; btn.ariaLabel = `Hide the changes of version ${n}`; btn.ariaExpanded = 'true';
   box.replaceChildren(el('p', { className: 'muted', textContent: 'Comparing…' }));
   let d;
   try { d = await api(`/api/history/${encodeURIComponent(name)}/${n}/diff`); }
@@ -877,7 +933,7 @@ function functionTable(name, instance, size, missing) {
         el('div', { className: 'w-card-content' },
           el('div', { className: 'fn-run' }, ...inputs,
             inputs.length ? '' : el('span', { className: 'muted', textContent: 'no arguments' }),
-            el('button', { className: 'w-button', textContent: 'Run', onclick: run })),
+            el('button', { className: 'w-button', textContent: 'Run', ariaLabel: `Run ${k}`, onclick: run })),
           result));
       return { id: k, el: card, home: 'main', label: k };
     });
@@ -971,10 +1027,13 @@ addEventListener('message', async (e) => {
 function removeControl(name) {
   const box = el('span', { className: 'row removebox' });
   if (!status.admin || status.source !== 'local') return box;   // Drive apps are removed in Drive
-  const ask = () => box.replaceChildren(
-    el('span', { className: 'muted', textContent: `Remove ${name}?` }),
-    el('button', { className: 'danger', textContent: 'Remove', onclick: () => removeApp(name) }),
-    el('button', { textContent: 'Cancel', onclick: idle }));
+  const ask = () => {
+    box.replaceChildren(
+      el('span', { className: 'muted', textContent: `Remove ${name}?` }),
+      el('button', { className: 'danger', textContent: 'Remove', ariaLabel: `Remove ${name}`, onclick: () => removeApp(name) }),
+      el('button', { textContent: 'Cancel', onclick: () => { idle(); box.querySelector('button').focus(); } }));
+    box.querySelector('button.danger').focus();
+  };
   const idle = () => box.replaceChildren(el('button', { className: 'link', textContent: 'Remove app', onclick: ask }));
   idle();
   return box;
@@ -1012,7 +1071,7 @@ async function loadGrants() {
       el('span', { className: 'name' }, g.app, el('span', { className: 'muted', style: 'font-weight:400',
         textContent: g.mode === 'use' ? ` uses ${({ splunk: 'Splunk searches', ai: 'Claude AI' })[g.channel] || g.channel}` : ` ${g.mode === 'send' ? 'sends on' : 'reads'} channel ${g.channel}` })),
       el('span', { className: g.allow ? '' : 'err', textContent: g.allow ? 'Allowed' : 'Not allowed' }),
-      status.admin ? el('button', { textContent: 'Revoke', onclick: async () => {
+      status.admin ? el('button', { textContent: 'Revoke', ariaLabel: `Revoke: ${g.app} ${g.mode === 'use' ? 'uses' : g.mode} ${g.channel}`, onclick: async () => {
         try {
           await api('/api/grants', { app: g.app, channel: g.channel, mode: g.mode, decision: 'ask' });
           await WardianChannels.refresh();
@@ -1030,23 +1089,44 @@ async function loadTrash() {
     $('trashList').replaceChildren(...items.map(t => el('li', {},
       el('span', { className: 'name', textContent: t.name }),
       el('span', { className: 'muted', textContent: new Date(t.removed_at * 1000).toLocaleString() }),
-      el('button', { textContent: 'Restore', onclick: () => restoreApp(t.id, t.name) }))));
+      el('button', { textContent: 'Restore', ariaLabel: `Restore ${t.name}`, onclick: () => restoreApp(t.id, t.name) }))));
     $('trashEmpty').hidden = items.length > 0;
     $('trashFolder').textContent = folder;
   } catch (e) { $('trashMsg').textContent = e.message; }
 }
 
-$('settingsBtn').onclick = async () => {
+// Opens Settings, at one section when asked: status, source, claude, splunk, permissions, trash, import.
+async function openSettings(section) {
   await loadStatus();
   showTab(status.source === 'drive' ? 'drive' : 'local');
   $('sourceMsg').textContent = '';
-  $('settings').showModal();
+  setupLendAiCard(false);
+  if (section) $(`setTab-${section}`)?.click();
+  if (!$('settings').open) $('settings').showModal();
+  if (section) $(`setTab-${section}`)?.focus();
   $('trashMsg').textContent = '';
   loadTrash();
   loadGrants();
   if (status.admin && status.client_email && !folderStack.length) browse(null, 'Shared with the service account');
-};
+}
+$('settingsBtn').onclick = () => openSettings();
 $('closeSettings').onclick = () => $('settings').close();
+$('settings').addEventListener('close', () => setupLendAiCard(true));
+
+// A modal dialog keeps the keyboard inside it: Tab from the last control goes to the first, and
+// Shift+Tab from the first to the last. Escape closes it (the browser's own dialog behaviour).
+function trapFocus(dialog) {
+  dialog.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const items = [...dialog.querySelectorAll('button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+      .filter((n) => !n.disabled && n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden');
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+  });
+}
+document.querySelectorAll('dialog').forEach(trapFocus);
 
 $('tokenSave').onclick = async () => {
   token = $('tokenInput').value.trim();
@@ -1064,7 +1144,7 @@ $('refreshNow').onclick = async () => {
 };
 
 function showTab(t) {
-  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+  document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tab === t)));
   $('tab-local').classList.toggle('hidden', t !== 'local');
   $('tab-drive').classList.toggle('hidden', t !== 'drive');
 }
@@ -1218,9 +1298,9 @@ async function browse(id, name, depth) {
       : id ? 'No subfolders here.' : 'Nothing is shared with the service account yet. Share a folder with the address above.';
     $('folders').replaceChildren(...folders.map((f) => {
       const li = el('li', { className: chosen?.id === f.id ? 'sel' : '' },
-        el('span', { textContent: f.shared_drive ? '🗄️' : '📁' }),
-        el('span', { className: 'name', textContent: f.name, title: 'Open', onclick: () => browse(f.id, f.name) }),
-        el('button', { textContent: 'Choose', onclick: () => choose(f.id, f.name) }));
+        el('span', { textContent: f.shared_drive ? '🗄️' : '📁', ariaHidden: 'true' }),
+        el('button', { className: 'link name', textContent: f.name, title: 'Open', ariaLabel: `Open folder ${f.name}`, onclick: () => browse(f.id, f.name) }),
+        el('button', { textContent: 'Choose', ariaLabel: `Choose folder ${f.name}`, onclick: () => choose(f.id, f.name) }));
       return li;
     }));
   } catch (e) { $('browseMsg').textContent = e.message; $('browseMsg').className = 'err'; return; }
@@ -1311,13 +1391,14 @@ $('aiBtn').onclick = () => {
 function openAi({ app = null, session = null, editing = null } = {}) {
   clearPageFrames();
   moduleArrange?.destroy(); moduleArrange = null;
+  endSetup();
   current = null;
   renderApps();
   const editTarget = editing || (session ? null : app);
   chat = { session, next: 0, app, editing: editTarget, busy: false, polling: false, saved: -1, tested: new Set() };
   const view = {
     chat: el('div', { id: 'chat', role: 'log', ariaLive: 'polite' }),
-    input: el('textarea', { id: 'aiInput', placeholder: editTarget ? `What should change in ${editTarget}?` : 'Describe the app you want. For example: a packing list for trips, with categories and a progress bar.' }),
+    input: el('textarea', { id: 'aiInput', ariaLabel: 'Message to Claude', placeholder: editTarget ? `What should change in ${editTarget}?` : 'Describe the app you want. For example: a packing list for trips, with categories and a progress bar.' }),
     send: el('button', { className: 'primary', textContent: 'Send' }),
     stop: el('button', { textContent: 'Stop', className: 'hidden' }),
     state: el('span', { className: 'muted' }),
@@ -1333,7 +1414,7 @@ function openAi({ app = null, session = null, editing = null } = {}) {
   const parts = [head, intro];
   if (!(status.ai || {}).ready) {
     parts.push(el('p', {}, 'First set up Claude: an Anthropic API key, or Amazon Bedrock. ',
-      el('button', { className: 'link', textContent: 'Open Settings', onclick: () => $('settingsBtn').click() })));
+      el('button', { className: 'link', textContent: 'Open Settings', onclick: () => openSettings('claude') })));
   }
   if (!session && !editTarget) {
     view.ideas = el('div', { className: 'chips' }, ...AI_IDEAS.map((t) =>
@@ -1675,11 +1756,12 @@ $('aiKeyRemove').onclick = async () => {
 function showHome() {
   clearPageFrames();
   moduleArrange?.destroy(); moduleArrange = null;
+  endSetup();
   current = null;
   renderApps();
   const acts = el('div', { className: 'row' });
   if (status.admin) acts.append(el('button', { className: 'primary', textContent: 'Make an app', onclick: () => $('aiBtn').click() }));
-  if (status.admin) acts.append(el('button', { textContent: 'Import a zip', onclick: () => $('settingsBtn').click() }));
+  if (status.admin) acts.append(el('button', { textContent: 'Import a zip', onclick: () => openSettings('import') }));
   acts.append(el('a', { href: '/docs/guide', target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Build one yourself →' }));
   $('runner').replaceChildren(el('div', { className: 'home' },
     el('img', { src: '/logo.svg', alt: '' }),
@@ -1689,8 +1771,74 @@ function showHome() {
 }
 document.querySelector('.brand').addEventListener('click', (e) => { e.preventDefault(); showHome(); });
 
+// ---------- first-run setup (ADR-2610072033) ----------
+// A first start with an empty data folder (the server says first_run) shows this once, in place of
+// the home page: where apps come from, Claude if wanted, and who may change settings. Done, Skip,
+// or leaving it for an app ends it for good, in every browser.
+let setupOn = false;
+// The setup borrows the Claude card from Settings, so there is one form and one set of ids.
+function setupLendAiCard(toSetup) {
+  const card = $('aiCard'), slot = $('setupClaude');
+  if (toSetup) { if (setupOn && slot && slot.isConnected && card.parentNode !== slot) slot.append(card); }
+  else { const home = document.querySelector('#settings [data-section="claude"]'); if (card.parentNode !== home) home.append(card); }
+}
+
+function showSetup() {
+  clearPageFrames();
+  moduleArrange?.destroy(); moduleArrange = null;
+  current = null;
+  renderApps();
+  setupOn = true;
+  const step = (id, heading, ...body) => {
+    const h = el('h3', { className: 'w-card-title', id, textContent: heading });
+    const sec = el('section', { className: 'w-card' }, el('div', { className: 'w-card-header' }, h), el('div', { className: 'w-card-content' }, ...body));
+    sec.setAttribute('aria-labelledby', id);
+    return sec;
+  };
+  const n = apps.length;
+  const title = el('h2', { id: 'setupTitle', tabIndex: -1, textContent: 'Welcome to Wardian' });
+  const done = el('button', { className: 'primary', id: 'setupDone', textContent: 'Done', onclick: () => leaveSetup() });
+  const skip = el('button', { id: 'setupSkip', textContent: 'Skip setup', onclick: () => leaveSetup() });
+  const box = el('div', { className: 'setup', id: 'setup' },
+    el('div', {}, title, el('p', { className: 'muted', textContent: 'Three things to know before you start. All of them are optional, this page is shown once, and everything here is also in Settings.' })),
+    step('setupApps', '1. Where apps come from',
+      el('p', {}, 'Wardian serves the apps in ', el('code', { textContent: status.local_root || 'its apps folder' }),
+        n ? `, which holds ${n} app${n > 1 ? 's' : ''} now.` : ', which is empty now.',
+        ' Add more by importing a .wardian file or a zip someone sent you, by asking Claude to make one, or serve a Google Drive folder instead.'),
+      el('div', { className: 'acts' },
+        el('button', { textContent: 'Import an app…', onclick: () => openSettings('import') }),
+        el('button', { textContent: 'Use a Google Drive folder…', onclick: async () => { await openSettings('source'); showTab('drive'); } }))),
+    step('setupAi', '2. Claude, if you want it',
+      el('p', { className: 'muted', textContent: 'Make an app and the apps that ask Claude need a Claude account: an Anthropic API key, or Amazon Bedrock in your AWS account. Leave it for later if you only run apps.' }),
+      el('div', { id: 'setupClaude' })),
+    step('setupAdmin', '3. Who may change settings',
+      el('p', {}, 'Without an admin token, every program on this machine may change Wardian’s settings. That is fine for one person on a laptop. Before other people can reach this Wardian, start it with ',
+        el('code', { textContent: 'ADMIN_TOKEN' }), ' set to a long secret; a browser then types the token in Settings → Status to unlock.')),
+    el('div', { className: 'acts' }, done, skip));
+  $('runner').replaceChildren(box);
+  setupLendAiCard(true);
+  title.focus();
+}
+
+// Ends the setup for good: the server forgets the first start.
+function endSetup() {
+  if (!setupOn) return;
+  setupOn = false;
+  setupLendAiCard(false);
+  status.first_run = false;
+  api('/api/setup/done', {}).catch((e) => log(`setup: ${e.message}`, 'e'));
+}
+function leaveSetup() {
+  showHome();
+  $('runner').querySelector('h2')?.setAttribute('tabindex', '-1');
+  $('runner').querySelector('h2')?.focus();
+}
+
 // ---------- start ----------
-Promise.all([loadStatus(), loadApps()]).then(() => { if (!current && !chat) showHome(); aiWatch(); });
+Promise.all([loadStatus(), loadApps()]).then(() => {
+  if (!current && !chat) { if (status.first_run && status.admin) showSetup(); else showHome(); }
+  aiWatch();
+});
 // Drive refreshes in the background, so pick up new apps and health now and then.
 setInterval(() => { loadStatus(); loadApps(); }, 30000);
 </script>

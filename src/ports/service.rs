@@ -19,6 +19,8 @@ pub trait Catalog: Send + Sync {
     fn status(&self) -> Value;
     fn grants(&self) -> Value;
     fn set_grant(&self, body: &Value) -> Result<Value, String>;
+    /// The first-run setup was skipped or finished (ADR-2610072033).
+    fn setup_done(&self) -> Result<Value, String>;
     /// Whether `app` of suite `package` declares `cap` and the user allowed `grant` for it.
     fn check_host_cap(&self, package: &str, app: &str, cap: &str, grant: &str) -> Result<(), String>;
     fn trash(&self) -> Value;

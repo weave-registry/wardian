@@ -61,7 +61,7 @@ function unzip(buf) {
 
   console.log('== B: preview, then import with its data');
   await page.goto(B + '/'); await sleep(800);
-  await page.click('#settingsBtn'); await sleep(300);
+  await page.click('#settingsBtn'); await page.click('#setTab-import'); await sleep(300);
   await page.setInputFiles('#zipFile', file);
   await page.locator('#importPreview:not(.hidden)').waitFor({ timeout: 5000 });
   const prev = await page.locator('#importPreview').textContent();
