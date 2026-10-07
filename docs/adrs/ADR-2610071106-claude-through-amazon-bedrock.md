@@ -1,6 +1,6 @@
 # ADR-2610071106: Claude through Amazon Bedrock
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-10-07
 **Drivers:** Teams that buy Claude through AWS reach it through Amazon Bedrock, under their AWS
 account, region and IAM policies, and often may not hold an Anthropic API key at all. Wardian can
