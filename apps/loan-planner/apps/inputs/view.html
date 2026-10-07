@@ -1,18 +1,17 @@
 <h2>Your loan</h2>
 <form id="form" novalidate>
-  <label>Amount borrowed <input id="amount" type="number" min="1" step="1000" inputmode="decimal"></label>
-  <label>Interest rate (% a year) <input id="rate" type="number" min="0" max="50" step="0.05" inputmode="decimal"></label>
-  <label>Term (years) <input id="years" type="number" min="1" max="50" step="1" inputmode="numeric"></label>
-  <label>Extra payment each month <input id="extra" type="number" min="0" step="50" inputmode="decimal"></label>
+  <div class="w-field"><label class="w-label" for="amount">Amount borrowed</label><input class="w-input" id="amount" type="number" min="1" step="1000" inputmode="decimal"></div>
+  <div class="w-field"><label class="w-label" for="rate">Interest rate (% a year)</label><input class="w-input" id="rate" type="number" min="0" max="50" step="0.05" inputmode="decimal"></div>
+  <div class="w-field"><label class="w-label" for="years">Term (years)</label><input class="w-input" id="years" type="number" min="1" max="50" step="1" inputmode="numeric"></div>
+  <div class="w-field"><label class="w-label" for="extra">Extra payment each month</label><input class="w-input" id="extra" type="number" min="0" step="50" inputmode="decimal"></div>
   <div class="two">
-    <label>First payment <input id="start" type="month"></label>
-    <label>Currency
-      <select id="currency">
+    <div class="w-field"><label class="w-label" for="start">First payment</label><input class="w-input" id="start" type="month"></div>
+    <div class="w-field"><label class="w-label" for="currency">Currency</label>
+      <select class="w-input" id="currency">
         <option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option>
         <option>AUD</option><option>CHF</option><option>JPY</option><option>INR</option>
-      </select>
-    </label>
+      </select></div>
   </div>
 </form>
 <p class="note" id="problem" role="alert"></p>
-<p class="hint">Saved in this browser for next time.</p>
+<p class="w-hint">Saved in this browser for next time.</p>

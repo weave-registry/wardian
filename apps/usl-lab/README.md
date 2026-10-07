@@ -16,10 +16,11 @@ test/e2e.js             boots the page in jsdom: all apps, worker + fallback, se
 
 | app | owns | talks to |
 |---|---|---|
-| inputs | measurements, units, context, storage | emits `data:changed`, `context:changed` |
+| inputs | measurements, units, context, storage, tables from the Splunk table app (channel `splunk.table`) | emits `data:changed`, `context:changed`; receives `splunk.table` |
 | session | nothing visible; coordinates | `data:changed` -> engine.analyze -> `analysis:ready` |
 | engine | the maths, in a worker (or page) | provides `analyze`, `curve`; emits `engine:status` |
-| chart | chart, legend, hover | `analysis:ready`, `whatif:changed` -> engine.curve |
+| chart | chart, legend, hover, target line | `analysis:ready`, `whatif:changed`, `target:changed` -> engine.curve |
+| meaning | plain-language reading of the fit (fixed rules, no AI), "Plan for a target", the N/X/R glossary (`storage`) | `analysis:ready`, `checks:ready` -> emits `target:changed` |
 | whatif | sliders, plain-language box | emits `whatif:changed`; calls diagnosis.parseWhatIf |
 | readouts | parameters and ranges | `analysis:ready` |
 | checks | findings in words | `analysis:ready` -> emits `checks:ready` |

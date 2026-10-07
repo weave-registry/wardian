@@ -1,5 +1,5 @@
-//! `rustle new <module|page|suite> <path>`: writes a starter package that
-//! already passes `rustle check`. The templates are built into the program
+//! `wardian new <module|page|suite> <path>`: writes a starter package that
+//! already passes `wardian check`. The templates are built into the program
 //! from templates/, so it works anywhere.
 
 use crate::source::safe_segment;
@@ -55,18 +55,24 @@ const SUITE: Files = &[
     file!(".gitignore", "suite/.gitignore"),
 ];
 
+/// The component library files each kind starts with, in `ui/`. They come from the library itself
+/// (src/ui.rs), so a new package always gets the current components; the copies under templates/
+/// keep the templates checkable on their own, and a test keeps them identical.
+const UI_PAGE: &[&str] = &["theme.css", "button.css", "field.css", "card.css", "arrange.js"];
+const UI_SUITE: &[&str] = &["theme.css", "button.css", "field.css", "card.css"];
+
 pub const KINDS: &[(&str, &str)] = &[
-    ("module", "WebAssembly functions of numbers; rustle builds the interface"),
+    ("module", "WebAssembly functions of numbers; Wardian builds the interface"),
     ("page", "WebAssembly plus your own page; for text, arrays, JSON or a real interface"),
     ("suite", "several sealed apps on one screen, talking through the kernel"),
 ];
 
 /// Writes the package. Returns the error to show, if any.
 pub fn create(kind: &str, path: &Path) -> Result<(), String> {
-    let files = match kind {
-        "module" => MODULE,
-        "page" => PAGE,
-        "suite" => SUITE,
+    let (files, ui) = match kind {
+        "module" => (MODULE, &[][..]),
+        "page" => (PAGE, UI_PAGE),
+        "suite" => (SUITE, UI_SUITE),
         _ => return Err(format!("unknown kind \"{kind}\"")),
     };
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -92,17 +98,23 @@ pub fn create(kind: &str, path: &Path) -> Result<(), String> {
             let _ = fs::set_permissions(&out, fs::Permissions::from_mode(0o755));
         }
     }
+    for f in ui {
+        let out = path.join("ui").join(f);
+        fs::create_dir_all(out.parent().unwrap()).map_err(|e| format!("creating {}: {e}", out.display()))?;
+        let body = crate::ui::file(f).ok_or_else(|| format!("the component library has no {f}"))?;
+        fs::write(&out, body).map_err(|e| format!("writing {}: {e}", out.display()))?;
+    }
     Ok(())
 }
 
-/// The `rustle new` command. Returns the process exit code.
+/// The `wardian new` command. Returns the process exit code.
 pub fn run(args: &[String]) -> i32 {
     let usage = || {
-        eprintln!("usage: rustle new <kind> <path>\n\nkinds:");
+        eprintln!("usage: wardian new <kind> <path>\n\nkinds:");
         for (k, what) in KINDS {
             eprintln!("  {k:<8} {what}");
         }
-        eprintln!("\nexample: rustle new page apps/hello");
+        eprintln!("\nexample: wardian new page apps/hello");
         2
     };
     let [kind, path] = args else { return usage() };
@@ -112,30 +124,56 @@ pub fn run(args: &[String]) -> i32 {
     }
     let path = Path::new(path);
     if let Err(e) = create(kind, path) {
-        eprintln!("rustle new: {e}");
+        eprintln!("wardian new: {e}");
         return 1;
     }
     println!("created a {kind} package in {}\n", path.display());
     let code = crate::check::run(&[path.display().to_string()]);
-    println!("next: read {}/README.md, change it, then run `rustle check {}`", path.display(), path.display());
+    println!("next: read {}/README.md, change it, then run `wardian check {}`", path.display(), path.display());
     code
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{create, KINDS};
+    use super::{create, KINDS, UI_PAGE, UI_SUITE};
 
     #[test]
     fn every_template_passes_check() {
-        let base = std::env::temp_dir().join(format!("rustle-new-test-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("wardian-new-test-{}", std::process::id()));
         for (kind, _) in KINDS {
             let dir = base.join(format!("demo-{kind}"));
             create(kind, &dir).unwrap();
-            assert!(crate::check::check_path(&dir), "{kind} template fails rustle check");
+            assert!(crate::check::check_path(&dir), "{kind} template fails wardian check");
             let readme = std::fs::read_to_string(dir.join("README.md")).unwrap();
             assert!(readme.contains(&format!("demo-{kind}")) && !readme.contains("{{name}}"));
         }
         assert!(create("page", &base.join("demo-page")).is_err(), "must not overwrite");
+        for (kind, ui) in [("page", UI_PAGE), ("suite", UI_SUITE)] {
+            for f in ui {
+                let got = std::fs::read_to_string(base.join(format!("demo-{kind}/ui/{f}"))).unwrap();
+                assert_eq!(got, crate::ui::file(f).unwrap(), "new {kind} package: ui/{f} is not the library's");
+            }
+        }
         let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// The ui/ files inside templates/ (and the bundled apps) are copies of the library. If a component
+    /// changes, they must change with it: run `wardian add --force <component> <package>`.
+    #[test]
+    fn ui_copies_match_the_library() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut seen = 0;
+        for base in ["templates", "apps"] {
+            for pkg in std::fs::read_dir(root.join(base)).unwrap().flatten() {
+                let Ok(rd) = std::fs::read_dir(pkg.path().join("ui")) else { continue };
+                for f in rd.flatten() {
+                    let name = f.file_name().to_string_lossy().into_owned();
+                    let lib = crate::ui::file(&name).unwrap_or_else(|| panic!("{}: ui/{name} is not a library file", pkg.path().display()));
+                    assert_eq!(std::fs::read_to_string(f.path()).unwrap(), lib, "{}/ui/{name} differs from static/ui/{name}", pkg.path().display());
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen > 0, "no ui/ copies found");
     }
 }

@@ -1,6 +1,6 @@
 # Loan planner
 
-A rustle **suite**: six sealed apps that plan a loan together. WebAssembly does the amortization.
+A Wardian **suite**: six sealed apps that plan a loan together. WebAssembly does the amortization.
 
 | App | Slot | Job | Contract |
 |---|---|---|---|

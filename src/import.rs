@@ -42,7 +42,7 @@ pub struct Imported {
 /// Turns a file name like "My Apps (v2).zip" into a usable app name.
 pub fn app_name_from(file_name: &str) -> String {
     let stem = file_name.rsplit('/').next().unwrap_or("");
-    let stem = [".rustle", ".zip", ".wasm"].iter().find_map(|x| stem.strip_suffix(x)).unwrap_or(stem);
+    let stem = [".wardian", ".rustle", ".zip", ".wasm"].iter().find_map(|x| stem.strip_suffix(x)).unwrap_or(stem);
     let clean: String = stem
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })

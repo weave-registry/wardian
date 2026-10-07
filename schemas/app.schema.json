@@ -1,20 +1,51 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "rustle app.json",
-  "description": "Optional metadata at the top of a rustle package. See SPEC.md, section 4.",
+  "title": "Wardian app.json",
+  "description": "Optional metadata at the top of a Wardian package. See SPEC.md, section 4.",
   "type": "object",
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string"
+    },
     "format": {
       "description": "Package format version. Absent means 1. A host refuses a format newer than it supports.",
-      "type": "integer", "minimum": 1, "default": 1
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
     },
-    "title": { "description": "Name shown in the app list.", "type": "string" },
-    "description": { "description": "One or two sentences shown under the title.", "type": "string" },
+    "title": {
+      "description": "Name shown in the app list.",
+      "type": "string"
+    },
+    "description": {
+      "description": "One or two sentences shown under the title.",
+      "type": "string"
+    },
     "page": {
       "description": "Path of the app's own page inside the package. Without it the host looks for index.html, then demo/index.html, www/index.html and web/index.html.",
       "type": "string",
       "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_.\\-]*(/[A-Za-z0-9_\\-][A-Za-z0-9_.\\-]*)*$"
+    },
+    "channels": {
+      "description": "Channels to other packages (format 2). The user is asked before first use. See SPEC.md 6.9.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "send": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+          }
+        },
+        "receive": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+          }
+        }
+      }
     }
   },
   "additionalProperties": false

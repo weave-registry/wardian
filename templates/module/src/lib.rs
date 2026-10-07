@@ -1,4 +1,4 @@
-//! A rustle module app: plain functions of numbers.
+//! A Wardian module app: plain functions of numbers.
 //!
 //! The host lists every exported function with one input per parameter.
 //! Parameters and results must be numbers: i32, i64, f32 or f64.

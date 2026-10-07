@@ -2,18 +2,20 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Suite</title>
+<title>Wardian suite</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; font: 14px system-ui, sans-serif; }
   .suite {
     max-width: 1280px; margin: 0 auto; padding: 28px clamp(16px, 3vw, 40px) 72px;
-    display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 0 44px;
+    display: grid; grid-template-columns: var(--suite-columns, minmax(280px, 340px) minmax(0, 1fr)); gap: 0 44px;
   }
   .suite iframe { display: block; width: 100%; height: 0; border: 0; }
   .hdr { grid-column: 1 / -1; }
   /* The sticky, scrolling input column, rebuilt around the frame. */
-  .aside { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto; }
+  .aside { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto;
+           scrollbar-gutter: stable; padding-right: 12px; margin-right: -12px; }
   .headless { display: none; }
   @media (max-width: 960px) {
     .suite { grid-template-columns: minmax(0, 1fr); }
@@ -26,9 +28,16 @@
   }
   #faults[hidden] { display: none; }
   #error { padding: 2rem; color: #b33; }
+  /* Arrange (/ui/arrange.js): each viewer's own layout. */
+  .aside, .main { display: flex; flex-direction: column; min-width: 0; }
+  .aside[hidden] { display: none; }
+  .w-arrange-one .aside { position: static; max-height: none; overflow: visible; margin-bottom: 34px; }
+  .w-arrange-on .panel { margin-bottom: 10px; }
 </style>
 <div class="suite" id="suite"></div>
 <div id="faults" hidden></div>
+<script src="/channels.js"></script>
+<script src="/ui/arrange.js" data-manual></script>
 <script>
 /* Host kernel: runs the apps of one suite, each in its own sandboxed frame.
    - Contracts come from suite.json. An app's own code cannot widen them.
@@ -36,8 +45,11 @@
    - Retained topics are replayed to apps that start listening late.
    - Calls to a method whose app has not started yet wait for it (up to 15 s) instead of failing.
    - Capabilities are granted here: storage (kept per app), asset (files from this package),
-     claude:downloads (a file download).
-   Debug in the console: Kernel.apps(), Kernel.trace(), Kernel.faults(). */
+     claude:downloads (a file download), splunk (searches the server runs) and claude:sample (Claude,
+     with the server's Anthropic key). The user allows splunk and Claude once per package first.
+   - Channels to other packages (channels.js): only those declared in suite.json, and only once the
+     user allows them. Other packages see this suite's name as the sender.
+   Debug in the console: Kernel.apps(), Kernel.trace(), Kernel.faults(), Kernel.started(). */
 (async () => {
   'use strict';
   const suiteName = decodeURIComponent(location.pathname.split('/')[2] || '');
@@ -48,7 +60,7 @@
   const retained = new Map();          // topic -> latest payload
   const pendingCalls = new Map();      // host call id -> {from, id, to}
   const waiting = new Map();           // "app.method" -> [queued call]
-  const trace = [], faults = [];
+  const trace = [], faults = [], started = new Set();
   let nextId = 1, headerEl = null;
 
   const note = (kind, app, what) => { trace.push({t: Math.round(performance.now()), kind, app, what}); if (trace.length > 400) trace.shift(); };
@@ -69,8 +81,8 @@
     if (!r.ok) throw new Error(`suite.json: ${r.status}`);
     suite = await r.json();
     if (!Array.isArray(suite.apps)) throw new Error('suite.json needs an "apps" list');
-    const FORMAT = 1;   // the newest suite.json format this kernel understands (SPEC.md)
-    if ((suite.format ?? 1) > FORMAT) throw new Error(`it needs package format ${suite.format}; this rustle reads format ${FORMAT}`);
+    const FORMAT = 2;   // the newest suite.json format this kernel understands (SPEC.md)
+    if ((suite.format ?? 1) > FORMAT) throw new Error(`it needs package format ${suite.format}; this Wardian reads format ${FORMAT}`);
   } catch (e) {
     const p = Object.assign(document.createElement('p'), {id: 'error', textContent: 'Cannot start this suite: ' + e.message});
     document.getElementById('suite').replaceChildren(p);
@@ -81,7 +93,9 @@
   const contractOf = a => ({
     emits: Object.fromEntries(Object.entries(a.emits || {}).map(([k, v]) => [k, {retain: !!(v && v.retain)}])),
     listens: list(a.listens), provides: list(a.provides), needs: list(a.needs), caps: list(a.caps),
+    channels: {send: list(a.channels && a.channels.send), receive: list(a.channels && a.channels.receive)},
   });
+  WardianChannels.setPrompt(WardianChannels.promptBar(document.body));
 
   // ---------- per-app storage, kept by the host for this viewer ----------
   const storeKey = app => `kernel:${suiteName}:${app}`;
@@ -105,8 +119,44 @@
         return {status: 'saved'};
       },
     },
-    // claude:sample needs the Claude viewer; this host answers "not available", and apps hide that feature.
+    // splunk: the server runs the search with its own Splunk account. The app never sees the
+    // address or the credentials. The user is asked once per package, like a channel, and the
+    // server checks that answer again.
+    splunk: {
+      async status(){ return {ready: !!((await hostStatus()).splunk || {}).ready}; },
+      async search(args, app){
+        const {search, earliest = '', latest = ''} = args || {};
+        if (typeof search !== 'string' || !search.trim()) throw new Error('the search is empty');
+        if (![earliest, latest].every(t => typeof t === 'string' && t.length <= 64)) throw new Error('bad time range');
+        return hostPost('/api/splunk/search', 'splunk', app, {search, earliest, latest})
+          .catch(e => { throw new Error(String(e.message).replace(/^not_granted: you did not allow this app to use splunk$/, 'you did not allow this app to run Splunk searches')); });
+      },
+    },
+    // claude:sample: Claude, through the Anthropic key saved in Settings. Offered only when a key is
+    // saved; the user allows each package once (asked as "ai"), and the server checks that again.
+    // Errors start with a code ("rate_limited: …") that the frame turns into e.code.
+    sample: {
+      async text(args, app){ return hostPost('/api/ai/sample', 'ai', app, {prompt: (args || {}).prompt, tier: (args || {}).tier, json: false}); },
+      async json(args, app){ return (await hostPost('/api/ai/sample', 'ai', app, {prompt: (args || {}).prompt, tier: (args || {}).tier, json: true})).value; },
+    },
   };
+  async function hostStatus(){
+    const r = await fetch('/api/status', {cache: 'no-store'});
+    return r.json();
+  }
+  // A call to this server for an app, after the user allowed `grant` for this package.
+  async function hostPost(path, grant, app, body){
+    if (!(await WardianChannels.permit(suiteName, grant))) throw new Error('not_granted: you did not allow this app to use ' + (grant === 'ai' ? 'Claude' : grant));
+    const headers = {'Content-Type': 'application/json'};
+    try { const t = sessionStorage.getItem('adminToken'); if (t) headers['X-Admin-Token'] = t; } catch { /* blocked */ }
+    const r = await fetch(path, {method: 'POST', headers, body: JSON.stringify(Object.assign({package: suiteName, app}, body))});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `${r.status} ${r.statusText}`);
+    return j;
+  }
+  // Capabilities this host provides under their own name (not "claude:…").
+  const HOST_CAPS = ['splunk'];
+  const capDeclared = (app, name) => frames.get(app).contract.caps.includes(HOST_CAPS.includes(name) ? name : 'claude:' + name);
 
   // ---------- message handling ----------
   function deliver(app, topic){
@@ -122,6 +172,7 @@
   const handlers = {
     hello(app){
       const f = frames.get(app); if (!f) return;
+      started.add(app);
       send(app, {k: 'boot', contract: f.contract, store: f.contract.caps.includes('storage') ? loadStore(app) : {}});
       note('boot', app, 'ok');
     },
@@ -173,16 +224,18 @@
       if (!frames.get(app).contract.caps.includes('storage')) return fault(app, 'did not declare capability "storage"');
       if (typeof m.key === 'string') saveStore(app, m.key, m.value);
     },
-    cap(app, m){
-      const ok = frames.get(app).contract.caps.includes('claude:' + m.name);
-      const impl = ok && CAPS[m.name];
+    async cap(app, m){
+      let impl = capDeclared(app, m.name) && CAPS[m.name];
+      // Offer Claude only when this server has a key, so apps hide AI features otherwise.
+      if (impl && m.name === 'sample'){ try { if (!(await hostStatus()).ai.ready) impl = null; } catch { impl = null; } }
       note('cap', app, m.name + (impl ? '' : ' (not available)'));
       reply(app, m.id, true, impl ? Object.keys(impl) : null);
     },
     async capop(app, m){
-      const impl = frames.get(app).contract.caps.includes('claude:' + m.name) && CAPS[m.name];
-      if (!impl || typeof impl[m.op] !== 'function') return reply(app, m.id, false, `capability ${m.name}.${m.op} is not granted`);
-      try { reply(app, m.id, true, await impl[m.op](m.args)); }
+      const impl = capDeclared(app, m.name) && CAPS[m.name];
+      if (!impl || !Object.hasOwn(impl, m.op) || typeof impl[m.op] !== 'function') return reply(app, m.id, false, `capability ${m.name}.${m.op} is not granted`);
+      note('capop', app, m.name + '.' + m.op);
+      try { reply(app, m.id, true, await impl[m.op](m.args, app)); }
       catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
     },
     async asset(app, m){
@@ -194,6 +247,20 @@
         const r = await fetch(`/apps/${enc(suiteName)}/${path}`, {cache: 'no-cache'});
         if (!r.ok) throw new Error(`${path}: ${r.status}`);
         reply(app, m.id, true, await r.arrayBuffer());
+      } catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
+    },
+    async chsend(app, m){
+      if (!frames.get(app).contract.channels.send.includes(m.channel)) return reply(app, m.id, false, `may not send on channel "${m.channel}" (not in suite.json)`);
+      note('channel', app, 'send ' + m.channel);
+      try { await WardianChannels.send(suiteName, m.channel, m.data); reply(app, m.id, true, null); }
+      catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
+    },
+    async chon(app, m){
+      if (!frames.get(app).contract.channels.receive.includes(m.channel)) return reply(app, m.id, false, `may not receive on channel "${m.channel}" (not in suite.json)`);
+      note('channel', app, 'receive ' + m.channel);
+      try {
+        await WardianChannels.receive(suiteName, m.channel, (data, info) => send(app, {k: 'chmsg', channel: m.channel, data, from: info.from, at: info.at}));
+        reply(app, m.id, true, null);
       } catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
     },
     fault(app, m){ fault(app, String(m.message)); },
@@ -218,7 +285,8 @@
 
   // ---------- layout ----------
   const grid = document.getElementById('suite');
-  if (suite.columns && /^[\w\s(),.%-]+$/.test(suite.columns)) grid.style.gridTemplateColumns = suite.columns;
+  // A variable, not an inline grid style, so the narrow-screen rule can still switch to one column.
+  if (suite.columns && /^[\w\s(),.%-]+$/.test(suite.columns)) grid.style.setProperty('--suite-columns', suite.columns);
   const SANDBOX = 'allow-scripts allow-forms allow-modals allow-popups allow-downloads';
   function frameEl(src, title){
     const el = document.createElement('iframe');
@@ -238,19 +306,43 @@
   document.body.append(hidden);
   if (headerEl) byWin.set(headerEl.contentWindow, '');
 
+  // Each viewer may arrange the panels (Arrange, /ui/arrange.js): which column, what order, which
+  // are hidden. Kept in this browser only; the package never changes. Apps without a slot have no panel.
+  const layoutKey = 'wardian-layout:' + suiteName;
+  const panels = [];
   for (const a of suite.apps){
     if (!a || typeof a.name !== 'string' || !/^[\w.-]+$/.test(a.name) || frames.has(a.name)){ fault('kernel', 'bad or duplicate app entry in suite.json'); continue; }
     const el = frameEl(`/frame/${enc(suiteName)}/${enc(a.name)}`, a.name);
-    (a.slot === 'aside' ? aside : a.slot === 'main' ? main : hidden).append(el);
-    frames.set(a.name, {win: el.contentWindow, el, contract: contractOf(a), provided: new Set(), slot: a.slot || null});
-    byWin.set(el.contentWindow, a.name);
+    if (a.slot === 'aside' || a.slot === 'main'){
+      const wrap = Object.assign(document.createElement('div'), {className: 'panel'});
+      wrap.append(el);
+      panels.push({id: a.name, el: wrap, home: a.slot});
+    } else hidden.append(el);
+    frames.set(a.name, {win: null, el, contract: contractOf(a), provided: new Set(), slot: a.slot || null});
   }
-  if (!aside.children.length) aside.remove();
+  let again = false;
+  try { again = sessionStorage.getItem('wardian-arranging') === suiteName; sessionStorage.removeItem('wardian-arranging'); } catch {}
+  // The panels are not in the page yet, so the saved layout places them without restarting anything.
+  const arranged = await WardianArrange.init({
+    columns: [{id: 'aside', el: aside, label: 'Side'}, {id: 'main', el: main, label: 'Main'}],
+    panels, grid,
+    load: () => { try { return JSON.parse(localStorage.getItem(layoutKey) || 'null'); } catch { return null; } },
+    save: l => { try { if (l) localStorage.setItem(layoutKey, JSON.stringify(l)); else localStorage.removeItem(layoutKey); } catch {} },
+    // moveBefore keeps a frame running; without it, moving a frame restarts its app, so reload instead.
+    canMoveLive: !!Element.prototype.moveBefore,
+    reload: () => { try { sessionStorage.setItem('wardian-arranging', suiteName); } catch {} location.reload(); },
+    startOpen: again,
+  });
+  if (!arranged){ for (const p of panels) (p.home === 'aside' ? aside : main).append(p.el); }
+  if (!aside.children.length) aside.hidden = true;
+  // A frame has a window only once it is in the page, so the kernel learns the windows now.
+  for (const [n, f] of frames){ f.win = f.el.contentWindow; byWin.set(f.win, n); }
 
   window.Kernel = Object.freeze({
     apps: () => suite.apps.map(a => Object.assign({name: a.name}, contractOf(a))),
     trace: () => trace.slice(),
     faults: () => faults.slice(),
+    started: () => [...started],
   });
 })();
 </script>

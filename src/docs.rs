@@ -10,7 +10,7 @@ pub const APP_SCHEMA: &str = include_str!("../schemas/app.schema.json");
 pub const SUITE_SCHEMA: &str = include_str!("../schemas/suite.schema.json");
 
 const PAGES: &[(&str, &str, &str)] = &[
-    ("guide", "Building rustle apps", GUIDE_MD),
+    ("guide", "Building Wardian apps", GUIDE_MD),
     ("spec", "Package format", SPEC_MD),
 ];
 
@@ -96,14 +96,16 @@ pub fn page(name: &str) -> Option<String> {
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} · rustle</title>
+<title>{title} · Wardian</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
-  :root {{ color-scheme: light dark; --bg: #fbfbfc; --panel: #fff; --ink: #1b1f24; --muted: #5f6977; --line: #e1e4e8; --code: #f1f3f5; --accent: #2f6fde; }}
-  @media (prefers-color-scheme: dark) {{ :root {{ --bg: #14171b; --panel: #1b1f24; --ink: #e6e8eb; --muted: #98a1ad; --line: #2e343c; --code: #22272e; --accent: #6d9cf2; }} }}
+  :root {{ color-scheme: light dark; --bg: #faf7f2; --panel: #fff; --ink: #22201c; --muted: #6f675c; --line: #e8e1d6; --code: #f3eee6; --accent: #b9471f; }}
+  @media (prefers-color-scheme: dark) {{ :root {{ --bg: #16130f; --panel: #1f1b16; --ink: #ede7de; --muted: #a39a8c; --line: #342d25; --code: #2a241e; --accent: #f08a5d; }} }}
   * {{ box-sizing: border-box; }}
   body {{ margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, sans-serif; }}
   header {{ display: flex; gap: 1.25rem; align-items: center; padding: .7rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 1; }}
-  header strong {{ font-size: 1.05rem; }}
+  header .brand {{ display: flex; align-items: center; gap: .45rem; color: var(--ink); font-weight: 750; font-size: 1.15rem; letter-spacing: -.03em; }}
+  header .brand img {{ width: 24px; height: 24px; }}
   header nav {{ display: flex; gap: 1rem; }}
   header a {{ color: var(--muted); text-decoration: none; }}
   header a[aria-current] {{ color: var(--ink); font-weight: 600; }}
@@ -129,7 +131,7 @@ pub fn page(name: &str) -> Option<String> {
   hr {{ border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }}
   @media (max-width: 860px) {{ .wrap {{ grid-template-columns: minmax(0, 1fr); }} aside {{ display: none; }} }}
 </style>
-<header><strong>rustle docs</strong><nav>{nav}</nav><a class="home" href="/">Open rustle</a></header>
+<header><a class="brand" href="/docs"><img src="/logo.svg" alt="">Wardian docs</a><nav>{nav}</nav><a class="home" href="/">Open Wardian</a></header>
 <div class="wrap">
 <aside><ul>{toc}</ul></aside>
 <main>
@@ -151,7 +153,7 @@ mod tests {
         assert_eq!(slug("6.2. `suite.json`"), "6-2-suite-json");
         let spec = page("spec").unwrap();
         assert!(spec.contains("id=\"6-5-ctx\"") && spec.contains("<table>"));
-        assert!(page("guide").unwrap().contains("rustle new module"));
+        assert!(page("guide").unwrap().contains("wardian new module"));
         assert!(page("nope").is_none());
     }
 }

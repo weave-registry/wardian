@@ -1,0 +1,35 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json",
+  "format": 2,
+  "title": "Splunk table",
+  "description": "Run a Splunk search and see every row it returns. Other apps, such as the USL lab, can use the table.",
+  "styles": [
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "ui/table.css",
+    "ui/switch.css",
+    "style.css"
+  ],
+  "header": "header.html",
+  "apps": [
+    {
+      "name": "table",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "caps": [
+        "storage",
+        "splunk",
+        "claude:sample",
+        "claude:downloads"
+      ],
+      "channels": {
+        "send": [
+          "splunk.table"
+        ]
+      }
+    }
+  ],
+  "scripts": []
+}

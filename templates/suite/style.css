@@ -1,11 +1,12 @@
-:root { color-scheme: light dark; --ink: #1b1f24; --muted: #667080; --line: #d5dae0; --paper: #fff; --accent: #2f6fde; }
-@media (prefers-color-scheme: dark) { :root { --ink: #e6e8eb; --muted: #949ca8; --line: #2e343c; --paper: #16191d; --accent: #6d9cf2; } }
-body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--paper); }
-h1 { margin: 0; font-size: 1.6rem; }
-h2 { margin: 0 0 .5rem; font-size: 1.05rem; }
-.top { margin-bottom: 1.5rem; }
-.top p, .hint { color: var(--muted); margin: .25rem 0 .75rem; }
-textarea { width: 100%; min-height: 9rem; box-sizing: border-box; padding: .6rem; font: inherit; color: inherit;
-           background: transparent; border: 1px solid var(--line); border-radius: 8px; }
-.big { font-size: 2.2rem; font-weight: 700; color: var(--accent); }
+/* The Wardian component library (ui/) draws the cards and controls; this file lays them out. */
+:root { color-scheme: light dark; --page: #f7f7f8; }
+@media (prefers-color-scheme: dark) { :root { --page: #111113; } }
+* { box-sizing: border-box; }
+body { margin: 0; font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
+h1 { margin: 0; font-size: 1.6rem; letter-spacing: -.02em; }
+h2 { margin: 0 0 var(--w-space-2); font: 600 var(--w-text-lg)/1.3 var(--w-font); }
+.top { margin-bottom: var(--w-space-5); }
+.top p { color: var(--w-muted); margin: 4px 0 0; }
+.panel { padding: var(--w-space-4) var(--w-space-5); margin-bottom: var(--w-space-4); }
+.big { font-size: 2.2rem; font-weight: 700; }
 .loud { white-space: pre-wrap; word-break: break-word; }

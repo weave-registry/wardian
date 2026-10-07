@@ -11,7 +11,7 @@ Kernel.register({
     async function run(){
       if (!data) return;
       const my = ++seq, d = data;
-      const base = {id: my, rows: d.rows, units: d.units, rdiv: d.rdiv};
+      const base = {id: my, rows: d.rows, units: d.units, rdiv: d.rdiv, source: d.source || null};
       const distinct = new Set(d.rows.map(r => r.n)).size;
       if (d.rows.length < 4 || distinct < 3){ ctx.emit('analysis:ready', Object.assign({ok: false}, base)); return; }
       try {

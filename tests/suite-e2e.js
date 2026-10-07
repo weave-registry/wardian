@@ -19,7 +19,7 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
   const faults = await page.evaluate(() => Kernel.faults());
   ok(faults.length === 0, 'no kernel faults ' + JSON.stringify(faults));
   const boots = await page.evaluate(() => Kernel.trace().filter(t => t.kind === 'boot').map(t => t.app).sort());
-  ok(boots.length === 9, '9 apps booted: ' + boots.join(','));
+  ok(boots.length === 10, '10 apps booted: ' + boots.join(','));
   let chart = frameOf(page, 'chart');
   ok(await chart.locator('#chart circle.pt').count() === 12, '12 points drawn');
   ok(await chart.locator('#chart circle.pt.flag').count() === 1, '1 point flagged off-curve');
@@ -48,6 +48,9 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
 
   console.log('== export -> claude:downloads -> a real file');
   const exp = frameOf(page, 'export');
+  // Chrome stops drawing a sandboxed frame while it is off screen, and Playwright waits for the
+  // button to stop moving by watching it draw. Scroll the frame into view first, as a person would.
+  await page.locator('iframe[title=export]').scrollIntoViewIfNeeded(); await sleep(300);
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 5000 }), exp.locator('#btnCurve').click()]);
   ok(dl.suggestedFilename() === 'usl-fitted-curve.csv', 'download named ' + dl.suggestedFilename());
   const csv = require('fs').readFileSync(await dl.path(), 'utf8');

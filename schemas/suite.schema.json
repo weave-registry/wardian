@@ -1,33 +1,66 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "rustle suite.json",
+  "title": "Wardian suite.json",
   "description": "A suite: several sealed apps that share one screen and talk only through the host kernel. See SPEC.md, section 6.",
   "type": "object",
-  "required": ["apps"],
+  "required": [
+    "apps"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string"
+    },
     "format": {
       "description": "Package format version. Absent means 1. A host refuses a format newer than it supports.",
-      "type": "integer", "minimum": 1, "default": 1
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
     },
-    "title": { "type": "string" },
-    "description": { "type": "string" },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
     "styles": {
       "description": "Stylesheets for every frame, in order: package paths (inlined) or https://fonts.googleapis.com/ URLs.",
       "type": "array",
-      "items": { "anyOf": [ { "$ref": "#/$defs/path" }, { "type": "string", "pattern": "^https://fonts\\.googleapis\\.com/" } ] }
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/path"
+          },
+          {
+            "type": "string",
+            "pattern": "^https://fonts\\.googleapis\\.com/"
+          }
+        ]
+      }
     },
     "scripts": {
       "description": "Scripts inlined into every app frame before the app's own code. Each gets the id \"<file stem>-src\" for ctx.source.",
-      "type": "array", "items": { "$ref": "#/$defs/path" }
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/path"
+      }
     },
-    "header": { "description": "HTML shown across the top of the suite.", "$ref": "#/$defs/path" },
+    "header": {
+      "description": "HTML shown across the top of the suite.",
+      "$ref": "#/$defs/path"
+    },
     "columns": {
       "description": "CSS grid-template-columns for the aside and main columns.",
-      "type": "string", "pattern": "^[A-Za-z0-9_\\s(),.%\\-]+$",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_\\s(),.%\\-]+$",
       "default": "minmax(280px, 340px) minmax(0, 1fr)"
     },
-    "apps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/app" } }
+    "apps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/app"
+      }
+    }
   },
   "additionalProperties": false,
   "$defs": {
@@ -35,34 +68,116 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_.\\-]*(/[A-Za-z0-9_\\-][A-Za-z0-9_.\\-]*)*$"
     },
-    "name": { "type": "string", "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_.\\-]*$" },
-    "topic": { "type": "string", "minLength": 1 },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_.\\-]*$"
+    },
+    "topic": {
+      "type": "string",
+      "minLength": 1
+    },
     "app": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/name" },
-        "slot": { "description": "aside: the sticky left column. main: the right column, in order. Absent: no view.", "enum": ["aside", "main"] },
-        "wrap": { "description": "One opening tag the view sits in, e.g. <section id=\"chartSec\">.", "type": "string", "pattern": "^<[A-Za-z0-9]+[\\s>]" },
-        "dir": { "description": "Folder with app.js and view.html. Default: apps/<name>.", "$ref": "#/$defs/path" },
-        "scripts": { "description": "Extra scripts for this app only.", "type": "array", "items": { "$ref": "#/$defs/path" } },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "slot": {
+          "description": "aside: the sticky left column. main: the right column, in order. Absent: no view.",
+          "enum": [
+            "aside",
+            "main"
+          ]
+        },
+        "wrap": {
+          "description": "One opening tag the view sits in, e.g. <section id=\"chartSec\">.",
+          "type": "string",
+          "pattern": "^<[A-Za-z0-9]+[\\s>]"
+        },
+        "dir": {
+          "description": "Folder with app.js and view.html. Default: apps/<name>.",
+          "$ref": "#/$defs/path"
+        },
+        "scripts": {
+          "description": "Extra scripts for this app only.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/path"
+          }
+        },
         "emits": {
           "description": "Topics this app may emit. A retained topic is replayed to apps that start listening later.",
           "type": "object",
           "additionalProperties": {
-            "type": "object", "properties": { "retain": { "type": "boolean" } }, "additionalProperties": false
+            "type": "object",
+            "properties": {
+              "retain": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           }
         },
-        "listens": { "description": "Topics this app may listen to.", "type": "array", "items": { "$ref": "#/$defs/topic" } },
-        "provides": { "description": "Methods other apps may call on this app.", "type": "array", "items": { "type": "string" } },
+        "listens": {
+          "description": "Topics this app may listen to.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/topic"
+          }
+        },
+        "provides": {
+          "description": "Methods other apps may call on this app.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "needs": {
           "description": "Methods this app may call, as \"app.method\".",
-          "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z0-9_.\\-]+\\.[^.]+$" }
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.\\-]+\\.[^.]+$"
+          }
         },
         "caps": {
           "description": "Capabilities this app may use.",
           "type": "array",
-          "items": { "enum": ["storage", "asset", "worker", "source", "claude:downloads", "claude:sample"] }
+          "items": {
+            "enum": [
+              "storage",
+              "asset",
+              "worker",
+              "source",
+              "claude:downloads",
+              "claude:sample",
+              "splunk"
+            ]
+          }
+        },
+        "channels": {
+          "description": "Channels to other packages (format 2). The user is asked before first use. See SPEC.md 6.9.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "send": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              }
+            },
+            "receive": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              }
+            }
+          }
         }
       },
       "additionalProperties": false

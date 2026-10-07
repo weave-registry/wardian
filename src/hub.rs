@@ -89,6 +89,19 @@ pub struct Hub {
     refresh_every: Duration,
     client: Mutex<Option<Arc<DriveClient>>>,
     source: RwLock<Arc<Source>>,
+    /// Serializes changes to grants.json.
+    grants_lock: Mutex<()>,
+}
+
+/// Capabilities the host provides itself, which the user allows per package.
+pub const HOST_CAPS: &[&str] = &["splunk", "ai"];
+
+/// A channel name: lowercase letters, digits, '.', '-', '_' (SPEC.md §6.9).
+pub fn valid_channel(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '-' | '_'))
 }
 
 impl Hub {
@@ -100,6 +113,7 @@ impl Hub {
             refresh_every,
             client: Mutex::new(None),
             source: RwLock::new(Arc::new(Source::Local(local_root))),
+            grants_lock: Mutex::new(()),
         }
     }
 
@@ -246,11 +260,26 @@ impl Hub {
     }
 
     /// Moves a local app to the trash. Nothing is deleted: `restore_app` puts it back, and only
-    /// the user empties the trash, outside rustle.
+    /// the user empties the trash, outside Wardian.
     pub fn remove_app(&self, name: &str) -> Result<Value, String> {
         if let Source::Drive(_) = &*self.source() {
-            return Err("these apps come from Google Drive, which rustle only reads. Remove the app's folder in Drive.".into());
+            return Err("these apps come from Google Drive, which Wardian only reads. Remove the app's folder in Drive.".into());
         }
+        let id = self.move_to_trash(name)?;
+        Ok(json!({ "removed": name, "id": id }))
+    }
+
+    /// The apps folder on this machine, where imports and AI-made apps go.
+    pub fn local_root(&self) -> &Path {
+        &self.local_root
+    }
+
+    pub fn serving_local(&self) -> bool {
+        matches!(&*self.source(), Source::Local(_))
+    }
+
+    /// Moves a local app folder into the trash and returns its trash id.
+    pub fn move_to_trash(&self, name: &str) -> Result<String, String> {
         if !safe_segment(name) {
             return Err(format!("\"{name}\" is not an app name"));
         }
@@ -266,7 +295,7 @@ impl Hub {
         }
         fs::rename(&dir, self.trash_dir().join(&id)).map_err(|e| format!("removing {name}: {e}"))?;
         println!("removed: {name} (kept in {})", self.trash_dir().join(&id).display());
-        Ok(json!({ "removed": name, "id": id }))
+        Ok(id)
     }
 
     /// Puts a removed app back, unless an app with its name exists again.
@@ -350,6 +379,81 @@ impl Hub {
         self.import(&bytes, &name, replace)
     }
 
+    fn grants_path(&self) -> PathBuf {
+        self.data_dir.join("grants.json")
+    }
+
+    /// The user's answers to channel permission questions.
+    pub fn grants(&self) -> Value {
+        let list: Value = fs::read_to_string(self.grants_path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .filter(Value::is_array)
+            .unwrap_or_else(|| json!([]));
+        json!({ "grants": list })
+    }
+
+    /// Saves one answer: decision "allow" or "deny", or "ask" to forget it.
+    pub fn set_grant(&self, body: &Value) -> Result<Value, String> {
+        let app = body["app"].as_str().unwrap_or("");
+        let channel = body["channel"].as_str().unwrap_or("");
+        let mode = body["mode"].as_str().unwrap_or("");
+        let decision = body["decision"].as_str().unwrap_or("");
+        if !safe_segment(app) {
+            return Err("not an app name".into());
+        }
+        if !valid_channel(channel) {
+            return Err("not a channel name".into());
+        }
+        // "use" is an answer about a host capability (the "channel" is its name), not a channel.
+        let ok_mode = matches!(mode, "send" | "receive") || (mode == "use" && HOST_CAPS.contains(&channel));
+        if !ok_mode || !matches!(decision, "allow" | "deny" | "ask") {
+            return Err("mode must be send, receive, or use (for a host capability); decision must be allow, deny or ask".into());
+        }
+        let _guard = self.grants_lock.lock().unwrap();
+        let mut list: Vec<Value> = self.grants()["grants"].as_array().cloned().unwrap_or_default();
+        list.retain(|g| !(g["app"] == app && g["channel"] == channel && g["mode"] == mode));
+        if decision != "ask" {
+            list.push(json!({ "app": app, "channel": channel, "mode": mode, "allow": decision == "allow", "at": unix_now() }));
+        }
+        let body = serde_json::to_vec_pretty(&list).map_err(|e| e.to_string())?;
+        write_private(&self.grants_path(), &body).map_err(|e| format!("saving permissions: {e}"))?;
+        println!("permission: {app} {mode} {channel}: {decision}");
+        Ok(json!({ "grants": list }))
+    }
+
+    /// True when the user allowed `app` this mode on this channel or capability.
+    fn granted(&self, app: &str, channel: &str, mode: &str) -> bool {
+        let list = self.grants();
+        list["grants"].as_array().is_some_and(|l| {
+            l.iter().any(|g| g["app"] == app && g["channel"] == channel && g["mode"] == mode && g["allow"] == true)
+        })
+    }
+
+    /// A host capability call is allowed only when `app` in suite `package`
+    /// declares `cap` in suite.json and the user allowed the package to use
+    /// `grant` (the name the user is asked about: "splunk", or "ai" for claude:sample).
+    pub fn check_host_cap(&self, package: &str, app: &str, cap: &str, grant: &str) -> Result<(), String> {
+        if !safe_segment(package) {
+            return Err("not an app name".into());
+        }
+        let suite: Value = self
+            .source()
+            .read(package, "suite.json")
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .ok_or_else(|| format!("{package} is not a suite"))?;
+        let declared = suite["apps"].as_array().is_some_and(|apps| {
+            apps.iter().any(|a| a["name"] == app && a["caps"].as_array().is_some_and(|c| c.iter().any(|c| c == cap)))
+        });
+        if !declared {
+            return Err(format!("{package}/{app} does not declare the capability \"{cap}\" in suite.json"));
+        }
+        if !self.granted(package, grant, "use") {
+            return Err(format!("you have not allowed {package} to use {grant}"));
+        }
+        Ok(())
+    }
+
     fn save(&self, cfg: Config) -> Result<(), String> {
         let body = serde_json::to_vec_pretty(&cfg).map_err(|e| e.to_string())?;
         write_private(&self.config_path(), &body).map_err(|e| format!("saving config: {e}"))
@@ -358,7 +462,7 @@ impl Hub {
 
 /// Writes through a temp file and a rename, so a crash never leaves half a
 /// file, and makes the file readable by its owner only.
-fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }

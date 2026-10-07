@@ -1,9 +1,10 @@
-//! `rustle check <folder|zip>...`: tests packages against SPEC.md before
+//! `wardian check <folder|zip>...`: tests packages against SPEC.md before
 //! they are imported, and says what is wrong in words.
 //!
 //! A zip is first unpacked by the real importer into a temporary folder, so
 //! the check judges exactly what an import would produce.
 
+use crate::hub::valid_channel;
 use crate::import::{import_zip, MAX_FILE_BYTES, MAX_TOTAL_BYTES};
 use crate::source::{safe_rel, safe_segment, APP_MARKERS, FORMAT, MAX_APP_FILES, MAX_DEPTH, SKIP_DIRS};
 use crate::suite::{tag_name, FONT_CSS};
@@ -15,10 +16,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const KNOWN_CAPS: &[&str] = &["storage", "asset", "worker", "source", "claude:downloads", "claude:sample"];
-const APP_JSON_KEYS: &[&str] = &["$schema", "format", "title", "description", "page"];
+const KNOWN_CAPS: &[&str] = &["storage", "asset", "worker", "source", "claude:downloads", "claude:sample", "splunk"];
+const APP_JSON_KEYS: &[&str] = &["$schema", "format", "title", "description", "page", "channels"];
 const SUITE_KEYS: &[&str] = &["$schema", "format", "title", "description", "styles", "scripts", "header", "columns", "apps"];
-const ENTRY_KEYS: &[&str] = &["name", "slot", "wrap", "dir", "scripts", "emits", "listens", "provides", "needs", "caps"];
+const ENTRY_KEYS: &[&str] = &["name", "slot", "wrap", "dir", "scripts", "emits", "listens", "provides", "needs", "caps", "channels"];
 
 #[derive(Default)]
 struct Report {
@@ -39,7 +40,7 @@ impl Report {
 /// 0 when no package has errors, 1 otherwise, 2 for bad usage.
 pub fn run(paths: &[String]) -> i32 {
     if paths.is_empty() {
-        eprintln!("usage: rustle check <package folder | .zip | .rustle>...");
+        eprintln!("usage: wardian check <package folder | .zip | .wardian>...");
         return 2;
     }
     let mut failed = false;
@@ -53,7 +54,7 @@ pub fn check_path(path: &Path) -> bool {
     let shown = path.display();
     if path.is_file() {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let tmp = std::env::temp_dir().join(format!("rustle-check-{nanos}"));
+        let tmp = std::env::temp_dir().join(format!("wardian-check-{nanos}"));
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("package.zip");
         let result = fs::read(path)
             .map_err(|e| e.to_string())
@@ -108,18 +109,30 @@ pub fn check_path(path: &Path) -> bool {
 }
 
 fn print(title: &str, summary: String, r: Report) -> bool {
-    println!("{title}  ({summary})");
+    println!("{}", format_report(title, &summary, &r));
+    r.errors.is_empty()
+}
+
+fn format_report(title: &str, summary: &str, r: &Report) -> String {
+    let mut out = format!("{title}  ({summary})\n");
     for e in &r.errors {
-        println!("  error    {e}");
+        out += &format!("  error    {e}\n");
     }
     for w in &r.warnings {
-        println!("  warning  {w}");
+        out += &format!("  warning  {w}\n");
     }
     if r.errors.is_empty() {
-        println!("  ok       {}", if r.warnings.is_empty() { "follows the spec" } else { "follows the spec, with warnings" });
+        out += &format!("  ok       {}\n", if r.warnings.is_empty() { "follows the spec" } else { "follows the spec, with warnings" });
     }
-    println!();
-    r.errors.is_empty()
+    out
+}
+
+/// Checks one app folder whose name is given separately (the folder may be a
+/// staging copy). Returns whether it passed, and the report as text.
+pub fn check_dir(dir: &Path, name: &str) -> (bool, String) {
+    let mut r = Report::default();
+    let summary = check_app(dir, name, &mut r);
+    (r.errors.is_empty(), format_report(name, &summary, &r))
 }
 
 /// Every file under `dir`, as paths relative to it ("pkg/usl.js").
@@ -191,6 +204,7 @@ fn check_app(dir: &Path, name: &str, r: &mut Report) -> String {
             Ok(Value::Object(m)) => {
                 check_format(&m, "app.json", r);
                 unknown_keys(&m, APP_JSON_KEYS, "app.json", r);
+                check_channels(m.get("channels"), doc_format(&m), "app.json: channels", r);
                 for k in ["title", "description", "page"] {
                     if m.get(k).is_some_and(|v| !v.is_string()) {
                         r.err(format!("app.json: \"{k}\" must be a string"));
@@ -226,14 +240,34 @@ fn check_app(dir: &Path, name: &str, r: &mut Report) -> String {
             r.warn("suite.json is present, so the host runs the suite; app.wasm and the page are not shown");
         }
         let n = check_suite(&served, &read, r);
+        check_library(&served, None, &read, r);
         return format!("suite, {n} apps, {} files, {} KB", served.len(), total.div_ceil(1024));
     }
     let page = page.or_else(|| {
         ["index.html", "demo/index.html", "www/index.html", "web/index.html"].into_iter().find(|p| served.contains(*p)).map(String::from)
     });
+    if let Some(p) = &page {
+        check_library(&served, Some(p), &read, r);
+    }
     match page {
         Some(p) => format!("module with page {p}, {} files, {} KB", served.len(), total.div_ceil(1024)),
         None => format!("module, functions only, {} files, {} KB", served.len(), total.div_ceil(1024)),
+    }
+}
+
+/// Every app uses the Wardian component library, and every page app offers Arrange (SPEC.md 6.10).
+/// Only warnings: an app without them still runs. A module app needs neither, since Wardian draws
+/// it with the library, and a suite gets Arrange from the kernel.
+fn check_library(served: &HashSet<String>, page: Option<&str>, read: &dyn Fn(&str) -> Option<Vec<u8>>, r: &mut Report) {
+    if !served.iter().any(|f| f == "theme.css" || f.ends_with("/theme.css")) {
+        r.warn("does not use the Wardian component library: run `wardian add button field card <package>` and use its classes (SPEC.md 6.10)");
+    }
+    let Some(page) = page else { return };
+    let html = read(page).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    if !html.contains("data-panel") {
+        r.warn(format!("{page}: no element has data-panel, so viewers cannot arrange this page; mark its parts and run `wardian add arrange <package>`"));
+    } else if !html.contains("arrange.js") {
+        r.warn(format!("{page}: marks panels but does not load arrange.js; run `wardian add arrange <package>`"));
     }
 }
 
@@ -242,9 +276,35 @@ fn check_format(m: &Map<String, Value>, file: &str, r: &mut Report) {
         None => {}
         Some(Value::Number(n)) if n.as_u64().is_some_and(|f| (1..=FORMAT).contains(&f)) => {}
         Some(Value::Number(n)) if n.as_u64().is_some_and(|f| f > FORMAT) => {
-            r.err(format!("{file}: format {n} is newer than this rustle supports ({FORMAT})"))
+            r.err(format!("{file}: format {n} is newer than this Wardian supports ({FORMAT})"))
         }
         Some(v) => r.err(format!("{file}: \"format\" must be a whole number from 1, not {v}")),
+    }
+}
+
+fn doc_format(m: &Map<String, Value>) -> u64 {
+    m.get("format").and_then(Value::as_u64).unwrap_or(1)
+}
+
+/// "channels": {"send": [...], "receive": [...]}, which needs format 2.
+fn check_channels(v: Option<&Value>, format: u64, at: &str, r: &mut Report) {
+    let Some(v) = v else { return };
+    let Value::Object(m) = v else {
+        r.err(format!("{at}: must be an object like {{\"send\": [\"budget\"], \"receive\": []}}"));
+        return;
+    };
+    if format < 2 {
+        r.err(format!("{at}: channels need \"format\": 2, so an older Wardian says \"update\" instead of failing"));
+    }
+    for k in m.keys().filter(|k| !matches!(k.as_str(), "send" | "receive")) {
+        r.err(format!("{at}: unknown field \"{k}\" (use send and receive)"));
+    }
+    for mode in ["send", "receive"] {
+        for name in strings(m.get(mode), &format!("{at}.{mode}"), r) {
+            if !valid_channel(name) {
+                r.err(format!("{at}.{mode}: \"{name}\" is not a channel name (lowercase letters, digits, '.', '-', '_')"));
+            }
+        }
     }
 }
 
@@ -301,6 +361,7 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
     };
     check_format(&s, "suite.json", r);
     unknown_keys(&s, SUITE_KEYS, "suite.json", r);
+    let format = doc_format(&s);
 
     for style in strings(s.get("styles"), "suite.json: styles", r) {
         if style.starts_with(FONT_CSS) {
@@ -368,6 +429,7 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
             continue;
         }
         unknown_keys(a, ENTRY_KEYS, &at, r);
+        check_channels(a.get("channels"), format, &format!("{at}.channels"), r);
         let slot = a.get("slot").map(|v| v.as_str().unwrap_or("?"));
         if !matches!(slot, None | Some("aside") | Some("main")) {
             r.err(format!("{at}: slot must be \"aside\", \"main\", or absent"));
@@ -427,9 +489,7 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
         }
         for cap in strings(a.get("caps"), &format!("{at}.caps"), r) {
             if !KNOWN_CAPS.contains(&cap) {
-                r.warn(format!("{at}: capability \"{cap}\" is unknown to this rustle and is never granted"));
-            } else if cap == "claude:sample" {
-                r.warn(format!("{at}: claude:sample is not available in rustle; ctx.cap(\"sample\") resolves to null"));
+                r.warn(format!("{at}: capability \"{cap}\" is unknown to this Wardian and is never granted"));
             }
         }
     }
@@ -438,13 +498,28 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
 
 #[cfg(test)]
 mod tests {
-    use super::check_path;
+    use super::{check_dir, check_path};
+    use std::fs;
     use std::path::Path;
 
     #[test]
     fn real_packages_pass() {
         assert!(check_path(Path::new("apps/usl-lab")));
         assert!(check_path(Path::new("tests/fixtures/rogue")));
+    }
+
+    #[test]
+    fn channels_need_format_2() {
+        let dir = std::env::temp_dir().join(format!("wardian-ch-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("app.wasm"), b"\0asm\x01\0\0\0").unwrap();
+        fs::write(dir.join("app.json"), r#"{"format":1,"channels":{"send":["budget"]}}"#).unwrap();
+        assert!(!check_dir(&dir, "x").0, "format 1 with channels must fail");
+        fs::write(dir.join("app.json"), r#"{"format":2,"channels":{"send":["Budget!"]}}"#).unwrap();
+        assert!(!check_dir(&dir, "x").0, "a bad channel name must fail");
+        fs::write(dir.join("app.json"), r#"{"format":2,"channels":{"send":["budget"],"receive":["loan.v1"]}}"#).unwrap();
+        assert!(check_dir(&dir, "x").0);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

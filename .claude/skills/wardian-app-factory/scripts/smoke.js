@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Smoke test for one rustle package: opens it the way a user would and reports what broke.
+// Smoke test for one Wardian package: opens it the way a user would and reports what broke.
 //
-//   node smoke.js --serve <apps-folder> <app-name>   start a private rustle on a free port, test, stop it
-//   node smoke.js <base-url> <app-name>              test against a rustle that is already running
+//   node smoke.js --serve <apps-folder> <app-name>   start a private Wardian on a free port, test, stop it
+//   node smoke.js <base-url> <app-name>              test against a Wardian that is already running
 //   e.g. node smoke.js --serve apps hello-suite
 //
-// --serve runs target/release/rustle from the current folder (the repo root), with a throwaway
+// --serve runs target/release/wardian from the current folder (the repo root), with a throwaway
 // data folder, so it never touches the user's server or settings.
 //
 // Needs the playwright package (NODE_PATH=$(npm root -g) if installed globally) and Google Chrome.
@@ -15,24 +15,24 @@ const serve = args[0] === '--serve';
 let [base, name] = serve ? args.slice(1) : args;
 if (!base || !name) { console.error('usage: node smoke.js --serve <apps-folder> <app-name>\n       node smoke.js <base-url> <app-name>'); process.exit(2); }
 
-// Starts rustle on port 0 (the system picks a free one) and reads the real address it prints.
+// Starts Wardian on port 0 (the system picks a free one) and reads the real address it prints.
 function startServer(appsDir) {
   const { spawn } = require('child_process');
   const fs = require('fs'), os = require('os'), path = require('path');
-  const bin = path.resolve('target/release/rustle');
+  const bin = path.resolve('target/release/wardian');
   if (!fs.existsSync(bin)) { console.error(`no ${bin}: run this from the repo root after cargo build --release`); process.exit(2); }
-  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'rustle-smoke-'));
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'wardian-smoke-'));
   const proc = spawn(bin, [appsDir], { env: { ...process.env, ADDR: '127.0.0.1:0', DATA_DIR: data } });
   return new Promise((resolve, reject) => {
     let out = '';
-    const timer = setTimeout(() => reject(new Error('rustle did not start: ' + out)), 10000);
+    const timer = setTimeout(() => reject(new Error('Wardian did not start: ' + out)), 10000);
     const read = d => {
       out += d;
       const m = out.match(/listening on (http:\/\/\S+)/);
       if (m) { clearTimeout(timer); resolve({ url: m[1], stop: () => { proc.kill(); fs.rmSync(data, { recursive: true, force: true }); } }); }
     };
     proc.stdout.on('data', read); proc.stderr.on('data', read);
-    proc.on('exit', code => reject(new Error(`rustle exited (${code}): ${out}`)));
+    proc.on('exit', code => reject(new Error(`Wardian exited (${code}): ${out}`)));
   });
 }
 
@@ -44,7 +44,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
   let server = null;
-  if (serve) { server = await startServer(base); base = server.url; console.log(`(started rustle at ${base})`); }
+  if (serve) { server = await startServer(base); base = server.url; console.log(`(started Wardian at ${base})`); }
   process.on('exit', () => server && server.stop());
   const browser = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch());
   const page = await browser.newPage();

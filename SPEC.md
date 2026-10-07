@@ -1,12 +1,12 @@
-# rustle package format
+# Wardian package format
 
 Format version: **1**
-Applies to: rustle 0.3 and later
+Applies to: Wardian 0.3 and later
 
-This document says what a rustle package is, what a host guarantees to it, and what a package
+This document says what a Wardian package is, what a host guarantees to it, and what a package
 must not do. The words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
-`rustle check <package>` tests a package against this document. The JSON Schemas in `schemas/`
+`wardian check <package>` tests a package against this document. The JSON Schemas in `schemas/`
 describe `app.json` and `suite.json` for editors.
 
 ---
@@ -20,7 +20,7 @@ describe `app.json` and `suite.json` for editors.
 | **page** | An HTML page inside a package that the host shows as the app's interface. |
 | **suite** | A package that holds several **suite apps** described by a `suite.json`. |
 | **suite app** | One sealed part of a suite: an `app.js`, and optionally a `view.html`. |
-| **host** | The rustle server and its main page. |
+| **host** | The Wardian server and its main page. |
 | **kernel** | The host page that runs a suite and passes messages between its apps. |
 | **frame** | The sandboxed browser frame one page or one suite app runs in. |
 
@@ -33,9 +33,14 @@ without it is format 1.
 why in the app list instead.
 
 2.3. Within one format version, changes are additive only. A host MUST ignore fields it does not
-know. `rustle check` reports them as warnings, because they are usually typos.
+know. `wardian check` reports them as warnings, because they are usually typos.
 
 2.4. A package SHOULD state `"format": 1` once it depends on anything in this document.
+
+2.5. **Format 2** adds one thing: channels between packages (`channels`, section 6.9). A package
+that declares `channels` MUST state `"format": 2`. Then a format-1 host refuses it with "Update
+Wardian" (2.2) instead of failing when the app runs. Everything else is unchanged, so a format-1
+package runs on a format-2 host as before.
 
 ## 3. Package layout
 
@@ -80,6 +85,7 @@ letters, digits, `-`, `_` and `.`, not starting with `.`. The host does not serv
 | `title` | string | The name shown in the app list. Default: the folder name. |
 | `description` | string | Shown under the title. |
 | `page` | string | Path of the app's page in the package. See 5.3. |
+| `channels` | object | Format 2. Channels the page may use to talk to other packages: `{ "send": [...], "receive": [...] }`. See 6.9. |
 
 ## 5. Module apps
 
@@ -146,6 +152,11 @@ my-suite/
   ...                      shared files named in suite.json
 ```
 
+A host MAY let each viewer rearrange a suite's panels for themselves: change their order, move
+them between the two columns, hide them, or use one column. Wardian calls this **Arrange** and keeps
+the layout in the viewer's browser only. A hidden panel's app still runs. So an app MUST NOT depend on
+where its panel sits, or on being visible.
+
 ### 6.2. `suite.json`
 
 ```json
@@ -191,8 +202,9 @@ Each entry in `apps`:
 | `provides` | list | Methods other apps may call on this app. |
 | `needs` | list | Methods this app may call, as `"app.method"`. |
 | `caps` | list | Capabilities, from 6.6. |
+| `channels` | object | Format 2. Channels to other packages: `{ "send": [...], "receive": [...] }`. See 6.9. |
 
-`emits`, `listens`, `provides`, `needs` and `caps` together are the app's **contract**.
+`emits`, `listens`, `provides`, `needs`, `caps` and `channels` together are the app's **contract**.
 
 ### 6.3. The frame
 
@@ -257,6 +269,7 @@ kernel enforces the contract in `suite.json`, never the one in `app.js`.** The c
 | `store.get(key)`, `store.set(key, value)` | Needs `storage`. `get` is synchronous and returns `null` for a missing key. Values MUST be JSON-compatible. |
 | `asset(path)` | Needs `asset`. A promise of an `ArrayBuffer` with the bytes of `path`, a file in this suite's package, e.g. `ctx.asset('text.wasm')`. |
 | `cap(name)` | Needs `claude:<name>`. A promise of the capability, or `null` if this host cannot provide it. |
+| `channel(name)` | Format 2. `{ send(data), on(fn) }` for a channel to other packages. See 6.9. |
 | `observe(el, fn)` | Call `fn` when `el` changes size. |
 | `source(id)` | Needs `source`. The text of an inlined script, e.g. `ctx.source('lib-src')`. |
 | `spawn(code)` | Needs `worker`. A Web Worker that runs `code`, or `null` if workers are not available. |
@@ -273,7 +286,13 @@ between apps. A value that cannot be copied, such as a function, makes `emit` or
 | `worker` | `ctx.spawn` | the frame |
 | `source` | `ctx.source` | the frame |
 | `claude:downloads` | `ctx.cap('downloads')` → `{ save({ filename, data }) }`. `filename` matches `[A-Za-z0-9_. -]{1,120}`. `data` is a string, `Blob`, `ArrayBuffer` or typed array. Resolves to `{ status: 'saved' }`. | kernel |
-| `claude:sample` | `ctx.cap('sample')`. **Not available in rustle**: it resolves to `null`. Apps MUST handle `null`. | — |
+| `claude:sample` | `ctx.cap('sample')` → a function `sample(prompt, {signal, onText, modelTier})` resolving to `{ text, truncated }`, and `sample.json(prompt, opts)` resolving to parsed JSON. Errors carry `e.code` (`not_granted`, `rate_limited`, `refused`, `invalid_json`, `prompt_too_large`, `cancelled`, `error`). Wardian answers with the Anthropic key saved in Settings and resolves to `null` when there is none, so apps MUST handle `null`. The user allows each package once, as for `splunk`. | host server |
+| `splunk` | `ctx.cap('splunk')` → `{ status(), search({ search, earliest?, latest? }) }`. `status()` resolves to `{ ready }`. `search` resolves to `{ fields, rows, truncated, messages }`, at most 10 000 rows. The server runs the search with its own Splunk account; the app never sees it. | host server |
+
+A `splunk` search MUST NOT run until the user allows the package, the same way as a channel
+(6.9), with the answer kept under mode `use`. The server MUST check that answer, and that the
+calling app lists `splunk` in `suite.json`, on every search. A host without Splunk resolves
+`ctx.cap('splunk')` to `null`, so apps MUST handle `null`.
 
 A host MUST NOT grant a capability that the app's contract in `suite.json` does not list.
 
@@ -306,6 +325,7 @@ by its frame, never by the message's content.
 | `{k:'asset', id, path}` | `ctx.asset` |
 | `{k:'cap', id, name}`, `{k:'capop', id, name, op, args}` | `ctx.cap` and a capability's methods. |
 | `{k:'size', h, bg}` | The frame's content height and background color. |
+| `{k:'chsend', id, channel, data}`, `{k:'chon', id, channel}` | `ctx.channel(name).send` and `.on`. |
 | `{k:'fault', message}` | An error inside the app. |
 
 | From kernel | Meaning |
@@ -313,15 +333,111 @@ by its frame, never by the message's content.
 | `{k:'boot', contract, store}` | The contract from `suite.json`, and the stored data. |
 | `{k:'msg', topic, payload}` | A message for `ctx.on`. |
 | `{k:'invoke', id, method, args}` | Another app calls a provided method. |
-| `{k:'reply', id, ok, value \| error}` | The answer to `call`, `asset`, `cap` or `capop`. |
+| `{k:'reply', id, ok, value \| error}` | The answer to `call`, `asset`, `cap`, `capop`, `chsend` or `chon`. |
+| `{k:'chmsg', channel, data, from, at}` | A message on a channel, for `ctx.channel(name).on`. |
+
+### 6.9. Channels between packages
+
+Topics (6.2) connect the apps of one suite. **Channels** connect separate packages: a page app
+and a suite, or two suites, each installed on its own. Because that crosses the line between
+packages, the user decides, the way a phone asks before an app uses the camera.
+
+1. **Declare.** A package lists its channels: in `app.json` for a page app, in each `suite.json`
+   entry for a suite app. `send` lists the channels it may send on; `receive` the channels it may
+   read. A channel name is 1–64 characters: lowercase letters, digits, `.`, `-`, `_`, starting with
+   a letter or digit. The package MUST state `"format": 2`.
+2. **Ask.** The first time a package sends or receives on a channel, the host asks the user:
+   *"loan-planner wants to send messages on the channel budget."* The answer, allow or don't allow,
+   is kept per package, channel and direction. The host MUST NOT ask about, or allow, a channel the
+   package does not declare. Closing the question without an answer refuses this use only.
+3. **Revoke.** The host lists every answer, and the user can take one back. The package is then
+   asked again.
+4. **Deliver.** The host sends each message to every package that is allowed to receive on that
+   channel, in every Wardian tab of this browser, except the sender. It stamps each message with
+   the sending package's name, so a package cannot pretend to be another.
+5. **Keep the latest.** The host keeps the latest message on each channel in this browser. A
+   package that starts receiving gets it first, like a retained topic.
+
+Data MUST be JSON-compatible and at most 256 KB. A package may send at most 100 messages in 10
+seconds. The permission belongs to the package, not to one app inside a suite: in a suite, only
+the entries that declare a channel can use it.
+
+**In a suite app:**
+
+```js
+Kernel.register({
+  name: 'view',
+  channels: { receive: ['budget'] },      // the same as in suite.json
+  init(ctx) {
+    ctx.channel('budget').on((data, { from }) => { /* from: the sending package */ })
+      .catch(e => { /* the user did not allow it */ });
+  }
+});
+```
+
+**In a page app**, load the host's small library, then use the same calls:
+
+```html
+<script src="/sdk/wardian.js"></script>
+<script>
+  wardian.channel('budget').send({ monthly: 1798.65 })
+    .catch(e => { /* not allowed, or the page was opened outside Wardian */ });
+</script>
+```
+
+`send(data)` resolves once the message is delivered. `on(fn)` resolves once receiving is allowed.
+Both reject when the user does not allow the channel. A page opened on its own, outside Wardian's
+app list, has no channels: both calls reject.
+
+### 6.10. Standard components
+
+A host provides a small set of standard elements, so apps look and behave alike without bringing
+their own copies. A host MUST define them in every suite frame and in `/sdk/wardian.js` for page apps.
+They need no capability. An app MUST still work, in plain form, where an element is not defined.
+
+| Element | Does |
+|---|---|
+| `<wardian-progress>` | A progress bar. Without `value` it shows work of unknown length; with `value` and `max` it fills. Attributes `label`, `detail`, `elapsed` (a running clock), `cancelable` (a Stop button that fires `cancel`). Methods `start(label, opts)`, `update({value, max, label, detail})`, `done(label)`, `fail(label)`; property `seconds`. It has the `progressbar` role and stops moving for reduced motion. Colours come from `--wardian-progress-color`, `--wardian-progress-track` and `--wardian-progress-error`. |
+
+The component library is different: it is **copied in**, not provided. `wardian add COMPONENT...
+PACKAGE` copies each component's files (plain CSS, and a small script for tabs, dialog, toast and
+tooltip) into the package's `ui/` folder, with `ui/theme.css`, the tokens they all read
+(`--w-bg`, `--w-fg`, `--w-primary`, `--w-radius` …). For a suite it adds them to `suite.json`
+`styles` and `scripts`, before the package's own files so those win; for a page app it prints the
+tags to add. The files then belong to the package: it stays self-contained, keeps working on a host
+without the library, and its author may change them. `wardian add` never replaces a file that is
+already there unless given `--force`. A running host shows every component at `/ui/`.
+
+Every app SHOULD use the library, so all apps look and work alike. `wardian check` warns about a
+suite or page app with no `theme.css`. A module app needs nothing: the host draws its functions with
+the library.
+
+### 6.11. Arrange
+
+Every app offers **Arrange**: each viewer may reorder its panels, move them between two columns,
+hide them, or use one column. The layout belongs to that viewer, in that browser; the package never
+changes. A hidden panel's code still runs, so an app MUST NOT depend on where a panel sits or on
+being visible. All three kinds use the same script, `ui/arrange.js`:
+
+- **Suite.** The host arranges the apps that have a `slot`. The app does nothing.
+- **Page app.** The page marks its parts with `data-panel="id"` (and optionally
+  `data-panel-label`), puts them in up to two containers marked `data-arrange-column="side"` and
+  `"main"` (or in one parent), may mark the element around the columns `data-arrange-grid` so they
+  can swap or join, and loads `ui/arrange.js` (`wardian add arrange`). The page is sandboxed and
+  cannot keep the layout, so the script asks the host page with
+  `postMessage({wardian: 'layout', k: 'get' | 'set', id, layout})`, and the host replies
+  `{wardian: 'layout', id, layout}`. Outside a host, the layout lasts until the page closes.
+  `wardian check` warns about a page with no `data-panel`.
+- **Module app.** The host draws one card per function, and arranges those.
 
 ## 7. Distribution
 
 7.1. **A folder.** Put the package folder in the host's apps folder, or in the Google Drive
 folder the host serves.
 
-7.2. **A `.rustle` file** is a zip. It SHOULD hold one package folder at its top:
-`my-app.rustle` → `my-app/app.wasm`, `my-app/app.json`, … A `.zip` is read the same way.
+7.2. **A `.wardian` file** is a zip. It SHOULD hold one package folder at its top:
+`my-app.wardian` → `my-app/app.wasm`, `my-app/app.json`, … A `.zip` is read the same way. A host
+SHOULD also accept `.rustle`, the extension from before the rename.
 
 7.3. **Import is lenient.** To accept project zips as they come, the importer also:
 
@@ -343,28 +459,28 @@ folder the host serves.
 nothing. It refuses a package whose name is already taken, unless asked to replace it.
 
 7.5. **Removing.** A host SHOULD move a removed package aside rather than delete it, so the
-removal can be undone. rustle moves it to `.trash/` inside the apps folder; hidden folders are
+removal can be undone. Wardian moves it to `.trash/` inside the apps folder; hidden folders are
 never listed or served.
 
 ## 8. Starting and checking a package
 
 ```
-rustle new module my-app      numbers in, numbers out; rustle builds the interface
-rustle new page my-app        WebAssembly plus your own page
-rustle new suite my-app       three sealed apps that talk through the kernel
+wardian new module my-app      numbers in, numbers out; Wardian builds the interface
+wardian new page my-app        WebAssembly plus your own page
+wardian new suite my-app       three sealed apps that talk through the kernel
 ```
 
-Each template passes `rustle check` as created, and includes its Rust source and a `build.sh`.
+Each template passes `wardian check` as created, and includes its Rust source and a `build.sh`.
 
 ```
-rustle check my-app/          a package folder
-rustle check apps/            every package in a folder
-rustle check my-app.rustle    a zip, exactly as the importer would unpack it
+wardian check my-app/          a package folder
+wardian check apps/            every package in a folder
+wardian check my-app.wardian    a zip, exactly as the importer would unpack it
 ```
 
 The exit status is 0 if no package has errors and 1 otherwise. Warnings do not fail a check.
 
-`rustle check` cannot run JavaScript, so it does not compare the contract in `app.js` with
+`wardian check` cannot run JavaScript, so it does not compare the contract in `app.js` with
 `suite.json` (6.4). The kernel does that when the suite starts.
 
 To check files in an editor, map the schemas in your editor settings. For VS Code:
@@ -376,7 +492,7 @@ To check files in an editor, map the schemas in your editor settings. For VS Cod
 ]
 ```
 
-## 9. Not in format 1
+## 9. Not in format 2
 
 - Adding or removing suite apps while a suite runs (hot-plug).
 - `claude:sample`, or any other AI capability.

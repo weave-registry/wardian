@@ -1,16 +1,23 @@
 {
-  "format": 1,
+  "format": 2,
   "title": "USL scalability lab",
   "description": "Fit load-test results to the Universal Scalability Law and test changes before you build them.",
   "styles": [
-    "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap",
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "ui/badge.css",
+    "ui/table.css",
+    "ui/tooltip.css",
     "core/style.css"
   ],
   "scripts": [
+    "ui/progress.js",
+    "ui/tooltip.js",
     "core/lib.js"
   ],
   "header": "core/header.html",
-  "columns": "minmax(280px, 340px) minmax(0, 1fr)",
   "apps": [
     {
       "name": "engine",
@@ -60,15 +67,21 @@
       },
       "caps": [
         "storage"
-      ]
+      ],
+      "channels": {
+        "receive": [
+          "splunk.table"
+        ]
+      }
     },
     {
       "name": "chart",
       "slot": "main",
-      "wrap": "<section id=\"chartSec\" aria-labelledby=\"chartTitle\">",
+      "wrap": "<section class=\"w-card lab-card\" id=\"chartSec\" aria-labelledby=\"chartTitle\">",
       "listens": [
         "analysis:ready",
         "whatif:changed",
+        "target:changed",
         "engine:status"
       ],
       "needs": [
@@ -76,9 +89,26 @@
       ]
     },
     {
+      "name": "meaning",
+      "slot": "main",
+      "wrap": "<section class=\"w-card lab-card\" id=\"meanSec\" aria-labelledby=\"meanTitle\">",
+      "emits": {
+        "target:changed": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "analysis:ready",
+        "checks:ready"
+      ],
+      "caps": [
+        "storage"
+      ]
+    },
+    {
       "name": "whatif",
       "slot": "main",
-      "wrap": "<section id=\"whatifSec\" aria-labelledby=\"wiTitle\">",
+      "wrap": "<section class=\"w-card lab-card\" id=\"whatifSec\" aria-labelledby=\"wiTitle\">",
       "emits": {
         "whatif:changed": {
           "retain": true
@@ -95,7 +125,7 @@
     {
       "name": "readouts",
       "slot": "main",
-      "wrap": "<section id=\"fitSec\" aria-labelledby=\"fitTitle\">",
+      "wrap": "<section class=\"w-card lab-card\" id=\"fitSec\" aria-labelledby=\"fitTitle\">",
       "listens": [
         "analysis:ready"
       ]
@@ -103,7 +133,7 @@
     {
       "name": "checks",
       "slot": "main",
-      "wrap": "<section id=\"checksSec\" aria-labelledby=\"chkTitle\">",
+      "wrap": "<section class=\"w-card lab-card\" id=\"checksSec\" aria-labelledby=\"chkTitle\">",
       "emits": {
         "checks:ready": {
           "retain": true
@@ -116,7 +146,7 @@
     {
       "name": "diagnosis",
       "slot": "main",
-      "wrap": "<section id=\"aiSec\" aria-labelledby=\"aiTitle\" hidden>",
+      "wrap": "<section class=\"w-card lab-card\" id=\"aiSec\" aria-labelledby=\"aiTitle\" hidden>",
       "emits": {
         "capability:ai": {
           "retain": true
@@ -140,7 +170,7 @@
     {
       "name": "export",
       "slot": "main",
-      "wrap": "<section id=\"exportSec\" aria-labelledby=\"expTitle\">",
+      "wrap": "<section class=\"w-card lab-card\" id=\"exportSec\" aria-labelledby=\"expTitle\">",
       "listens": [
         "analysis:ready",
         "whatif:changed",

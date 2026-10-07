@@ -40,8 +40,9 @@ Kernel.register({
       const items = A.ok ? words(A) : [];
       $('#checks').innerHTML = items.length ? items.map(c => {
         const lv = {ok: 'OK', watch: 'Watch', problem: 'Problem'}[c.level];
-        return '<li class="'+c.level+'"><span class="lvl">'+lv+'</span><b>'+esc(c.title)+'</b><p>'+esc(c.detail)+'</p></li>';
-      }).join('') : '<li class="watch"><span class="lvl">Waiting</span><b>Not enough data yet</b><p>Checks run once there are four or more runs at three or more loads.</p></li>';
+        const badge = {ok: 'success', watch: 'outline', problem: 'destructive'}[c.level];
+        return '<li class="'+c.level+'"><span class="lvl w-badge" data-variant="'+badge+'">'+lv+'</span><b>'+esc(c.title)+'</b><p>'+esc(c.detail)+'</p></li>';
+      }).join('') : '<li class="watch"><span class="lvl w-badge" data-variant="outline">Waiting</span><b>Not enough data yet</b><p>Checks run once there are four or more runs at three or more loads.</p></li>';
       ctx.emit('checks:ready', {items});
     });
   }

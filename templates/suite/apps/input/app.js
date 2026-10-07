@@ -6,7 +6,7 @@ Kernel.register({
   caps: ['storage'],
   init(ctx) {
     const box = ctx.$('#text');
-    box.value = ctx.store.get('text') ?? 'hello from a rustle suite';
+    box.value = ctx.store.get('text') ?? 'hello from a Wardian suite';
 
     let timer = null;
     function publish() {

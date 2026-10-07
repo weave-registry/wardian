@@ -7,6 +7,7 @@ service-account.json
 !/apps/usl-lab/
 !/apps/mandelbrot/
 !/apps/loan-planner/
+!/apps/splunk-table/
 /apps/*/target
 /apps/*/Cargo.lock
 /templates/*/target

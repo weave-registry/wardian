@@ -13,7 +13,7 @@ mkdir "$TMP/apps"
 cp -R apps/usl-lab tests/fixtures/rogue "$TMP/apps/"
 
 PORT=${PORT:-8765}
-DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" ./target/release/rustle "$TMP/apps" >"$TMP/server.log" 2>&1 &
+DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" ./target/release/wardian "$TMP/apps" >"$TMP/server.log" 2>&1 &
 PID=$!
 disown "$PID"
 for _ in $(seq 50); do curl -sf "http://127.0.0.1:$PORT/api/status" >/dev/null && break; sleep 0.1; done

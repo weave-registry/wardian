@@ -6,12 +6,16 @@
 const Kernel = (() => {
   'use strict';
   let def = null, contract = null, nextId = 1, root = null, booted = false;
-  const pending = new Map(), handlers = new Map(), methods = new Map();
+  const pending = new Map(), handlers = new Map(), methods = new Map(), chans = new Map();
   let saved = {};
+  const HOST_CAPS = ['splunk'];   // capabilities the host provides under their own name (not "claude:…")
 
   const post = m => parent.postMessage(m, '*');
   const fault = e => { post({k: 'fault', message: String(e && e.message || e)}); console.error(e); };
   const safe = fn => { try { const r = fn(); if (r && r.catch) r.catch(fault); } catch (e) { fault(e); } };
+  // Errors outside the kernel's own calls (a typo in app.js, a broken event handler) are faults too.
+  addEventListener('error', e => fault(e.error || e.message));
+  addEventListener('unhandledrejection', e => fault(e.reason));
   const request = m => new Promise((res, rej) => { const id = nextId++; pending.set(id, {res, rej}); post(Object.assign({id}, m)); });
 
   function register(d){
@@ -24,7 +28,8 @@ const Kernel = (() => {
   const shape = c => JSON.stringify({
     emits: Object.keys(c.emits || {}).sort().map(k => [k, !!(c.emits[k] && c.emits[k].retain)]),
     listens: (c.listens || []).slice().sort(), provides: (c.provides || []).slice().sort(),
-    needs: (c.needs || []).slice().sort(), caps: (c.caps || []).slice().sort()
+    needs: (c.needs || []).slice().sort(), caps: (c.caps || []).slice().sort(),
+    channels: [((c.channels || {}).send || []).slice().sort(), ((c.channels || {}).receive || []).slice().sort()]
   });
 
   function makeCtx(){
@@ -57,12 +62,47 @@ const Kernel = (() => {
     };
     // Resolves to the capability, or null when this host cannot provide it (the app is told, not broken).
     async function cap(name){
-      allow('claude:' + name);
+      allow(HOST_CAPS.includes(name) ? name : 'claude:' + name);
       const ops = await request({k: 'cap', name});
       if (!ops) return null;
       const out = {};
       ops.forEach(op => { out[op] = args => request({k: 'capop', name, op, args}); });
-      return out;
+      return name === 'sample' ? sampler(out) : out;
+    }
+    // claude:sample has the Claude viewer's shape: sample(prompt, {signal, onText, modelTier}) resolves
+    // to {text, truncated}; sample.json(prompt, opts) to the parsed JSON. Errors carry e.code.
+    // There is no streaming here: onText is called once, with the whole answer.
+    function sampler(ops){
+      const coded = e => { const m = /^([a-z_]+): ([\s\S]*)$/.exec(String(e && e.message || e)); const err = new Error(m ? m[2] : String(e && e.message || e)); err.code = m ? m[1] : 'error'; return err; };
+      const run = (op, prompt, opts) => new Promise((res, rej) => {
+        const signal = opts && opts.signal;
+        if (signal && signal.aborted) return rej(Object.assign(new Error('cancelled'), {code: 'cancelled'}));
+        if (signal) signal.addEventListener('abort', () => rej(Object.assign(new Error('cancelled'), {code: 'cancelled'})), {once: true});
+        ops[op]({prompt: String(prompt), tier: opts && opts.modelTier === 'quick' ? 'quick' : ''}).then(res, e => rej(coded(e)));
+      });
+      const sample = (prompt, opts) => run('text', prompt, opts).then(r => {
+        if (opts && typeof opts.onText === 'function') try { opts.onText({text: r.text}); } catch (e) { fault(e); }
+        return {text: r.text, truncated: !!r.truncated};
+      });
+      sample.json = (prompt, opts) => run('json', prompt, opts);
+      return sample;
+    }
+    // A channel to other packages. The kernel asks the user the first time; send() and on()
+    // reject if the answer is no. on(fn) calls fn(data, {from, at}).
+    function channel(name){
+      const decl = contract.channels || {send: [], receive: []};
+      return Object.freeze({
+        send(data){
+          if (!decl.send.includes(name)) return Promise.reject(new Error(def.name + ' may not send on channel "' + name + '" (not in its contract)'));
+          return request({k: 'chsend', channel: name, data});
+        },
+        on(fn){
+          if (!decl.receive.includes(name)) return Promise.reject(new Error(def.name + ' may not receive on channel "' + name + '" (not in its contract)'));
+          if (!chans.has(name)) chans.set(name, []);
+          chans.get(name).push(fn);
+          return request({k: 'chon', channel: name});
+        },
+      });
     }
     function observe(el, cb){ if (typeof ResizeObserver !== 'undefined') new ResizeObserver(cb).observe(el); }
     // The bytes of a file in this suite's package, fetched by the kernel (the frame itself has no network).
@@ -76,7 +116,7 @@ const Kernel = (() => {
       name: def.name, root,
       $: s => root.querySelector(s), $$: s => Array.from(root.querySelectorAll(s)),
       el: tag => document.createElement(tag), text: s => document.createTextNode(s),
-      emit, on, provide, call, store, cap, asset, observe, source, spawn
+      emit, on, provide, call, store, cap, asset, channel, observe, source, spawn
     });
   }
 
@@ -97,6 +137,8 @@ const Kernel = (() => {
         .then(() => { if (!fn) throw new Error(m.method + ' is not provided'); return fn(m.args); })
         .then(value => post({k: 'result', id: m.id, ok: true, value}),
               err => post({k: 'result', id: m.id, ok: false, error: String(err && err.message || err)}));
+    } else if (m.k === 'chmsg'){
+      (chans.get(m.channel) || []).forEach(fn => safe(() => fn(m.data, {from: m.from, at: m.at})));
     } else if (m.k === 'reply'){
       const p = pending.get(m.id); if (!p) return;
       pending.delete(m.id);

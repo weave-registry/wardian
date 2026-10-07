@@ -19,7 +19,7 @@ pub const MAX_DEPTH: usize = 8;
 pub const MAX_APP_FILES: usize = 2_000;
 /// The newest package format this host understands (SPEC.md). A package
 /// without a "format" field is format 1.
-pub const FORMAT: u64 = 1;
+pub const FORMAT: u64 = 2;
 /// Folders never served or copied: build caches and package downloads.
 pub const SKIP_DIRS: &[&str] = &["node_modules", "target"];
 /// Where to look for an app's page when app.json does not name one.
@@ -54,6 +54,25 @@ struct Manifest {
     title: Option<String>,
     description: Option<String>,
     page: Option<String>,
+    /// Read loosely (as JSON values): a wrong type here must not hide the title.
+    channels: Option<serde_json::Value>,
+}
+
+/// What a package may do outside its own sealed frame. The app page shows it as the "Sealed" label.
+#[derive(Serialize, Default)]
+pub struct Allows {
+    /// Capabilities from suite.json, such as "storage" or "claude:downloads".
+    pub caps: Vec<String>,
+    /// Channels it may send on and read from, after the user agrees.
+    pub send: Vec<String>,
+    pub receive: Vec<String>,
+}
+
+/// The strings in a JSON array; anything else counts as empty.
+fn strings(v: Option<&serde_json::Value>) -> Vec<String> {
+    v.and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .unwrap_or_default()
 }
 
 /// What the app list shows for each app.
@@ -68,11 +87,15 @@ pub struct AppInfo {
     pub suite: bool,
     /// Why the host cannot run this app, e.g. it needs a newer format.
     pub error: Option<String>,
+    pub allows: Allows,
 }
 
 #[derive(Deserialize, Default)]
-struct FormatOnly {
+struct SuiteHead {
     format: Option<u64>,
+    title: Option<String>,
+    description: Option<String>,
+    apps: Option<serde_json::Value>,
 }
 
 pub fn unix_now() -> u64 {
@@ -141,14 +164,31 @@ impl Source {
             PAGE_GUESSES.iter().find(|p| self.has(&name, p)).map(|p| p.to_string())
         });
         let suite = self.has(&name, "suite.json");
-        let suite_format = if suite {
-            self.read(&name, "suite.json").and_then(|b| serde_json::from_slice::<FormatOnly>(&b).ok()).unwrap_or_default().format
+        let head: SuiteHead = if suite {
+            self.read(&name, "suite.json").and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
         } else {
-            None
+            SuiteHead::default()
         };
-        let needed = m.format.into_iter().chain(suite_format).max().unwrap_or(1);
-        let error = (needed > FORMAT).then(|| format!("needs package format {needed}; this rustle reads format {FORMAT}. Update rustle."));
-        AppInfo { name, title: m.title, description: m.description, page, suite, error }
+        let needed = m.format.into_iter().chain(head.format).max().unwrap_or(1);
+        let error = (needed > FORMAT).then(|| format!("needs package format {needed}; this Wardian reads format {FORMAT}. Update Wardian."));
+        // app.json wins; a suite's own title and description fill the gaps.
+        let title = m.title.or(head.title);
+        let description = m.description.or(head.description);
+        // A suite may do what any of its apps may do.
+        let mut allows = Allows::default();
+        let entries = head.apps.as_ref().and_then(|a| a.as_array()).cloned().unwrap_or_default();
+        for ch in m.channels.iter().chain(entries.iter().filter_map(|e| e.get("channels"))) {
+            allows.send.extend(strings(ch.get("send")));
+            allows.receive.extend(strings(ch.get("receive")));
+        }
+        for e in &entries {
+            allows.caps.extend(strings(e.get("caps")));
+        }
+        for v in [&mut allows.caps, &mut allows.send, &mut allows.receive] {
+            v.sort();
+            v.dedup();
+        }
+        AppInfo { name, title, description, page, suite, error, allows }
     }
 }
 

@@ -1,21 +1,49 @@
 /* chart: the hero chart, legend and hover readout.
-   Listens: analysis:ready, whatif:changed, engine:status.  Calls: engine.curve.  Emits: nothing. */
+   Listens: analysis:ready, whatif:changed, target:changed, engine:status.  Calls: engine.curve.  Emits: nothing. */
 Kernel.register({
   name: 'chart',
-  listens: ['analysis:ready', 'whatif:changed', 'engine:status'],
+  listens: ['analysis:ready', 'whatif:changed', 'target:changed', 'engine:status'],
   needs: ['engine.curve'],
   init(ctx){
     const $ = ctx.$;
     const {esc, fmt, fmtTick, niceTicks, model, peakInfo, wiActive, whatIf, domainMax} = Lib;
     const host = $('#chart');
-    let A = null, wi = {a: 1, b: 1, l: 1}, eng = null, seq = 0, last = null, view = null;
+    let A = null, wi = {a: 1, b: 1, l: 1}, eng = null, seq = 0, last = null, view = null, target = null;
 
     ctx.on('analysis:ready', a => { A = a; draw(); });
     ctx.on('whatif:changed', w => { wi = w; if (A && A.ok) draw(); });
     ctx.on('engine:status', s => { eng = s; sub(); });
+    // A throughput the user plans for (from "Plan for a target"), in the data's unit; drawn as a level line.
+    ctx.on('target:changed', t => { target = t && t.x > 0 ? t.x : null; if (last){ paint(); legend(); } });
     ctx.observe(host, () => { if (last) paint(); });
 
+    // "What you are looking at": where the data came from and what each axis means.
+    function about(){
+      const box = $('#about'), s = A && A.source;
+      if (!s || !s.title){ box.hidden = true; return; }
+      box.replaceChildren();
+      const h = ctx.el('p'); h.className = 'about-title';
+      const strong = ctx.el('strong'); strong.textContent = s.title; h.appendChild(strong);
+      const when = [s.range, s.points ? s.points + ' points' : '', s.at ? 'fetched ' + new Date(s.at).toLocaleString() : ''].filter(Boolean).join(' · ');
+      if (when){ const w = ctx.el('span'); w.className = 'about-when'; w.textContent = ' ' + when; h.appendChild(w); }
+      box.appendChild(h);
+      const dl = ctx.el('dl');
+      const row = (k, v) => { if (!v) return; const dt = ctx.el('dt'), dd = ctx.el('dd'); dt.textContent = k; dd.textContent = v; dl.append(dt, dd); };
+      row('Load (across)', s.load);
+      row('Throughput (up)', s.throughput);
+      row('Response time', s.response);
+      row('How it was made', s.method);
+      if (s.edited) row('Note', 'You changed the numbers by hand after they were loaded.');
+      box.appendChild(dl);
+      if (s.search){
+        const d = ctx.el('details'), sm = ctx.el('summary'), pre = ctx.el('pre');
+        sm.textContent = 'The Splunk search'; pre.textContent = s.search; d.append(sm, pre); box.appendChild(d);
+      }
+      box.hidden = false;
+    }
+
     function sub(){
+      about();
       $('#chartSub').textContent = A && A.ok
         ? A.rows.length + ' runs, load in ' + A.units.n + (eng ? ', engine ' + (eng.mode === 'worker' ? 'in a background worker' : 'in the page') : '')
         : '';
@@ -47,7 +75,9 @@ Kernel.register({
       const {hi, ns: Ns, fy, wy, bl, bh, on} = last, steps = Ns.length - 1;
       const W = Math.max(300, Math.floor(host.clientWidth || 700)), H = W < 560 ? 300 : 400;
       const m = {l: W < 560 ? 48 : 60, r: 18, t: 16, b: 46}, pw = W - m.l - m.r, ph = H - m.t - m.b;
-      const ymax = Math.max(...A.rows.map(r => r.x), ...fy, ...(on ? wy : [0])) * 1.12;
+      const top = Math.max(...A.rows.map(r => r.x), ...fy, ...(on ? wy : [0]));
+      // Show the target if it is within reach of the chart; a far-off target would flatten the curve.
+      const ymax = Math.max(top, target && target <= top*3 ? target : 0) * 1.12;
       const X = n => m.l + n/hi*pw, Y = v => m.t + ph - v/ymax*ph;
       view = {m, pw, ph, hi, ymax, W, H};
       const path = ys => ys.map((v, i) => (i ? 'L' : 'M') + X(Ns[i]).toFixed(1) + ' ' + Y(Math.min(v, ymax*1.5)).toFixed(1)).join('');
@@ -81,6 +111,12 @@ Kernel.register({
       if (on){
         const w = whatIf(fit, wi), pwk = peakInfo(w.lam, w.a, w.b);
         if (pwk.kind === 'peak' && pwk.nStar <= hi) body += '<circle class="wid" cx="'+X(pwk.nStar).toFixed(1)+'" cy="'+Y(pwk.xMax).toFixed(1)+'" r="5"/>';
+      }
+      if (target){
+        if (target <= ymax){
+          const ty = Y(target).toFixed(1);
+          body += '<line class="tgt" x1="'+m.l+'" x2="'+(m.l+pw)+'" y1="'+ty+'" y2="'+ty+'"/><text class="tgtt" x="'+(m.l+8)+'" y="'+(Y(target)-6).toFixed(1)+'">target '+fmt(target, 4)+'</text>';
+        } else body += '<text class="tgtt" x="'+(m.l+8)+'" y="'+(m.t+14)+'">target '+fmt(target, 4)+' is far above this chart ↑</text>';
       }
       A.rows.forEach((r, i) => { body += '<circle class="pt'+(flags.has(i) ? ' flag' : '')+'" cx="'+X(r.n).toFixed(1)+'" cy="'+Y(r.x).toFixed(1)+'" r="'+(flags.has(i) ? 5 : 4.5)+'"/>'; });
       body += '<line class="xh" id="xhl" y1="'+m.t+'" y2="'+(m.t+ph)+'" x1="0" x2="0" visibility="hidden"/><circle class="xhd" id="xhd" r="4.5" cx="0" cy="0" visibility="hidden"/>';
@@ -122,12 +158,13 @@ Kernel.register({
       const lg = $('#legend');
       if (!A || !A.ok){ lg.innerHTML = ''; return; }
       const sw = inner => '<svg width="24" height="12" viewBox="0 0 24 12" aria-hidden="true">' + inner + '</svg>';
-      let h = '<span>' + sw('<circle cx="12" cy="6" r="4.5" fill="var(--ink)"/>') + 'Measured runs</span>';
+      let h = '<span>' + sw('<circle cx="12" cy="6" r="4.5" fill="var(--w-fg)"/>') + 'Measured runs</span>';
       if (A.flags.length) h += '<span>' + sw('<circle cx="12" cy="6" r="4.5" fill="none" stroke="var(--peak)" stroke-width="2.4"/>') + 'Off-curve runs</span>';
       h += '<span>' + sw('<path d="M1 6H23" stroke="var(--fit)" stroke-width="2.6"/>') + 'Fitted curve</span>';
       h += '<span>' + sw('<rect x="1" y="1" width="22" height="10" fill="var(--fit)" opacity=".18"/>') + '90% range</span>';
       h += '<span>' + sw('<path d="M1 6H23" stroke="var(--linear)" stroke-width="1.5" stroke-dasharray="5 4"/>') + 'Linear scaling</span>';
       if (A.fit.peak.kind === 'peak') h += '<span>' + sw('<path d="M2 2V10M2 6H22M22 2V10" stroke="var(--peak)" stroke-width="2" fill="none"/>') + 'Peak load, 90% range</span>';
+      if (target) h += '<span>' + sw('<path d="M1 6H23" stroke="var(--watch)" stroke-width="1.6" stroke-dasharray="8 4"/>') + 'Your target</span>';
       if (wiActive(wi)) h += '<span>' + sw('<path d="M1 6H23" stroke="var(--whatif)" stroke-width="2.4" stroke-dasharray="2 5" stroke-linecap="round"/>') + 'With your changes</span>';
       lg.innerHTML = h;
     }

@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "title": "USL scalability lab",
   "description": "Fit load-test results to the Universal Scalability Law and test changes before you build them."
 }

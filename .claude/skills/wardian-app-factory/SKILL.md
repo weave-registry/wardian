@@ -1,12 +1,12 @@
 ---
-name: rustle-app-factory
-description: Builds rustle packages — WebAssembly module apps, page apps, and suites of cooperating sealed apps — from a description of what the app should do, then proves they work with `rustle check` and a browser smoke test. Use this whenever the user wants to create, scaffold, generate or prototype an app, tool, calculator, dashboard, widget or mini-app for rustle; turn an idea, a Rust/WebAssembly crate, a web page or a single-page app into a rustle package or suite; add an app to a suite; or asks "make me an app that…" while working in the rustle repo — even if they never say "package", "suite" or "rustle".
+name: wardian-app-factory
+description: Builds Wardian packages — WebAssembly module apps, page apps, and suites of cooperating sealed apps — from a description of what the app should do, then proves they work with `wardian check` and a browser smoke test. Use this whenever the user wants to create, scaffold, generate or prototype an app, tool, calculator, dashboard, widget or mini-app for Wardian; turn an idea, a Rust/WebAssembly crate, a web page or a single-page app into a Wardian package or suite; add an app to a suite; or asks "make me an app that…" while working in the Wardian repo — even if they never say "package", "suite" or "wardian".
 ---
 
-# rustle app factory
+# Wardian app factory
 
-You turn a description into a working rustle package. "Working" means two things, and you need
-both before you call it done: `rustle check` reports no errors, **and** the app runs in a browser
+You turn a description into a working Wardian package. "Working" means two things, and you need
+both before you call it done: `wardian check` reports no errors, **and** the app runs in a browser
 without faults. The checker cannot run JavaScript, so it cannot catch a broken page or a contract
 mismatch inside `app.js` — only the smoke test can.
 
@@ -17,7 +17,7 @@ the spec section named below whenever you need an exact rule rather than guessin
 
 | The app… | Kind | Why |
 |---|---|---|
-| is a few functions whose inputs and outputs are all numbers | `module` | rustle builds the interface itself: an input per parameter, a Run button. No HTML to write. |
+| is a few functions whose inputs and outputs are all numbers | `module` | Wardian builds the interface itself: an input per parameter, a Run button. No HTML to write. |
 | needs text, arrays, JSON, a chart, or any designed interface | `page` | WebAssembly only passes numbers; your page moves richer data through the module's memory and draws the UI. |
 | has several parts that each own one job (input, compute, chart, export…) and share data | `suite` | Each part is sealed in its own frame and talks only through the kernel, so parts stay small, testable and replaceable. |
 
@@ -28,10 +28,10 @@ why, in one sentence.
 
 ## 2. Start from a template
 
-Work from the repo root. Build rustle if `target/release/rustle` is missing (`cargo build --release`).
+Work from the repo root. Build Wardian if `target/release/wardian` is missing (`cargo build --release`).
 
 ```bash
-target/release/rustle new <module|page|suite> apps/<name>
+target/release/wardian new <module|page|suite> apps/<name>
 ```
 
 The name becomes the folder and the app's id: letters, digits, `-`, `_`, `.`. Each template already
@@ -47,7 +47,7 @@ ask for Rust or WebAssembly, a page or suite may skip WebAssembly entirely — s
 ### module (SPEC.md §5.1–5.2)
 - Export functions as `#[no_mangle] pub extern "C" fn`. Parameters and results must be numbers
   (`i32`, `i64`, `u32`, `u64`, `f32`, `f64`). An `i64` arrives in JavaScript as a BigInt.
-- Run `./build.sh` after every change; `app.wasm` is what rustle runs, not the source.
+- Run `./build.sh` after every change; `app.wasm` is what Wardian runs, not the source.
 - Set `title` and `description` in `app.json`.
 
 ### page (SPEC.md §5.3–5.6)
@@ -73,8 +73,23 @@ ask for Rust or WebAssembly, a page or suite may skip WebAssembly entirely — s
 - Put heavy computation in an app with no `slot` that `provides` methods; viewers `need` them.
   Start loading in `init` and `await` that promise inside the method, so early calls just wait.
 - Use `ctx.$` / `ctx.$$` for the app's own markup; `ctx.root` is the element from `wrap`.
-- `claude:sample` (AI) is not available in rustle; `ctx.cap('sample')` resolves to `null`.
-  If the design needs AI, tell the user instead of building on it.
+- To talk to a *different* package (not another app in the same suite), use a channel (SPEC.md §6.9):
+  declare `"channels": {"send": [...], "receive": [...]}` (suite entry and `Kernel.register`, or
+  app.json for a page with `<script src="/sdk/wardian.js">`), set `"format": 2`, and handle the
+  rejection when the user does not allow it.
+- `claude:sample` (AI) works only when an Anthropic key is saved and the user allows the package;
+  `ctx.cap('sample')` can resolve to `null`, so the app must still work without it.
+- Use the component library for controls rather than styling your own: `target/release/wardian add
+  button field tabs dialog toast … apps/<name>` copies them into `ui/` (and, for a suite, lists them
+  in `suite.json`). `wardian add --list` names them all; `/ui/` on a running Wardian shows their
+  markup. Classes start with `w-` (`<button class="w-button" data-variant="outline">`); restyle
+  through the tokens in `ui/theme.css`, not by overriding each class.
+- Every app uses the library and offers Arrange (SPEC.md §6.10–6.11); `wardian check` warns when
+  one does not. A page app marks each part `data-panel="name"` (columns `data-arrange-column="side"`
+  / `"main"` inside a `data-arrange-grid` element) and adds `arrange`. A suite and a module get
+  Arrange from Wardian. Never let an app depend on where a panel sits: viewers move and hide them.
+- For work that takes more than a second, use the standard `<wardian-progress>` element (SPEC.md
+  §6.10) rather than drawing your own: `bar.start(label)`, `bar.update({value, max})`, `bar.done(text)`.
 - Inlined scripts must not contain `</script`, styles must not contain `</style`.
 
 ### Turning an existing project into a package
@@ -85,10 +100,10 @@ zips, if the user wants to import rather than copy.
 
 ## 4. Prove it works
 
-1. **Check:** `target/release/rustle check apps/<name>`. Fix every error. Read every warning; most
+1. **Check:** `target/release/wardian check apps/<name>`. Fix every error. Read every warning; most
    point at a real mistake (a typo'd field, a topic nobody emits).
-2. **Smoke test:** `node .claude/skills/rustle-app-factory/scripts/smoke.js --serve apps <name>`
-   from the repo root. It starts a private rustle on a free port with a throwaway data folder (so
+2. **Smoke test:** `node .claude/skills/wardian-app-factory/scripts/smoke.js --serve apps <name>`
+   from the repo root. It starts a private Wardian on a free port with a throwaway data folder (so
    it never disturbs the user's server or settings), opens the app the way a user would, prints
    what it found — a module's functions, a page's text, or for a suite every app's start and the
    kernel's faults — then stops the server. It exits non-zero on any fault or error. It needs Node
@@ -96,13 +111,13 @@ zips, if the user wants to import rather than copy.
    installed globally). If those are missing, say the browser test was skipped; do not claim the
    app works.
 3. If you need a server for your own browser checks, start one the same way:
-   `ADDR=127.0.0.1:0 DATA_DIR=$(mktemp -d) target/release/rustle apps` — port 0 lets the system
-   choose a free port, and rustle prints the real address. Never use a fixed port: it may be taken.
+   `ADDR=127.0.0.1:0 DATA_DIR=$(mktemp -d) target/release/wardian apps` — port 0 lets the system
+   choose a free port, and Wardian prints the real address. Never use a fixed port: it may be taken.
 4. Exercise the app's main action once (type input, press its button) if the smoke test alone
    would not show it working, and stop the test server when done.
 
 ## 5. Report
 
-Tell the user, briefly: what you built and which kind, how to open it (it appears in rustle's app
-list at http://127.0.0.1:8000 once rustle is running), the files that matter, and the result of
+Tell the user, briefly: what you built and which kind, how to open it (it appears in Wardian's app
+list at http://127.0.0.1:8000 once Wardian is running), the files that matter, and the result of
 the check and the smoke test. Mention anything you could not verify.

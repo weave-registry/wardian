@@ -1,0 +1,25 @@
+      <div class="sec-head">
+        <h2 id="meanTitle">What it means</h2>
+        <span class="sec-sub">Read from the fitted curve. No AI is involved.</span>
+      </div>
+      <div class="mean-out" id="meanOut"></div>
+
+      <div class="target">
+        <h3>Plan for a target</h3>
+        <p class="w-hint hint">Type the throughput you need. The lab finds the load that delivers it, and says whether one system can.</p>
+        <div class="target-row">
+          <input type="text" class="w-input" id="tgtVal" inputmode="decimal" placeholder="10000" aria-label="Target throughput">
+          <select class="w-input" id="tgtPer" aria-label="Per">
+            <option value="1">per second</option>
+            <option value="60">per minute</option>
+            <option value="3600">per hour</option>
+          </select>
+          <button class="w-button" data-variant="outline" id="tgtClear" type="button">Clear</button>
+        </div>
+        <div class="mean-out" id="tgtOut" aria-live="polite"></div>
+      </div>
+
+      <details class="glossary" id="glossary" open>
+        <summary>How to read this lab: N, X, R and the curve</summary>
+        <div id="glossBody"></div>
+      </details>

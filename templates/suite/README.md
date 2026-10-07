@@ -1,6 +1,6 @@
 # {{name}}
 
-A rustle **suite**: several sealed apps on one screen that talk only through the kernel.
+A Wardian **suite**: several sealed apps on one screen that talk only through the kernel.
 
 | App | Slot | Contract |
 |---|---|---|
@@ -18,6 +18,7 @@ WebAssembly and returns the result.
 | `apps/<name>/app.js` | Each app's code: `Kernel.register({ ...contract, init(ctx) })`. |
 | `apps/<name>/view.html` | Each app's markup, for apps with a slot. |
 | `style.css`, `header.html` | Shared look, inlined into every frame. |
+| `ui/` | The Wardian component library (theme, button, field, card), listed in `suite.json` "styles". Your copy: change it freely. `wardian add <component> .` adds more. |
 | `text.wasm` | The module the text app loads with `ctx.asset`. Built from `src/lib.rs`. |
 | `build.sh` | Rebuilds `text.wasm`. |
 
@@ -28,4 +29,7 @@ Rules worth knowing:
 - Messages and results are copied. Send plain data, not functions or DOM nodes.
 
 Add an app: create `apps/<name>/app.js` (and `view.html`), add an entry to `suite.json`,
-then run `rustle check .`.
+then run `wardian check .`.
+
+Arrange: Wardian lets each viewer reorder, move and hide the apps that have a `slot`, for
+themselves only. Nothing to add: build each app so it works wherever its panel sits.

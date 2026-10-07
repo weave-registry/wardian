@@ -3,19 +3,47 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{name}}</title>
+<!-- The Wardian component library, copied into ui/ (wardian add <component> . adds more). -->
+<link rel="stylesheet" href="ui/theme.css">
+<link rel="stylesheet" href="ui/button.css">
+<link rel="stylesheet" href="ui/field.css">
+<link rel="stylesheet" href="ui/card.css">
 <style>
-  :root { color-scheme: light dark; --ink: #1b1f24; --muted: #667080; --line: #d5dae0; --bg: #fff; --accent: #2f6fde; }
-  @media (prefers-color-scheme: dark) { :root { --ink: #e6e8eb; --muted: #949ca8; --line: #2e343c; --bg: #16191d; --accent: #6d9cf2; } }
-  body { margin: 0; padding: 1.5rem; font: 16px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--bg); }
-  h1 { margin: 0 0 .25rem; font-size: 1.4rem; }
-  p { margin: .25rem 0 1rem; color: var(--muted); }
-  textarea { width: 100%; min-height: 7rem; box-sizing: border-box; padding: .6rem; font: inherit; color: inherit;
-             background: transparent; border: 1px solid var(--line); border-radius: 8px; }
-  output { display: block; margin-top: 1rem; padding: .75rem; border-left: 3px solid var(--accent); white-space: pre-wrap; }
+  :root { color-scheme: light dark; --page: #f7f7f8; }
+  @media (prefers-color-scheme: dark) { :root { --page: #111113; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: var(--w-space-5) clamp(16px, 3vw, 32px); font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
+  h1 { margin: 0; font-size: 1.6rem; letter-spacing: -.02em; }
+  .top { margin-bottom: var(--w-space-4); } .top p { margin: 4px 0 0; color: var(--w-muted); }
+  h2 { margin: 0 0 var(--w-space-3); font: 600 var(--w-text-lg)/1.3 var(--w-font); }
+  /* Each data-panel is a part the viewer may move or hide with Arrange (ui/arrange.js). */
+  .layout { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.4fr); gap: var(--w-space-4); align-items: start; }
+  .col { display: flex; flex-direction: column; gap: var(--w-space-4); min-width: 0; }
+  .col[hidden] { display: none; }
+  @media (max-width: 720px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .panel { padding: var(--w-space-4) var(--w-space-5); }
+  output { display: block; white-space: pre-wrap; word-break: break-word; }
 </style>
-<h1>{{name}}</h1>
-<p>Type below. WebAssembly counts the words and shouts the text back.</p>
-<textarea id="text" aria-label="Text">hello from rustle</textarea>
-<output id="out" aria-live="polite"></output>
+<header class="top">
+  <h1>{{name}}</h1>
+  <p>Type below. WebAssembly counts the words and shouts the text back.</p>
+</header>
+<main class="layout" data-arrange-grid>
+  <div class="col" data-arrange-column="side">
+    <section class="w-card panel" data-panel="input" data-panel-label="Your text">
+      <div class="w-field">
+        <label class="w-label" for="text">Your text</label>
+        <textarea class="w-input" id="text">hello from Wardian</textarea>
+      </div>
+    </section>
+  </div>
+  <div class="col" data-arrange-column="main">
+    <section class="w-card panel" data-panel="result" data-panel-label="Result">
+      <h2>Result</h2>
+      <output id="out" aria-live="polite"></output>
+    </section>
+  </div>
+</main>
+<script src="ui/arrange.js"></script>
 <script type="module" src="./app.js"></script>
 </html>

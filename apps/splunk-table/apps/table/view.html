@@ -1,0 +1,45 @@
+<h2>Search</h2>
+<div class="w-field">
+  <label class="w-label" for="preset">Start from</label>
+  <select class="w-input" id="preset">
+    <option value="">My own search</option>
+    <option value="loadtest">A load test (template, for the USL lab)</option>
+    <option value="live-api">Live traffic: all API requests (live traffic, for the USL lab)</option>
+    <option value="live-query">Live traffic: queries (live traffic, for the USL lab)</option>
+  </select>
+</div>
+<details class="ai" id="aiAsk" hidden>
+  <summary>Describe what you want, and Claude writes the search</summary>
+  <div class="w-field">
+    <textarea class="w-input" id="aiWhat" rows="2" aria-label="What you want" placeholder="For example: how query throughput holds up as more queries run at once"></textarea>
+  </div>
+  <div class="w-field"><label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch" id="aiUsl" checked> The table is for the USL lab: load, throughput and response time</label></div>
+  <div class="btnrow"><button class="w-button" data-variant="outline" id="btnAi" type="button">Write with AI</button></div>
+  <p class="w-hint" style="margin-top:var(--w-space-2)">Claude sees the index and sourcetype names, the field names, and five sample events with email addresses removed.</p>
+</details>
+<div class="w-field">
+  <label class="w-label" for="spl">Splunk search</label>
+  <textarea class="w-input" id="spl" spellcheck="false" rows="5" placeholder="index=main | stats count BY sourcetype"></textarea>
+</div>
+<div class="grid">
+  <div class="w-field"><label class="w-label" for="range">Time range</label>
+    <select class="w-input" id="range">
+      <option value="-60m">Last 60 minutes</option>
+      <option value="-24h" selected>Last 24 hours</option>
+      <option value="-7d">Last 7 days</option>
+      <option value="-30d">Last 30 days</option>
+      <option value="">All time</option>
+    </select></div>
+  <div class="w-field"><label class="w-label" for="title">Name of this table</label><input class="w-input" type="text" id="title" placeholder="For example: queries, last 7 days"></div>
+</div>
+<div class="btnrow">
+  <button class="w-button" id="btnRun" type="button">Run search</button>
+  <button class="w-button" data-variant="outline" id="btnSend" type="button" disabled>Send to other apps</button>
+  <button class="w-button" data-variant="outline" id="btnCsv" type="button" disabled>Download CSV</button>
+</div>
+<wardian-progress id="bar" hidden></wardian-progress>
+<div class="status" id="status" role="status"></div>
+
+<h2 class="result-head">Result</h2>
+<dl class="facts" id="facts" hidden></dl>
+<div id="out"><p class="empty">No table yet. Run a search.</p></div>

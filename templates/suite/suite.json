@@ -3,27 +3,48 @@
   "format": 1,
   "title": "{{name}}",
   "description": "Three sealed apps: one takes text, one analyses it in WebAssembly, one shows the result.",
-  "styles": ["style.css"],
+  "styles": [
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "style.css"
+  ],
   "header": "header.html",
   "apps": [
     {
       "name": "text",
-      "provides": ["analyze"],
-      "caps": ["asset"]
+      "provides": [
+        "analyze"
+      ],
+      "caps": [
+        "asset"
+      ]
     },
     {
       "name": "input",
       "slot": "aside",
-      "wrap": "<aside class=\"panel\">",
-      "emits": { "text:changed": { "retain": true } },
-      "caps": ["storage"]
+      "wrap": "<aside class=\"w-card panel\">",
+      "emits": {
+        "text:changed": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "storage"
+      ]
     },
     {
       "name": "output",
       "slot": "main",
-      "wrap": "<section class=\"panel\">",
-      "listens": ["text:changed"],
-      "needs": ["text.analyze"]
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "text:changed"
+      ],
+      "needs": [
+        "text.analyze"
+      ]
     }
-  ]
+  ],
+  "scripts": []
 }

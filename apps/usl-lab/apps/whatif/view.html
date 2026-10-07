@@ -19,10 +19,10 @@
           <small>Throughput of one worker alone: faster code, faster hardware.</small>
         </div>
       </div>
-      <div class="btnrow" style="margin-top:8px"><button class="ghost" id="btnWiReset" type="button">Reset sliders</button></div>
+      <div class="btnrow" style="margin-top:8px"><button class="w-button" data-variant="outline" id="btnWiReset" type="button">Reset sliders</button></div>
       <p class="wi-sum" id="wiSum"></p>
       <div class="wi-ask" id="wiAsk" hidden>
-        <input type="text" id="wiText" placeholder="Or describe it: &quot;halve lock hold time&quot;, &quot;shard the queue in two&quot;" aria-label="Describe a change in plain language">
-        <button id="btnWiAsk" type="button">Apply to sliders</button>
+        <input type="text" class="w-input" id="wiText" placeholder="Or describe it: &quot;halve lock hold time&quot;, &quot;shard the queue in two&quot;" aria-label="Describe a change in plain language">
+        <button class="w-button" id="btnWiAsk" type="button">Apply to sliders</button>
       </div>
-      <p class="note" id="wiNote"></p>
+      <p class="w-hint note" id="wiNote"></p>

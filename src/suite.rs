@@ -13,8 +13,8 @@
 use crate::source::{safe_rel, safe_segment, Source};
 use serde::Deserialize;
 
-/// The shim that plays `Kernel` inside each frame.
-const SHIM_JS: &str = include_str!("../static/shim.js");
+/// The shim that plays `Kernel` inside each frame, and the standard components every app may use.
+const SHIM_JS: &str = concat!(include_str!("../static/shim.js"), "\n", include_str!("../static/ui/progress.js"));
 
 /// Fonts are the one outside resource a frame may load.
 pub const FONT_CSS: &str = "https://fonts.googleapis.com/";

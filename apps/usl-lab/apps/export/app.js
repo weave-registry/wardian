@@ -23,6 +23,14 @@ Kernel.register({
     function report(){
       const f0 = A.fit, ci = A.ci, u = A.units, pk = f0.peak, L = [], rowsHaveR = A.rows.some(r => r.r);
       L.push('# USL scalability report', '', 'Generated ' + new Date().toISOString().slice(0, 10) + '. Load is in ' + u.n + '; throughput is in ' + u.x + '.', '');
+      const s = A.source;
+      if (s && s.title){
+        L.push('## Data', '', '**' + s.title + '**' + (s.range ? ' (' + s.range + ')' : '') + (s.at ? ', fetched ' + s.at.slice(0, 16).replace('T', ' ') + ' UTC' : ''), '');
+        [['Load', s.load], ['Throughput', s.throughput], ['Response time', s.response], ['How it was made', s.method]].forEach(([k, v]) => { if (v) L.push('- **' + k + ':** ' + v); });
+        if (s.edited) L.push('- **Note:** the numbers were changed by hand after loading.');
+        if (s.search) L.push('', '```', s.search, '```');
+        L.push('');
+      }
       if (context) L.push('## System', '', context, '');
       L.push('## Fit', '', '| Parameter | Value | 90% range |', '|---|---|---|');
       L.push('| α (contention) | ' + fmt(f0.alpha, 3) + ' | ' + fmtRange(ci.alpha[0], ci.alpha[1], 3) + ' |');

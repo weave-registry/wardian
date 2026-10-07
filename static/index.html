@@ -2,18 +2,32 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WASM app host</title>
+<title>Wardian</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<script src="/channels.js"></script>
+<!-- The component library and Arrange, the same ones apps copy in with `wardian add`.
+     A module app has no page of its own, so Wardian draws it with them here. -->
+<link rel="stylesheet" href="/ui/theme.css">
+<link rel="stylesheet" href="/ui/card.css">
+<link rel="stylesheet" href="/ui/button.css">
+<link rel="stylesheet" href="/ui/field.css">
+<script src="/ui/arrange.js" data-manual></script>
 <style>
   :root {
     color-scheme: light dark;
-    --bg: #f6f7f9; --panel: #fff; --text: #1b1f24; --muted: #667080; --line: #dde1e6;
-    --accent: #2f6fde; --accent-ink: #fff; --ok: #1f9d55; --warn: #c27c0e; --bad: #d64545;
-    --code: #f0f2f5; --hover: #eef2f8;
+    /* Wardian brand: a copper leaf in a verdigris glass case, on warm paper.
+       Copper is for actions; verdigris (oxidised copper) means "sealed" and safe. */
+    --bg: #faf7f2; --panel: #fff; --text: #22201c; --muted: #6f675c; --line: #e8e1d6;
+    --accent: #b9471f; --accent-ink: #fff; --ok: #2f8a4f; --warn: #b7791f; --bad: #c8372d;
+    --code: #f3eee6; --hover: #f6efe6; --brand-soft: #fbe9de;
+    --sealed: #2f6f63; --sealed-soft: #e3efeb;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14171b; --panel: #1c2026; --text: #e6e8eb; --muted: #949ca8; --line: #2e343c;
-      --accent: #5b8ff0; --accent-ink: #0b1220; --code: #23282f; --hover: #262c35;
+      --bg: #16130f; --panel: #1f1b16; --text: #ede7de; --muted: #a39a8c; --line: #342d25;
+      --accent: #f08a5d; --accent-ink: #1a0f08; --code: #2a241e; --hover: #2a241e; --brand-soft: #3a2418;
+      --ok: #5cbf7e; --warn: #e0a84a; --bad: #f07067;
+      --sealed: #6cbfad; --sealed-soft: #1d3530;
     }
   }
   * { box-sizing: border-box; }
@@ -39,7 +53,19 @@
     display: flex; align-items: center; gap: 1rem; padding: .6rem 1rem;
     background: var(--panel); border-bottom: 1px solid var(--line);
   }
-  header h1 { font-size: 1.05rem; margin: 0; }
+  .brand { display: flex; align-items: center; gap: .5rem; text-decoration: none; color: var(--text); }
+  .brand img { width: 26px; height: 26px; }
+  .brand b { font-size: 1.25rem; font-weight: 750; letter-spacing: -.03em; }
+  .brand small { color: var(--muted); font-size: .85rem; border-left: 1px solid var(--line); padding-left: .6rem; margin-left: .1rem; }
+  #badge { color: var(--muted); max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #badge span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .home { text-align: center; padding: 2.5rem 1rem 2rem; }
+  .home img { width: 64px; height: 64px; }
+  .card .home h2 { font-size: 1.6rem; letter-spacing: -.02em; margin: .75rem 0 .25rem; }
+  .home p { color: var(--muted); max-width: 34rem; margin: 0 auto 1.25rem; }
+  .home .row { justify-content: center; }
+  #apps .kind { color: var(--muted); font-size: .75rem; margin-left: .35rem; }
+  #apps li button.active .kind { color: inherit; opacity: .8; }
   .badge { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; }
   .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); flex: none; }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
@@ -64,7 +90,14 @@
   th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
   th { font-weight: 600; font-size: .85rem; color: var(--muted); }
   td input { width: 9rem; }
-  td.result { font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+  /* A module app: one card per function, drawn with the component library, and Arrange. */
+  .fn-cards { display: grid; gap: 12px; margin-top: .5rem; }
+  .fn-card .w-card-title code { font: 600 15px var(--w-font-mono); }
+  .fn-card .fn-run { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .fn-card .fn-run .w-input { width: 9rem; }
+  .fn-card output { display: block; margin-top: 10px; font-family: var(--w-font-mono); word-break: break-all; min-height: 1.4em; }
+  .fn-card output.err { color: var(--w-destructive); }
+  .fn-tools { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 
   #log {
     background: var(--code); border-radius: 6px; padding: .5rem .75rem; margin: 0;
@@ -94,6 +127,17 @@
   #folders li .name { flex: 1; cursor: pointer; }
   .hidden { display: none !important; }
   .apphead { justify-content: space-between; } .apphead h2 { margin: 0; }
+  /* The "Sealed" label: what this app can reach outside its frame, like a food label. */
+  .sealed { margin: .35rem 0 .2rem; font-size: .85rem; }
+  .sealed summary { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; list-style: none;
+    padding: .15rem .6rem .15rem .45rem; border-radius: 999px; background: var(--sealed-soft); color: var(--sealed); font-weight: 600; }
+  .sealed summary::-webkit-details-marker { display: none; }
+  .sealed summary:focus-visible { outline: 2px solid var(--sealed); outline-offset: 2px; }
+  .sealed summary svg { width: 13px; height: 13px; }
+  .sealed summary .more { font-weight: 400; opacity: .85; }
+  .sealed ul { margin: .5rem 0 .25rem; padding-left: 1.2rem; color: var(--muted); }
+  .sealed li { margin: .15rem 0; }
+  .sealed li.can { color: var(--text); }
   .removebox button { font-size: .85rem; }
   button.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
   ul.trash { list-style: none; margin: 0 0 .5rem; padding: 0; }
@@ -103,6 +147,34 @@
   .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 1rem; }
   details summary { cursor: pointer; font-weight: 600; margin-bottom: .5rem; }
 
+  /* Make an app (Claude) */
+  .ai-wrap { display: grid; gap: .75rem; }
+  #chat { display: flex; flex-direction: column; gap: .5rem; max-height: 55vh; overflow: auto; padding: .25rem; }
+  .msg { max-width: 46rem; padding: .55rem .8rem; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+  .msg.say { align-self: flex-start; background: var(--code); border-bottom-left-radius: 4px; }
+  .msg.tool { align-self: flex-start; padding: 0 .8rem; color: var(--muted); font-size: .85rem; }
+  .msg.error { align-self: stretch; color: var(--bad); border: 1px solid var(--bad); }
+  .msg.saved { align-self: stretch; border: 1px solid var(--ok); background: var(--panel); }
+  .msg.test { align-self: stretch; font-size: .88rem; border: 1px dashed var(--line); }
+  .msg.test.ok { border-color: var(--ok); } .msg.test.bad { border-color: var(--warn); }
+  #aiInput { width: 100%; min-height: 4.5rem; resize: vertical; border: 1px solid var(--line); border-radius: 8px;
+             background: var(--panel); padding: .55rem .7rem; font: inherit; color: inherit; }
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .chips button { border-radius: 999px; font-size: .88rem; }
+  #aiBtn { white-space: nowrap; }
+  #aiBtn .ai-state { font-weight: 500; opacity: .9; }
+  #aiBtn .ai-state::before { content: '· '; }
+  #aiBtn[data-state="ready"] .ai-state::after { content: ' ✓'; }
+  #aiBtn[data-state="needs_you"] { box-shadow: 0 0 0 2px var(--warn); }
+  /* Browser tests of new apps run here, out of sight, so they work whatever page you are on. */
+  #aiTestBox { position: fixed; left: -12000px; top: 0; width: 1280px; height: 900px; overflow: hidden; pointer-events: none; }
+  #aiTestBox iframe { width: 100%; height: 100%; border: 0; }
+  .working::after { content: ''; display: inline-block; width: .8em; height: .8em; margin-left: .5rem; vertical-align: -.1em;
+                    border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #aiPreview iframe { width: 100%; height: 60vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+
   @media (max-width: 700px) {
     main { grid-template-columns: 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -111,10 +183,12 @@
 </style>
 
 <header>
-  <h1>WASM apps</h1>
+  <a class="brand" href="/" aria-label="Wardian home"><img src="/logo.svg" alt=""><b>Wardian</b><small id="tagline">Small apps, sealed. On your machine.</small></a>
   <span class="badge" id="badge"><span class="dot"></span><span>…</span></span>
   <span class="spacer"></span>
   <a href="/docs" target="_blank" rel="noopener" class="docslink">Docs</a>
+  <a href="/ui" target="_blank" rel="noopener" class="docslink">Components</a>
+  <button id="aiBtn" class="primary" title="Describe an app and Claude builds it">Make an app</button>
   <button id="refreshBtn" title="Re-read the app list now">Refresh</button>
   <button id="settingsBtn">Settings</button>
 </header>
@@ -127,9 +201,7 @@
   </aside>
 
   <section id="content">
-    <div class="card" id="runner">
-      <p class="muted">Choose an app on the left.</p>
-    </div>
+    <div class="card" id="runner"></div>
     <div class="card">
       <div class="row" style="margin-bottom:.5rem">
         <h2 style="margin:0;flex:1">Output</h2>
@@ -207,6 +279,53 @@
       <p id="sourceMsg"></p>
     </div>
 
+    <div class="card" id="aiCard">
+      <h2>Make apps with Claude</h2>
+      <p id="aiKeyState" class="muted"></p>
+      <div class="row" style="margin-bottom:.5rem">
+        <input type="password" id="aiKey" style="flex:1;min-width:14rem" placeholder="Anthropic API key (sk-ant-…)" aria-label="Anthropic API key" autocomplete="off">
+        <button id="aiKeySave" class="primary">Save key</button>
+        <button id="aiKeyRemove" class="hidden">Remove key</button>
+      </div>
+      <div class="row" style="margin-bottom:.5rem">
+        <input type="text" id="aiWorkspace" style="flex:1;min-width:14rem" placeholder="Workspace ID (only if your key needs one)" aria-label="Anthropic workspace ID" autocomplete="off" spellcheck="false">
+      </div>
+      <p class="muted" style="font-size:.85rem">Get a key at console.anthropic.com → API keys. Wardian tests the key, then keeps it on this server only; it never comes back to the browser. Each app costs some API use, billed to that key. Apps with AI features (<code>claude:sample</code>) use the same key, after you allow them. Some keys belong to no one workspace; the API then asks for a workspace ID, which the Console shows under Settings → Workspaces.</p>
+      <p id="aiKeyMsg"></p>
+    </div>
+
+    <div class="card" id="splunkCard">
+      <h2>Splunk</h2>
+      <p id="splunkState" class="muted"></p>
+      <div class="row" style="margin-bottom:.5rem">
+        <input id="splunkUrl" style="flex:1;min-width:14rem" placeholder="https://splunk.example.com:8089" aria-label="Splunk management address" autocomplete="off">
+      </div>
+      <div class="row" style="margin-bottom:.5rem">
+        <input type="password" id="splunkToken" style="flex:1;min-width:14rem" placeholder="Splunk token" aria-label="Splunk token" autocomplete="off">
+      </div>
+      <div class="row" style="margin-bottom:.5rem">
+        <input id="splunkUser" style="flex:1;min-width:8rem" placeholder="…or username" aria-label="Splunk username" autocomplete="off">
+        <input type="password" id="splunkPass" style="flex:1;min-width:8rem" placeholder="password" aria-label="Splunk password" autocomplete="off">
+      </div>
+      <div class="row" style="margin-bottom:.5rem">
+        <label><input type="checkbox" id="splunkInsecure"> Allow a self-signed certificate (Splunk's default one)</label>
+      </div>
+      <div class="row" style="margin-bottom:.5rem">
+        <button id="splunkSave" class="primary">Test and save</button>
+        <button id="splunkRemove" class="hidden">Remove</button>
+      </div>
+      <p class="muted" style="font-size:.85rem">Apps that declare the <code>splunk</code> capability ask you once, then Wardian runs their searches with this account. The token never comes back to the browser. Give the account a read-only role that sees only the indexes these apps need.</p>
+      <p id="splunkMsg"></p>
+    </div>
+
+    <div class="card" id="permCard">
+      <h2>App permissions</h2>
+      <p class="muted" style="font-size:.85rem">Apps ask before they use a channel to talk to other apps. Your answers are listed here. Revoke one, and the app asks again next time.</p>
+      <p id="permEmpty" class="muted">No app has asked yet.</p>
+      <ul id="permList" class="trash"></ul>
+      <p id="permMsg" class="err"></p>
+    </div>
+
     <div class="card" id="trashCard">
       <h2>Removed apps</h2>
       <p id="trashEmpty" class="muted">Nothing removed.</p>
@@ -219,7 +338,7 @@
       <h2>Import from a zip</h2>
       <p class="muted" style="font-size:.85rem">Copies the apps in a zip into <code class="localRootName"></code>. The zip can hold an <code>app.wasm</code>, a single <code>.wasm</code> file, or one folder per app.</p>
       <div class="row" style="margin-bottom:.5rem">
-        <input type="file" id="zipFile" accept=".zip,.rustle,application/zip" aria-label="Zip file to import">
+        <input type="file" id="zipFile" accept=".zip,.wardian,.rustle,application/zip" aria-label="Zip file to import">
       </div>
       <div class="row" style="margin-bottom:.5rem">
         <input id="zipUrl" style="flex:1;min-width:14rem" placeholder="…or paste a link to a zip (Drive links work)" aria-label="Link to a zip file">
@@ -310,6 +429,21 @@ function renderStatus() {
   $('lockedCard').classList.toggle('hidden', !!s.admin);
   $('sourceCard').classList.toggle('hidden', !s.admin);
   $('refreshNow').disabled = !s.admin;
+  $('aiCard').classList.toggle('hidden', !s.admin);
+  $('aiBtn').classList.toggle('hidden', !s.admin);
+  const ai = s.ai || {};
+  $('aiKeyState').textContent = ai.ready
+    ? `Ready. Model: ${ai.model}. The key comes from ${ai.key_from === 'environment' ? 'the ANTHROPIC_API_KEY variable' : 'these settings'}.`
+    : 'No API key yet. Claude needs one to build apps.';
+  if (ai.ready && ai.workspace) $('aiKeyState').textContent += ` Workspace: ${ai.workspace}.`;
+  if (document.activeElement !== $('aiWorkspace')) $('aiWorkspace').value = ai.workspace || '';
+  $('aiKeyRemove').classList.toggle('hidden', ai.key_from !== 'settings');
+  const sp = s.splunk || {};
+  $('splunkCard').classList.toggle('hidden', !s.admin);
+  $('splunkState').textContent = sp.ready
+    ? `Connected to ${sp.url} with a ${sp.auth}, from ${sp.from === 'environment' ? 'the SPLUNK_* variables' : 'these settings'}.${sp.insecure_tls ? ' Any certificate is accepted.' : ''}`
+    : 'Not set up. Apps that use Splunk cannot search until you add an account.';
+  $('splunkRemove').classList.toggle('hidden', sp.from !== 'settings');
   renderKey();
 }
 
@@ -332,9 +466,9 @@ function renderApps() {
   const f = $('filter').value.trim().toLowerCase();
   const shown = apps.filter((a) => `${a.name} ${a.title || ''}`.toLowerCase().includes(f));
   $('apps').replaceChildren(...shown.map((a) => el('li', {}, el('button', {
-    textContent: (a.error ? '⚠ ' : '') + (a.title || a.name), title: a.error || a.description || a.name,
+    title: a.error || a.description || a.name,
     className: a.name === current ? 'active' : '', onclick: () => openApp(a),
-  }))));
+  }, (a.error ? '⚠ ' : '') + (a.title || a.name), el('span', { className: 'kind', textContent: a.suite ? 'suite' : a.page ? 'page' : 'module' })))));
   const empty = $('appsEmpty');
   empty.classList.toggle('hidden', shown.length > 0);
   empty.textContent = apps.length ? 'No app matches the filter.' : 'No apps found. Open Settings to choose a source.';
@@ -385,12 +519,51 @@ function callExport(fn, raw) {
 
 const appUrl = (name, rel) => `/apps/${encodeURIComponent(name)}/${rel.split('/').map(encodeURIComponent).join('/')}`;
 
+// What each capability lets an app do, in the words a user would use.
+const CAP_WORDS = {
+  storage: 'Keeps its own settings in this browser',
+  asset: 'Reads files from its own package',
+  worker: 'Runs background work in this browser',
+  source: 'Reads text built into its own page',
+  'claude:downloads': 'Offers files for you to save',
+  splunk: 'Runs Splunk searches with this server\'s account, if you allow it',
+  'claude:sample': 'Asks Claude, billed to this server\'s Anthropic key, if you allow it',
+};
+
+// The "Sealed" label under an app's title. Closed, it says the app is sealed and how many
+// ways out it has; open, it lists them. Channels always ask you first.
+function sealedLabel(app) {
+  const a = app.allows || { caps: [], send: [], receive: [] };
+  const can = [
+    ...a.caps.filter((c) => CAP_WORDS[c]).map((c) => CAP_WORDS[c]),
+    ...a.send.map((c) => `Sends messages on the channel “${c}”, if you allow it`),
+    ...a.receive.map((c) => `Reads messages on the channel “${c}”, if you allow it`),
+  ];
+  const lock = new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="currentColor"/><path d="M5.2 7V5a2.8 2.8 0 0 1 5.6 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>', 'image/svg+xml').documentElement;
+  const channels = a.send.length + a.receive.length;
+  const summary = el('summary', {}, lock, 'Sealed',
+    channels ? el('span', { className: 'more', textContent: `· ${channels} channel${channels > 1 ? 's' : ''}` }) : '');
+  summary.title = 'What this app can reach';
+  return el('details', { className: 'sealed' }, summary, el('ul', {},
+    el('li', { textContent: 'No network: the browser blocks every request it makes' }),
+    el('li', { textContent: 'No access to your files, this page or other apps’ data' }),
+    ...can.map((t) => el('li', { className: 'can', textContent: t }))));
+}
+
 async function openApp(app) {
   const { name } = app;
+  clearPageFrames();
+  moduleArrange?.destroy(); moduleArrange = null;
   current = name;
   renderApps();
-  const head = [el('div', { className: 'row apphead' }, el('h2', { textContent: app.title || name }), removeControl(name))];
+  const tools = el('span', { className: 'row' });
+  if (status.admin && status.source === 'local') {
+    tools.append(el('button', { textContent: 'Change this app', onclick: () => openAi({ app: name }) }));
+  }
+  tools.append(removeControl(name));
+  const head = [el('div', { className: 'row apphead' }, el('h2', { textContent: app.title || name }), tools)];
   if (app.description) head.push(el('p', { className: 'muted', textContent: app.description }));
+  head.push(sealedLabel(app));
   if (app.error) {
     $('runner').replaceChildren(...head, el('p', { className: 'err', textContent: app.error }));
     log(`${name}: ${app.error}`, 'e');
@@ -415,10 +588,13 @@ async function openApp(app) {
     head.push(el('p', { className: 'row' },
       el('span', { className: 'muted', textContent: `Page: ${app.page}` }),
       el('a', { href: src, target: '_blank', rel: 'noopener', textContent: 'Open in a new tab' })));
-    const frame = el('iframe', { src, title: `${name} page`, className: 'appframe' });
+    const frame = el('iframe', { title: `${name} page`, className: 'appframe' });
     frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
-    $('runner').replaceChildren(...head, frame,
+    permBox = el('div');
+    $('runner').replaceChildren(...head, permBox, frame,
       el('details', {}, el('summary', { textContent: 'Functions' }), fnBox));
+    watchPageFrame(frame, name);
+    frame.src = src;
   } else {
     $('runner').replaceChildren(...head, fnBox);
   }
@@ -439,6 +615,7 @@ async function openApp(app) {
   }
 }
 
+let moduleArrange = null;   // Arrange on the open module app's functions; removed when another app opens
 function functionTable(name, instance, size, missing) {
   const fns = [], others = [];
   for (const [k, v] of Object.entries(instance.exports)) {
@@ -450,10 +627,11 @@ function functionTable(name, instance, size, missing) {
     kids.push(el('p', { className: 'err', textContent: `This app imports things the host does not provide: ${missing.join(', ')}` }));
   }
   if (fns.length) {
-    const rows = fns.map(([k, fn]) => {
+    const cards = fns.map(([k, fn]) => {
       const inputs = Array.from({ length: fn.length }, (_, i) =>
-        el('input', { placeholder: `arg ${i + 1}`, inputMode: 'decimal', ariaLabel: `${k} argument ${i + 1}` }));
-      const result = el('td', { className: 'result' });
+        el('input', { className: 'w-input', placeholder: `arg ${i + 1}`, inputMode: 'decimal', ariaLabel: `${k} argument ${i + 1}` }));
+      const result = el('output', { className: 'result' });
+      result.setAttribute('aria-label', `${k} result`);
       const run = () => {
         const args = inputs.map((i) => i.value);
         try {
@@ -469,16 +647,29 @@ function functionTable(name, instance, size, missing) {
         }
       };
       inputs.forEach((i) => i.addEventListener('keydown', (ev) => ev.key === 'Enter' && run()));
-      return el('tr', {},
-        el('td', {}, el('code', { textContent: k })),
-        el('td', {}, el('div', { className: 'row' }, ...inputs,
-          inputs.length ? '' : el('span', { className: 'muted', textContent: 'no arguments' }),
-          el('button', { className: 'primary', textContent: 'Run', onclick: run }))),
-        result);
+      const card = el('section', { className: 'w-card fn-card' },
+        el('div', { className: 'w-card-header' }, el('h3', { className: 'w-card-title' }, el('code', { textContent: k }))),
+        el('div', { className: 'w-card-content' },
+          el('div', { className: 'fn-run' }, ...inputs,
+            inputs.length ? '' : el('span', { className: 'muted', textContent: 'no arguments' }),
+            el('button', { className: 'w-button', textContent: 'Run', onclick: run })),
+          result));
+      return { id: k, el: card, home: 'main', label: k };
     });
-    kids.push(el('table', {},
-      el('thead', {}, el('tr', {}, ...['Function', 'Arguments', 'Result'].map((t) => el('th', { textContent: t })))),
-      el('tbody', {}, ...rows)));
+    const list = el('div', { className: 'fn-cards' }, ...cards.map((c) => c.el));
+    const tools = el('div', { className: 'fn-tools' }, kids[0]);
+    kids[0] = tools;
+    kids.push(list);
+    // Arrange: each viewer may reorder and hide the functions, like the panels of any app.
+    const key = `wardian-layout:${name}`;
+    queueMicrotask(async () => {
+      moduleArrange?.destroy();
+      moduleArrange = await WardianArrange.init({
+        columns: [{ id: 'main', el: list, label: 'Main' }], panels: cards, buttonIn: tools, barIn: $('runner'),
+        load: () => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } },
+        save: (l) => { try { if (l) localStorage.setItem(key, JSON.stringify(l)); else localStorage.removeItem(key); } catch {} },
+      });
+    });
   } else {
     kids.push(el('p', { className: 'muted', textContent: 'This app exports no functions.' }));
   }
@@ -495,6 +686,65 @@ function functionTable(name, instance, size, missing) {
 }
 
 // ---------- settings dialog ----------
+// ---------- channels for page apps ----------
+// A page app sends channel requests to this page (it loads /sdk/wardian.js). This page checks them
+// against the app's app.json and passes them to WardianChannels, which asks the user the first time.
+const pageFrames = new Map(); // frame window -> { pkg, decl: Promise<{send, receive}>, stops: [] }
+let permBox = null;
+WardianChannels.setPrompt((q) => WardianChannels.promptBar(permBox && permBox.isConnected ? permBox : $('runner'))(q));
+
+function clearPageFrames() {
+  for (const p of pageFrames.values()) p.stops.forEach((stop) => stop());
+  pageFrames.clear();
+}
+
+function watchPageFrame(frame, pkg) {
+  const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+  const decl = fetch(appUrl(pkg, 'app.json'), { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : {})).catch(() => ({}))
+    .then((j) => ({ send: strings(j.channels?.send), receive: strings(j.channels?.receive) }));
+  pageFrames.set(frame.contentWindow, { pkg, decl, stops: [] });
+}
+
+// A page app's Arrange (ui/arrange.js) keeps the viewer's layout here: the app is sandboxed and
+// cannot keep anything itself. Each app has its own layout, in this browser only.
+addEventListener('message', (e) => {
+  const m = e.data;
+  const p = m && m.wardian === 'layout' && pageFrames.get(e.source);
+  if (!p || typeof m.id !== 'string') return;
+  const key = `wardian-layout:${p.pkg}`;
+  let layout = null;
+  try {
+    if (m.k === 'set') {
+      if (m.layout && JSON.stringify(m.layout).length < 20000) localStorage.setItem(key, JSON.stringify(m.layout));
+      else localStorage.removeItem(key);
+    }
+    layout = JSON.parse(localStorage.getItem(key) || 'null');
+  } catch { /* storage blocked: the layout lasts until the page closes */ }
+  e.source.postMessage({ wardian: 'layout', id: m.id, layout }, '*');
+});
+
+addEventListener('message', async (e) => {
+  const m = e.data;
+  const p = m && m.wardian === 'ch' && pageFrames.get(e.source);
+  if (!p) return;
+  const win = e.source;
+  const answer = (ok, v) => win.postMessage({ wardian: 'ch', k: 'reply', id: m.id, ok, ...(ok ? { value: v } : { error: v }) }, '*');
+  try {
+    const decl = await p.decl;
+    if (m.k === 'send') {
+      if (!decl.send.includes(m.channel)) throw new Error(`${p.pkg} may not send on channel "${m.channel}" (not in app.json)`);
+      await WardianChannels.send(p.pkg, m.channel, m.data);
+      log(`[${p.pkg}] sent on channel ${m.channel}`, 'a');
+    } else if (m.k === 'on') {
+      if (!decl.receive.includes(m.channel)) throw new Error(`${p.pkg} may not receive on channel "${m.channel}" (not in app.json)`);
+      p.stops.push(await WardianChannels.receive(p.pkg, m.channel, (data, info) =>
+        win.postMessage({ wardian: 'ch', k: 'msg', channel: m.channel, data, from: info.from, at: info.at }, '*')));
+    } else throw new Error('unknown channel request');
+    answer(true, null);
+  } catch (err) { answer(false, err.message); log(`[${p.pkg}] ${err.message}`, 'e'); }
+});
+
 // ---------- removing apps ----------
 // Removal moves the app to apps/.trash on the server; Undo and Settings → Removed apps put it back.
 function removeControl(name) {
@@ -532,6 +782,26 @@ async function restoreApp(id, name) {
   } catch (e) { log(`restore ${name}: ${e.message}`, 'e'); $('trashMsg').textContent = e.message; }
 }
 
+async function loadGrants() {
+  $('permMsg').textContent = '';
+  try {
+    const { grants } = await api('/api/grants');
+    grants.sort((a, b) => a.app.localeCompare(b.app) || a.channel.localeCompare(b.channel));
+    $('permList').replaceChildren(...grants.map((g) => el('li', {},
+      el('span', { className: 'name' }, g.app, el('span', { className: 'muted', style: 'font-weight:400',
+        textContent: g.mode === 'use' ? ` uses ${({ splunk: 'Splunk searches', ai: 'Claude AI' })[g.channel] || g.channel}` : ` ${g.mode === 'send' ? 'sends on' : 'reads'} channel ${g.channel}` })),
+      el('span', { className: g.allow ? '' : 'err', textContent: g.allow ? 'Allowed' : 'Not allowed' }),
+      status.admin ? el('button', { textContent: 'Revoke', onclick: async () => {
+        try {
+          await api('/api/grants', { app: g.app, channel: g.channel, mode: g.mode, decision: 'ask' });
+          await WardianChannels.refresh();
+          loadGrants();
+        } catch (e) { $('permMsg').textContent = e.message; }
+      } }) : '')));
+    $('permEmpty').hidden = grants.length > 0;
+  } catch (e) { $('permMsg').textContent = e.message; }
+}
+
 async function loadTrash() {
   if (!status.admin) return;
   try {
@@ -552,6 +822,7 @@ $('settingsBtn').onclick = async () => {
   $('settings').showModal();
   $('trashMsg').textContent = '';
   loadTrash();
+  loadGrants();
   if (status.admin && status.client_email && !folderStack.length) browse(null, 'Shared with the service account');
 };
 $('closeSettings').onclick = () => $('settings').close();
@@ -587,7 +858,7 @@ async function switched(newStatus, what) {
   status = { ...newStatus, admin: status.admin };
   renderStatus();
   current = null;
-  $('runner').replaceChildren(el('p', { className: 'muted', textContent: 'Choose an app on the left.' }));
+  showHome();
   await loadApps();
   sourceMsg(`Now serving ${what}: ${apps.length} app(s).`);
   log(`source changed to ${what}`, 'a');
@@ -755,9 +1026,367 @@ $('connect').onclick = async () => {
   $('connect').disabled = false;
 };
 
+// ---------- create with AI ----------
+// The chat lives on the server: this page sends messages and polls for what
+// Claude says and does. After each save, the page opens the app in a frame
+// and reports any errors back to Claude, so it can fix them.
+const AI_IDEAS = [
+  'A tip calculator that splits the bill between friends',
+  'A habit tracker with a weekly grid I can tick',
+  'A pomodoro timer with a short task list',
+  'A unit converter for cooking: cups, grams, spoons',
+];
+const MAX_AUTO_FIXES = 2;
+let chat = null; // { session, next, app, busy, view, saved: index of the last save, tested: saves tested }
+
+// The chat lives on the server; this browser remembers which one is yours, for every tab.
+function loadChatState() {
+  try { return JSON.parse(localStorage.getItem('aiChat') || sessionStorage.getItem('aiChat') || 'null'); } catch { return null; }
+}
+function saveChatState(state = chat && { session: chat.session, app: chat.app, editing: chat.editing }) {
+  try { localStorage.setItem('aiChat', JSON.stringify(state)); } catch {}
+  aiWatch();
+}
+
+$('aiBtn').onclick = () => {
+  const saved = loadChatState();
+  openAi(saved?.session ? saved : {});
+};
+
+function openAi({ app = null, session = null, editing = null } = {}) {
+  clearPageFrames();
+  moduleArrange?.destroy(); moduleArrange = null;
+  current = null;
+  renderApps();
+  const editTarget = editing || (session ? null : app);
+  chat = { session, next: 0, app, editing: editTarget, busy: false, polling: false, saved: -1, tested: new Set() };
+  const view = {
+    chat: el('div', { id: 'chat', role: 'log', ariaLive: 'polite' }),
+    input: el('textarea', { id: 'aiInput', placeholder: editTarget ? `What should change in ${editTarget}?` : 'Describe the app you want. For example: a packing list for trips, with categories and a progress bar.' }),
+    send: el('button', { className: 'primary', textContent: 'Send' }),
+    stop: el('button', { textContent: 'Stop', className: 'hidden' }),
+    state: el('span', { className: 'muted' }),
+    preview: el('div', { id: 'aiPreview' }),
+  };
+  chat.view = view;
+  const title = editTarget ? `Change ${editTarget} with AI` : 'Create an app with AI';
+  const head = el('div', { className: 'row apphead' }, el('h2', { textContent: title }),
+    el('button', { textContent: 'New chat', onclick: () => { chat = null; saveChatState(); openAi({}); } }));
+  const intro = el('p', { className: 'muted', textContent: editTarget
+    ? 'Say what to change. Each saved change keeps the old version in the trash, so you can go back.'
+    : 'Say what the app should do, in your own words. Claude writes it, wardian checks it and tries it in this browser, and it appears in your app list.' });
+  const parts = [head, intro];
+  if (!(status.ai || {}).ready) {
+    parts.push(el('p', {}, 'First add an Anthropic API key. ',
+      el('button', { className: 'link', textContent: 'Open Settings', onclick: () => $('settingsBtn').click() })));
+  }
+  if (!session && !editTarget) {
+    view.ideas = el('div', { className: 'chips' }, ...AI_IDEAS.map((t) =>
+      el('button', { textContent: t, onclick: () => { view.input.value = t; view.input.focus(); } })));
+    parts.push(view.ideas);
+  }
+  view.send.onclick = () => aiSend(view.input.value);
+  view.stop.onclick = () => api('/api/ai/stop', { session: chat.session }).catch((e) => log(`stop: ${e.message}`, 'e'));
+  view.input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) aiSend(view.input.value);
+  });
+  $('runner').replaceChildren(el('div', { className: 'ai-wrap' }, ...parts, view.chat, view.input,
+    el('div', { className: 'row' }, view.send, view.stop, view.state,
+      el('span', { className: 'muted', style: 'margin-left:auto;font-size:.85rem', textContent: '⌘/Ctrl + Enter sends' })),
+    view.preview));
+  saveChatState();
+  if (session) aiPoll();
+  else view.input.focus();
+}
+
+async function aiSend(text, auto = false) {
+  text = text.trim();
+  if (!text || !chat || chat.busy) return;
+  const body = { message: text };
+  if (chat.session) body.session = chat.session;
+  else if (chat.editing) body.app = chat.editing;
+  try {
+    const { session } = await api('/api/ai/send', body);
+    chat.session = session;
+    saveChatState();
+    if (!auto) chat.view.input.value = '';
+    aiBusy(true);
+    aiPoll();
+  } catch (e) {
+    aiShow({ kind: 'error', text: e.message });
+    if (/chat has ended/.test(e.message)) { chat.session = null; saveChatState(); }
+  }
+}
+
+function aiBusy(on) {
+  chat.busy = on;
+  const v = chat.view;
+  v.send.disabled = on;
+  v.stop.classList.toggle('hidden', !on);
+  v.state.textContent = on ? 'Claude is working' : '';
+  v.state.classList.toggle('working', on);
+}
+
+async function aiPoll() {
+  if (!chat || chat.polling) return;
+  chat.polling = true;
+  const mine = chat;
+  try {
+    for (;;) {
+      if (chat !== mine) return;
+      let r;
+      try { r = await api(`/api/ai/events?session=${encodeURIComponent(mine.session)}&since=${mine.next}`); }
+      catch (e) { aiShow({ kind: 'error', text: e.message }); mine.session = null; saveChatState(); aiBusy(false); return; }
+      if (chat !== mine) return;
+      const first = r.next - r.events.length;
+      mine.next = r.next;
+      if (r.app && r.app !== mine.app) { mine.app = r.app; saveChatState(); }
+      r.events.forEach((ev, i) => {
+        if (ev.kind === 'saved') mine.saved = first + i;
+        if (ev.kind === 'tested') mine.tested.add(ev.saved);
+      });
+      r.events.forEach(aiShow);
+      // Show the app below the chat once, after its latest passed test.
+      const passed = r.events.filter((ev) => ev.kind === 'tested').pop();
+      if (passed && passed.ok && passed.saved === mine.saved && mine.app) showPreview(mine.app);
+      aiBusy(r.busy);
+      // The test of a save runs in the background (aiWatch); keep listening until it is done.
+      const waiting = !r.busy && mine.saved >= 0 && !mine.tested.has(mine.saved);
+      if (!r.busy && !waiting) return;
+      if (waiting) {
+        mine.view.state.textContent = 'Trying the app';
+        mine.view.state.classList.add('working');
+        aiWatch();
+      }
+      await new Promise((res) => setTimeout(res, 1000));
+    }
+  } finally { mine.polling = false; }
+}
+
+function aiShow(ev) {
+  if (!chat) return;
+  const box = chat.view.chat;
+  let node;
+  switch (ev.kind) {
+    case 'user': node = el('div', { className: 'msg user', textContent: ev.text }); chat.view.ideas?.remove(); break;
+    case 'say': node = el('div', { className: 'msg say', textContent: ev.text.replace(/\*\*(.+?)\*\*/g, '$1') }); break;
+    case 'tool': node = el('div', { className: 'msg tool', textContent: `· ${ev.text}` }); break;
+    case 'test': node = el('div', { className: 'msg test bad', textContent: ev.text.replace(/^\[browser test\]\s*/, 'Sent to Claude: ') }); break;
+    case 'saved':
+      node = el('div', { className: 'msg saved' },
+        el('strong', { textContent: `Saved as ${ev.app}. ` }), ev.text || '', ' ',
+        el('button', { className: 'link', textContent: 'Open it', onclick: () => { const a = apps.find((x) => x.name === ev.app); if (a) openApp(a); } }),
+        ev.replaced ? el('span', { className: 'muted', textContent: ' · The previous version is in Settings → Removed apps.' }) : '');
+      loadApps();
+      break;
+    case 'stopped': node = el('div', { className: 'msg tool', textContent: ev.text }); break;
+    case 'testing': node = el('div', { className: 'msg test', textContent: ev.text }); break;
+    case 'tested':
+      node = el('div', { className: `msg test ${ev.ok ? 'ok' : 'bad'}`, textContent: ev.ok ? `${ev.text} Try it below.` : ev.text });
+      break;
+    default: node = el('div', { className: 'msg error', textContent: ev.text });
+  }
+  box.append(node);
+  box.scrollTop = box.scrollHeight;
+}
+
+// Shows the app below the chat, as the user will see it.
+async function showPreview(name) {
+  if (!chat || !chat.view.preview.isConnected) return;
+  await loadApps();
+  const app = apps.find((a) => a.name === name);
+  if (!app || (!app.suite && !app.page)) return;
+  const frame = el('iframe', { title: `${name} preview` });
+  if (app.suite) frame.src = `/run/${encodeURIComponent(name)}/`;
+  else frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
+  chat.view.preview.replaceChildren(frame);
+  if (app.page) { watchPageFrame(frame, name); frame.src = appUrl(name, app.page); }
+}
+
+// ---------- making an app in the background ----------
+// Claude works on the server, so you may use other apps, or close the tab, while it works.
+// Every open Wardian tab watches your chat: it shows the state on the Make an app button, and
+// one of them (the server lets only one claim it) tries each new save in a hidden frame and
+// tells Claude what broke.
+const aiTestBox = el('div', { id: 'aiTestBox', ariaHidden: 'true' });
+document.body.append(aiTestBox);
+const AI_LIVE = ['working', 'untested', 'testing'];
+const AI_WORDS = { working: 'working', untested: 'testing', testing: 'testing', ready: 'ready', needs_you: 'needs you' };
+let aiWatchTimer = null, aiWatching = false;
+
+function aiSeenKey(s) { return `${s.session}:${s.state}:${s.last_used}`; }
+function setAiBadge(s) {
+  const btn = $('aiBtn');
+  const onChat = chat && chat.view && chat.view.chat.isConnected && s && chat.session === s.session;
+  let seen = '';
+  try { seen = localStorage.getItem('aiSeen') || ''; } catch {}
+  // What you have already looked at, in the chat, needs no badge.
+  if (s && onChat && !AI_LIVE.includes(s.state)) { try { localStorage.setItem('aiSeen', aiSeenKey(s)); } catch {} seen = aiSeenKey(s); }
+  const show = s && AI_WORDS[s.state] && !onChat && (AI_LIVE.includes(s.state) || seen !== aiSeenKey(s));
+  btn.dataset.state = show ? s.state : '';
+  btn.replaceChildren('Make an app');
+  if (show) btn.append(el('span', { className: `ai-state${AI_LIVE.includes(s.state) ? ' working' : ''}`, textContent: AI_WORDS[s.state] }));
+  btn.title = show ? `Your app chat: ${AI_WORDS[s.state]}${s.title ? ` (“${s.title}”)` : ''}. Press to open it.` : 'Describe an app and Claude builds it';
+}
+
+async function aiWatch() {
+  clearTimeout(aiWatchTimer);
+  if (aiWatching) return;
+  aiWatching = true;
+  let delay = 20000;
+  try {
+    if (!status.admin) return;
+    const list = await api('/api/ai/sessions');
+    const local = loadChatState();
+    let s = local?.session ? list.find((x) => x.session === local.session) : null;
+    if (local?.session && !s && !(chat && chat.session === local.session && chat.busy)) {
+      try { localStorage.removeItem('aiChat'); } catch {}       // the chat ended (Wardian restarted)
+    }
+    // A chat still running that this browser does not know, such as one started in another browser.
+    if (!s && !local?.session && !(chat && chat.view.chat.isConnected)) {
+      s = list.find((x) => AI_LIVE.includes(x.state)) || null;
+      if (s) try { localStorage.setItem('aiChat', JSON.stringify({ session: s.session, app: s.app })); } catch {}
+    }
+    setAiBadge(s);
+    if (s && s.state === 'untested') await aiBackgroundTest(s);
+    if (s && AI_LIVE.includes(s.state)) delay = 2000;
+  } catch { /* no admin token in this tab, or the server is away: try again later */ }
+  finally { aiWatching = false; aiWatchTimer = setTimeout(aiWatch, delay); }
+}
+addEventListener('storage', (e) => { if (e.key === 'aiChat' || e.key === 'aiSeen') aiWatch(); });
+
+async function aiBackgroundTest(s) {
+  const { claimed } = await api('/api/ai/claim-test', { session: s.session, saved: s.saved });
+  if (!claimed) return;
+  let problems = [];
+  try {
+    await loadApps();
+    const app = apps.find((a) => a.name === s.app);
+    if (!app) problems = ['The app does not appear in the app list.'];
+    else if (app.error) problems = [app.error];
+    else if (app.suite) problems = await testSuite(app.name, aiTestBox);
+    else if (app.page) problems = await testPage(app.name, app.page, aiTestBox);
+  } catch (e) { problems = [`The browser test itself failed: ${e.message}`]; }
+  finally {
+    for (const f of aiTestBox.querySelectorAll('iframe')) { const p = pageFrames.get(f.contentWindow); if (p) { p.stops.forEach((stop) => stop()); pageFrames.delete(f.contentWindow); } }
+    aiTestBox.replaceChildren();
+  }
+  const fix = problems.length > 0 && s.fixes < MAX_AUTO_FIXES;
+  const text = !problems.length ? 'Browser test passed: the app opened with no errors.'
+    : fix ? `The browser test found ${problems.length} problem(s). Asking Claude to fix them…`
+    : `Problems remain after ${MAX_AUTO_FIXES} automatic fixes:\n${problems.join('\n')}\nTell Claude what you see, or open the app.`;
+  await api('/api/ai/tested', { session: s.session, saved: s.saved, ok: !problems.length, text });
+  if (fix) {
+    await api('/api/ai/send', { session: s.session,
+      message: `[browser test] I opened the app in a browser. It reported:\n${problems.map((p) => `- ${p}`).join('\n')}\nFix these, then finish again.` });
+  }
+  if (chat && chat.session === s.session) aiPoll();
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function testPage(name, page, box) {
+  const frame = el('iframe', { title: `${name} preview` });
+  frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
+  const problems = [];
+  let loaded = false;
+  const onMsg = (e) => {
+    if (e.source !== frame.contentWindow || !e.data || !e.data.wardianProbe) return;
+    if (e.data.message === '__loaded') loaded = true;
+    else if (problems.length < 10) problems.push(e.data.message);
+  };
+  addEventListener('message', onMsg);
+  box.replaceChildren(frame);
+  watchPageFrame(frame, name);   // a page that uses channels works in the test too
+  frame.src = `${appUrl(name, page)}?wardian-probe=1`;
+  for (let t = 0; t < 80 && !loaded; t++) await sleep(100);
+  await sleep(1500); // errors from startup code that runs just after load
+  removeEventListener('message', onMsg);
+  if (!loaded) problems.push('The page did not finish loading within 8 seconds.');
+  return [...new Set(problems)];
+}
+
+async function testSuite(name, box) {
+  const frame = el('iframe', { title: `${name} test`, src: `/run/${encodeURIComponent(name)}/` });
+  box.replaceChildren(frame);
+  let K = null;
+  for (let t = 0; t < 100; t++) {
+    await sleep(100);
+    K = frame.contentWindow && frame.contentWindow.Kernel;
+    if (K && K.started().length >= K.apps().length) break;
+  }
+  if (!K) return ['The suite page did not start.'];
+  await sleep(1500);
+  const problems = K.faults().map((f) => f.message.startsWith(`${f.app}:`) ? f.message : `${f.app}: ${f.message}`);
+  const started = new Set(K.started());
+  for (const a of K.apps()) if (!started.has(a.name)) problems.push(`${a.name}: the app never started (its frame did not load or app.js failed).`);
+  return [...new Set(problems)].slice(0, 12);
+}
+
+// Settings → Make apps with Claude
+function splunkMsg(text, bad = false) { $('splunkMsg').textContent = text; $('splunkMsg').className = bad ? 'err' : 'muted'; }
+$('splunkSave').onclick = async () => {
+  const body = {
+    url: $('splunkUrl').value.trim(), token: $('splunkToken').value.trim(),
+    username: $('splunkUser').value.trim(), password: $('splunkPass').value,
+    insecure_tls: $('splunkInsecure').checked,
+  };
+  if (!body.url) return splunkMsg('Type the Splunk address first.', true);
+  splunkMsg('Testing the connection…');
+  try {
+    status.splunk = await api('/api/splunk/config', body);
+    $('splunkToken').value = ''; $('splunkPass').value = '';
+    renderStatus();
+    const sv = status.splunk.server || {};
+    splunkMsg(`Connected to ${sv.name || 'Splunk'}${sv.version ? ' ' + sv.version : ''}${sv.user ? ' as ' + sv.user : ''}. Saved.`);
+  } catch (e) { splunkMsg(`Not saved: ${e.message}`, true); }
+};
+$('splunkRemove').onclick = async () => {
+  try { status.splunk = await api('/api/splunk/config', { url: '' }); renderStatus(); splunkMsg('Removed.'); }
+  catch (e) { splunkMsg(e.message, true); }
+};
+function aiKeyMsg(text, bad = false) { $('aiKeyMsg').textContent = text; $('aiKeyMsg').className = bad ? 'err' : 'muted'; }
+$('aiKeySave').onclick = async () => {
+  const key = $('aiKey').value.trim(), workspace = $('aiWorkspace').value.trim();
+  const ai = status.ai || {};
+  // Without a new key, Save tests the saved key with the workspace ID as typed.
+  if (!key && !(ai.ready && workspace !== (ai.workspace || ''))) return aiKeyMsg('Paste a key first.', true);
+  aiKeyMsg('Testing the key…');
+  try {
+    status.ai = await api('/api/ai/key', { key, workspace });
+    $('aiKey').value = '';
+    renderStatus();
+    aiKeyMsg('Key accepted. Close Settings and press Make an app.');
+  } catch (e) {
+    const hint = /workspace/i.test(e.message) && !workspace ? ' Put your workspace ID in the Workspace ID box (Console → Settings → Workspaces), paste the key again, and save.' : '';
+    aiKeyMsg(`Key rejected: ${e.message}${hint}`, true);
+  }
+};
+$('aiKeyRemove').onclick = async () => {
+  try { status.ai = await api('/api/ai/key', { key: '' }); renderStatus(); aiKeyMsg('Key removed.'); }
+  catch (e) { aiKeyMsg(e.message, true); }
+};
+
+// ---------- home ----------
+function showHome() {
+  clearPageFrames();
+  moduleArrange?.destroy(); moduleArrange = null;
+  current = null;
+  renderApps();
+  const acts = el('div', { className: 'row' });
+  if (status.admin) acts.append(el('button', { className: 'primary', textContent: 'Make an app', onclick: () => $('aiBtn').click() }));
+  if (status.admin) acts.append(el('button', { textContent: 'Import a zip', onclick: () => $('settingsBtn').click() }));
+  acts.append(el('a', { href: '/docs/guide', target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Build one yourself →' }));
+  $('runner').replaceChildren(el('div', { className: 'home' },
+    el('img', { src: '/logo.svg', alt: '' }),
+    el('h2', { textContent: apps.length ? 'Pick an app to run' : 'Your app shelf is empty' }),
+    el('p', { textContent: 'Every app here runs sealed in its own sandbox. It cannot reach your files, your other apps or the network unless Wardian lets it.' }),
+    acts));
+}
+document.querySelector('.brand').addEventListener('click', (e) => { e.preventDefault(); showHome(); });
+
 // ---------- start ----------
-loadStatus();
-loadApps();
+Promise.all([loadStatus(), loadApps()]).then(() => { if (!current && !chat) showHome(); aiWatch(); });
 // Drive refreshes in the background, so pick up new apps and health now and then.
 setInterval(() => { loadStatus(); loadApps(); }, 30000);
 </script>
