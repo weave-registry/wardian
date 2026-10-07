@@ -1,13 +1,47 @@
 {
   "sessions": {
     "83691a10-4167-4fc7-8957-1fc310b86632": {
-      "adr": "ADR-2610071248",
+      "adr": "ADR-2610072033",
       "evidence": "bash -c 'cargo test --release 2>&1 | grep -E \"export|test result: ok. [1-9]\"; hexa analyze . --grade A 2>&1 | grep -E \"Architecture grade|coverage\"'",
       "gate": "cargo build --release && cargo test --release && hexa analyze . --grade A",
       "pid": 56812,
       "pid_start": null,
-      "stage": "done",
-      "updated": "2026-10-07T18:25:44.817636+00:00"
+      "stage": "build",
+      "tasks": [
+        {
+          "status": "doing",
+          "title": "security: SQL wall refusals"
+        },
+        {
+          "status": "todo",
+          "title": "security: hostile zip imports"
+        },
+        {
+          "status": "todo",
+          "title": "security: address needs ADMIN_TOKEN"
+        },
+        {
+          "status": "todo",
+          "title": "security: secrets never leak"
+        },
+        {
+          "status": "todo",
+          "title": "reliability: page hang + load test"
+        },
+        {
+          "status": "todo",
+          "title": "reliability: stop log"
+        },
+        {
+          "status": "todo",
+          "title": "first use: setup, settings sections, a11y"
+        },
+        {
+          "status": "todo",
+          "title": "release: changelog, CI, live checks, packaging"
+        }
+      ],
+      "updated": "2026-10-07T20:39:13.806723+00:00"
     }
   }
 }

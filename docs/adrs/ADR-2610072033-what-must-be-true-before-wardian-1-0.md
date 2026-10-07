@@ -1,6 +1,6 @@
 # ADR-2610072033: what must be true before Wardian 1.0
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-10-07
 **Drivers:** Wardian now runs apps that write their own SQL, call Claude through two providers, read
 Splunk and Google Drive, and travel between people as `.wardian` files. Each of those widens what a
