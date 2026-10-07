@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Wardian.app's Info.plist. scripts/package-macos.sh fills in @VERSION@ from Cargo.toml. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Wardian</string>
+  <key>CFBundleDisplayName</key>
+  <string>Wardian</string>
+  <key>CFBundleIdentifier</key>
+  <string>studio.wardian</string>
+  <key>CFBundleExecutable</key>
+  <!-- The launcher; the server is MacOS/wardian (a different name: the file system ignores case). -->
+  <string>WardianApp</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@VERSION@</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>MIT License</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+
+  <!-- The .wardian file (ADR-2610071248): a zip of one app, application/vnd.wardian+zip. -->
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>studio.wardian.package</string>
+      <key>UTTypeDescription</key>
+      <string>Wardian app</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.zip-archive</string>
+        <string>public.data</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>wardian</string>
+        </array>
+        <key>public.mime-type</key>
+        <array>
+          <string>application/vnd.wardian+zip</string>
+        </array>
+      </dict>
+    </dict>
+  </array>
+
+  <!-- Wardian opens .wardian files. -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Wardian app</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Owner</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>studio.wardian.package</string>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>

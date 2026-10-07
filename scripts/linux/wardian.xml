@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The .wardian file (ADR-2610071248) for the shared MIME database; install.sh registers it. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.wardian+zip">
+    <comment>Wardian app</comment>
+    <sub-class-of type="application/zip"/>
+    <glob pattern="*.wardian"/>
+  </mime-type>
+</mime-info>

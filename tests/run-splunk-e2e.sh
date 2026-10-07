@@ -2,7 +2,7 @@
 # End-to-end test of the splunk and claude:sample capabilities: a fake Splunk, a fake Anthropic API,
 # Wardian, the Splunk table app and the USL lab in a real browser, including the permission questions.
 # PROVIDER=bedrock runs Claude through tests/fixtures/fake-bedrock.py instead (ADR-2610071106).
-# Needs: python3, Node with the playwright package (npm i -g playwright) and Google Chrome.
+# Needs: python3, Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian
