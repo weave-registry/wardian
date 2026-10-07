@@ -447,7 +447,17 @@ any source repository; each save there is a version in the app's history (ADR-26
 
 7.2. **A `.wardian` file** is a zip. It SHOULD hold one package folder at its top:
 `my-app.wardian` → `my-app/app.wasm`, `my-app/app.json`, … A `.zip` is read the same way. A host
-SHOULD also accept `.rustle`, the extension from before the rename.
+SHOULD also accept `.rustle`, the extension from before the rename. Its media type is
+`application/vnd.wardian+zip`, and on macOS its type identifier is `studio.wardian.package`.
+
+A file a host exports (ADR-2610071248) holds exactly the files `wardian check` reads, and a manifest
+at `<package>/.wardian/export.json`: `{format: 1, type, package, title, exported_at,
+wardian_version, includes: {app, data}, data: {storage, layout, tables: [{name, rows}]}}`. With the
+user's consent it also holds the app's data under `<package>/.wardian/data/`: `storage.json` (its
+`storage`), `layout.json` (its Arrange layout) and `tables.sqlite` (its `db` tables). It MUST NOT hold
+keys, accounts, permission answers, history or another package's data. The folder is hidden, so a
+host that predates exports, and `wardian check`, ignore it. A host SHOULD show the manifest before
+importing, and MUST install the data only when the user asks; permissions are never imported.
 
 7.3. **Import is lenient.** To accept project zips as they come, the importer also:
 

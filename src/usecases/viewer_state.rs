@@ -92,6 +92,16 @@ impl ViewerState for State {
         Ok(json!({ "added": added, "data": Value::Object(doc) }))
     }
 
+    fn replace_app_data(&self, package: &str, data: &Value) -> Result<Value, String> {
+        check_name(package)?;
+        let _guard = self.lock.lock().unwrap();
+        // Built from empty through the same rules as a merge, so the limits hold for imports too.
+        let mut doc = Map::new();
+        viewer_state::merge_missing(&mut doc, data)?;
+        self.write_map(&self.app_path(package), &doc)?;
+        Ok(json!({ "data": Value::Object(doc) }))
+    }
+
     fn channel(&self, channel: &str) -> Value {
         self.read_map(&self.channels_path()).remove(channel).unwrap_or(Value::Null)
     }

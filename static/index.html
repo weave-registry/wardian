@@ -69,6 +69,9 @@
   #apps li button.active .kind { color: inherit; opacity: .8; }
   .badge { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; }
   .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); flex: none; }
+  #importPreview { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .8rem; margin: .5rem 0; }
+  .export-data { border: 1px solid var(--line); border-radius: 8px; padding: .4rem .8rem; margin: .5rem 0; }
+  p.warn { color: var(--warn); }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
   header .spacer { flex: 1; }
   .docslink { color: var(--muted); text-decoration: none; }
@@ -390,6 +393,7 @@
         <button id="zipUrlBtn">Import link</button>
       </div>
       <label class="row"><input type="checkbox" id="zipReplace"> Replace apps that already exist</label>
+      <div id="importPreview" class="hidden"></div>
       <p id="importMsg"></p>
     </div>
   </div>
@@ -633,6 +637,7 @@ async function openApp(app) {
   if (status.admin && status.source === 'local') {
     tools.append(el('button', { textContent: 'Change this app', onclick: () => openAi({ app: name }) }));
     tools.append(el('button', { id: 'historyBtn', textContent: 'History', title: 'Every saved version of this app', onclick: () => openHistory(app) }));
+    tools.append(el('button', { id: 'downloadBtn', textContent: 'Download', title: 'Download this app as a .wardian file, to send to someone', onclick: () => openExport(app) }));
   }
   // Arrange: shown once the app's frame says it has panels (ui/arrange.js). It lives here, in
   // view, because the app's own frame is often taller than the window.
@@ -704,6 +709,63 @@ async function openApp(app) {
 // Every save is a version: by Make an app, an import, a restore or promote. Any version can be
 // compared with the app as it is now, or put back; putting one back is itself a new version.
 const BY_WORDS = { 'make-an-app': 'Make an app', import: 'import', restore: 'restore', promote: 'promote', 'first-seen': 'original' };
+// ---------- Download this app (ADR-2610071248) ----------
+const kb = (n) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`);
+
+async function openExport(app) {
+  clearPageFrames();
+  moduleArrange?.destroy(); moduleArrange = null;
+  current = app.name;
+  renderApps();
+  const withData = el('input', { type: 'checkbox', id: 'exportData' });
+  const list = el('div', { id: 'exportList' }, el('p', { className: 'muted', textContent: 'Loading…' }));
+  const msg = el('p', { id: 'exportMsg' });
+  const go = el('button', { className: 'primary', id: 'exportGo', textContent: 'Download' });
+  $('runner').replaceChildren(
+    el('div', { className: 'row apphead' }, el('h2', { textContent: `Download ${app.title || app.name}` }),
+      el('button', { textContent: 'Back to the app', onclick: () => openApp(app) })),
+    el('p', { className: 'muted', textContent: 'Saves the app as a .wardian file that anyone with Wardian can import: mail it, share it in chat or put it on Drive. The file holds the app exactly as wardian check reads it.' }),
+    el('label', { className: 'row' }, withData, ' Include my data: what this app has saved, its layout and its tables'),
+    list, el('div', { className: 'row' }, go), msg);
+  async function show() {
+    let p;
+    try { p = await api(`/api/apps/${encodeURIComponent(app.name)}/export?preview=1&data=${withData.checked ? 1 : 0}`); }
+    catch (e) { list.replaceChildren(el('p', { className: 'err', textContent: e.message })); go.disabled = true; return; }
+    go.disabled = false;
+    const parts = [el('p', {}, el('strong', { textContent: p.file }), ` · ${p.files.length} files, ${kb(p.bytes)}`),
+      el('details', {}, el('summary', { textContent: 'The files' }),
+        el('ul', { className: 'muted' }, ...p.files.map((f) => el('li', {}, el('code', { textContent: f.path }), ` ${kb(f.size)}`))))];
+    if (p.data) {
+      const d = p.data;
+      const items = [];
+      if (d.storage) items.push('what the app has saved (its settings and inputs)');
+      if (d.layout) items.push('your Arrange layout');
+      for (const t of d.tables) items.push(`table ${t.name}: ${t.rows.toLocaleString()} rows`);
+      parts.push(el('div', { className: 'export-data' }, el('p', {}, el('strong', { textContent: 'Your data in this file:' })),
+        items.length ? el('ul', {}, ...items.map((t) => el('li', { textContent: t }))) : el('p', { className: 'muted', textContent: 'This app has no saved data, layout or tables yet.' }),
+        el('p', { className: 'warn', textContent: 'Anyone you send the file to can read this data. Check that you mean to share it.' })));
+    }
+    parts.push(el('p', { className: 'muted', textContent: `Never included: ${p.never.join('; ')}.` }));
+    list.replaceChildren(...parts);
+  }
+  withData.onchange = show;
+  go.onclick = async () => {
+    msg.textContent = 'Building the file…'; msg.className = 'muted'; go.disabled = true;
+    try {
+      const r = await fetch(`/api/apps/${encodeURIComponent(app.name)}/export?data=${withData.checked ? 1 : 0}`, { headers: token ? { 'X-Admin-Token': token } : {} });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `${r.status} ${r.statusText}`);
+      const blob = await r.blob();
+      const a = el('a', { href: URL.createObjectURL(blob), download: `${app.name}.wardian` });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      msg.textContent = `Saved ${app.name}.wardian (${kb(blob.size)}).`; msg.className = 'muted';
+      log(`downloaded ${app.name}.wardian${withData.checked ? ' with its data' : ''}`, 'a');
+    } catch (e) { msg.textContent = e.message; msg.className = 'err'; }
+    go.disabled = false;
+  };
+  show();
+}
+
 async function openHistory(app) {
   clearPageFrames();
   moduleArrange?.destroy(); moduleArrange = null;
@@ -1037,6 +1099,7 @@ function importMsg(text, bad = false, ...extra) {
 async function imported(res) {
   const parts = [`Imported ${res.apps.length} app(s): ${res.apps.join(', ')}.`];
   if (res.skipped.length) parts.push(` Skipped: ${res.skipped.join('; ')}.`);
+  if (res.data && res.data.installed) parts.push(` Its data was installed (${res.data.what.join(', ')}); permissions are asked again.`);
   log(`imported from zip: ${res.apps.join(', ')}`, 'a');
   if (res.serving_local) {
     await loadApps();
@@ -1057,11 +1120,44 @@ async function runImport(promise) {
   $('zipFile').value = '';
 }
 
-$('zipFile').onchange = () => {
+const postZip = async (path, file) => {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/zip', ...(token ? { 'X-Admin-Token': token } : {}) }, body: file });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+  return data;
+};
+
+// A .wardian file says what it holds (ADR-2610071248): show that before anything is installed.
+$('zipFile').onchange = async () => {
   const file = $('zipFile').files[0];
   if (!file) return;
+  const box = $('importPreview');
+  let p = null;
+  try { p = await postZip('/api/import/preview', file); } catch (e) { p = null; }
+  if (!p || !p.manifest) { box.classList.add('hidden'); return startImport(file, false); }
+  const allows = p.allows || {};
+  const uses = [...(allows.caps || []).map((c) => CAP_WORDS[c] || c), ...(allows.send || []).map((c) => `sends on channel ${c}`), ...(allows.receive || []).map((c) => `reads channel ${c}`)];
+  const parts = [el('p', {}, 'This file holds ', el('strong', { textContent: p.title || p.package }), ` (${p.package}), exported from Wardian ${p.manifest.wardian_version || ''}.`),
+    el('p', { className: 'muted', textContent: uses.length ? `It may use: ${uses.join('; ')}. You are asked before it does.` : 'It is sealed: no network, no other apps, nothing outside itself.' })];
+  const install = el('input', { type: 'checkbox', id: 'importData' });
+  if (p.data) {
+    const items = [];
+    if (p.data.storage) items.push('what the app had saved');
+    if (p.data.layout) items.push('a layout');
+    for (const t of p.data.tables || []) items.push(`table ${t.name}: ${Number(t.rows).toLocaleString()} rows`);
+    parts.push(el('p', {}, el('strong', { textContent: 'It also holds data: ' }), items.join('; ') + '.'),
+      el('label', { className: 'row' }, install, ' Also install its data (it replaces this app\'s data here; the old data is kept in History)'));
+  }
+  parts.push(el('div', { className: 'row' },
+    el('button', { className: 'primary', id: 'importGo', textContent: 'Import', onclick: () => { box.classList.add('hidden'); startImport(file, install.checked); } }),
+    el('button', { textContent: 'Cancel', onclick: () => { box.classList.add('hidden'); $('zipFile').value = ''; } })));
+  box.replaceChildren(...parts);
+  box.classList.remove('hidden');
+};
+
+function startImport(file, withData) {
   const name = file.name.replace(/[^\w.-]/g, '-');
-  const q = `name=${encodeURIComponent(name)}${$('zipReplace').checked ? '&replace=1' : ''}`;
+  const q = `name=${encodeURIComponent(name)}${$('zipReplace').checked ? '&replace=1' : ''}${withData ? '&data=1' : ''}`;
   runImport((async () => {
     const r = await fetch(`/api/import?${q}`, {
       method: 'POST',

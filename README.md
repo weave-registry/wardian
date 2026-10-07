@@ -150,6 +150,19 @@ rewritten in place keeps its old signature record, and macOS kills it when it st
 The server asks only for read-only Drive access. It re-reads the folder every `REFRESH_SECS`.
 It keeps each file by its Drive checksum, so it downloads an unchanged app once and fetches a changed one again.
 
+## Send an app to someone
+
+On an app's page, press **Download**. Wardian saves the app as a `.wardian` file that anyone with
+Wardian can import: mail it, share it in chat or put it on Drive. The file holds the app exactly as
+`wardian check` reads it. Tick **Include my data** to add what the app has saved, its layout and its
+tables; Wardian lists what goes in first, because anyone you send it to can read it. Keys, accounts,
+permission answers and history are never included. From the command line:
+`wardian export <app> [<file>] [--with-data]`.
+
+When you import a `.wardian` file, Wardian first shows what it holds: the app, what it may use, and
+any data. Its data is installed only when you tick **Also install its data**; the data it replaces is
+kept in the app's history folder. Permissions are always asked again.
+
 ## Import apps from a zip
 
 In **Settings → Import from a zip**, choose a zip on your computer or paste a link to one.

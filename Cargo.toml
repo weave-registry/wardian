@@ -19,4 +19,4 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 # SQLite for the `db` capability (ADR-2610071219), compiled in; "hooks" gives the authorizer and
 # the progress handler that keep apps inside their own database.
-rusqlite = { version = "0.40.2", features = ["bundled", "hooks"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "hooks", "backup"] }

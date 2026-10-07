@@ -4,6 +4,7 @@
 pub use crate::domain::import_plan::MAX_ZIP_BYTES;
 pub use crate::domain::package::{safe_rel, safe_segment, AppInfo};
 pub use crate::domain::suite::FRAME_CSP;
+pub use crate::domain::export::{file_name as export_file_name, MIME as EXPORT_MIME};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -79,9 +80,25 @@ pub trait ViewerState: Send + Sync {
     fn set_app_value(&self, package: &str, app: &str, key: &str, value: Value) -> Result<Value, String>;
     /// Adds what a browser held that the host does not have yet; returns the package's data.
     fn merge_app_data(&self, package: &str, data: &Value) -> Result<Value, String>;
+    /// Replaces all of a package's data: what an imported `.wardian` file brought with it.
+    fn replace_app_data(&self, package: &str, data: &Value) -> Result<Value, String>;
     fn channel(&self, channel: &str) -> Value;
     /// Keeps the latest message on a channel; null forgets it.
     fn set_channel(&self, channel: &str, message: Value) -> Result<Value, String>;
+}
+
+/// An app as a `.wardian` file (ADR-2610071248): export, and what an import brings.
+pub trait Exports: Send + Sync {
+    /// What an export of `app` would hold, without building it: files, sizes, data, what never goes in.
+    fn preview(&self, app: &str, with_data: bool) -> Result<Value, String>;
+    /// The `.wardian` file; refused when the app does not pass `wardian check`.
+    fn export(&self, app: &str, with_data: bool) -> Result<Vec<u8>, String>;
+    /// What a file holds, before anything is installed: its manifest, what the app may use, its data.
+    fn preview_import(&self, bytes: &[u8]) -> Result<Value, String>;
+    /// Before an import with data replaces `app`, keeps its current data next to its latest version.
+    fn keep_data_before_import(&self, app: &str) -> Result<(), String>;
+    /// Installs the data a file carries for `app` (the installed name), replacing what it had.
+    fn install_data(&self, app: &str, bytes: &[u8]) -> Result<Value, String>;
 }
 
 /// The history of each local app (ADR-2610071122): its versions, what changed, and restoring one.
@@ -113,6 +130,7 @@ pub struct Services {
     pub state: Arc<dyn ViewerState>,
     pub tables: Arc<dyn Tables>,
     pub history: Arc<dyn AppHistory>,
+    pub exports: Arc<dyn Exports>,
     pub builder: Arc<dyn Builder>,
     pub searches: Arc<dyn Searches>,
     pub pages: Arc<dyn Pages>,

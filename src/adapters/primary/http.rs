@@ -1,7 +1,7 @@
 //! The web server: Wardian's own pages, the JSON API they use, and the apps' files. It knows
 //! the driving ports only; what each request does is the use cases' business.
 
-use crate::ports::service::{safe_rel, safe_segment, Services, FRAME_CSP, MAX_ZIP_BYTES};
+use crate::ports::service::{export_file_name, safe_rel, safe_segment, Services, EXPORT_MIME, FRAME_CSP, MAX_ZIP_BYTES};
 use serde_json::{json, Value};
 use std::{io::Read, path::Path, thread};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -314,8 +314,40 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
     let resp = match (req.method().clone(), parts.as_slice()) {
         (Method::Post, ["api", "import"]) if admin => result_resp(read_zip(&mut req).and_then(|bytes| {
             let name = query(&url, "name").unwrap_or("imported.zip");
-            hub.import(&bytes, name, query(&url, "replace") == Some("1"))
+            let replace = query(&url, "replace") == Some("1");
+            // A .wardian file's data is installed only when asked (ADR-2610071248).
+            if query(&url, "data") != Some("1") {
+                return hub.import(&bytes, name, replace);
+            }
+            let package = s.exports.preview_import(&bytes)?["package"].as_str().map(String::from);
+            if let Some(p) = &package {
+                if replace {
+                    s.exports.keep_data_before_import(p)?;
+                }
+            }
+            let mut out = hub.import(&bytes, name, replace)?;
+            if let Some(p) = package.filter(|p| out["apps"].as_array().is_some_and(|a| a.iter().any(|x| x == p.as_str()))) {
+                out["data"] = s.exports.install_data(&p, &bytes)?;
+            }
+            Ok(out)
         })),
+        // What a .wardian file holds, before anything is installed.
+        (Method::Post, ["api", "import", "preview"]) if admin => result_resp(read_zip(&mut req).and_then(|bytes| s.exports.preview_import(&bytes))),
+        // An app as a .wardian file; `preview=1` lists what it would hold without building it.
+        (Method::Get, ["api", "apps", app, "export"]) if admin => {
+            let with_data = query(&url, "data") == Some("1");
+            if query(&url, "preview") == Some("1") {
+                result_resp(s.exports.preview(app, with_data))
+            } else {
+                match s.exports.export(app, with_data) {
+                    Ok(bytes) => Response::from_data(bytes)
+                        .with_header(header("Content-Type", EXPORT_MIME))
+                        .with_header(header("Content-Disposition", &format!("attachment; filename=\"{}\"", export_file_name(app))))
+                        .with_header(header("Cache-Control", "no-store")),
+                    Err(e) => json_resp(400, json!({ "error": e })),
+                }
+            }
+        }
         // The viewer's state, kept by the host. Like the settings it needs admin; without it the
         // page keeps the state in the browser instead.
         (Method::Post, ["api", "db", op]) if admin => {

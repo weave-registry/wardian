@@ -71,7 +71,37 @@ export passes `wardian check`, holds no key or permission answer even when every
 excludes history and build output, and round-trips: export with data from one Wardian, import into a
 fresh one, and the app opens with the same data and tables, its permissions asked again.
 
+## Enforced-By: hexa adr gates (run on demand)
+
+## Gate
+
+`env CARGO_TARGET_DIR=target/verify cargo test --release export`
+
+Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy of Wardian a user runs.
+`tests/run-export-e2e.sh` checks the same in a browser, between two Wardians.
+
+## Notes from the build
+
+- The data an import replaces is kept as files next to the app's latest version, in
+  `history/<app>/<n>.data/`, and goes when that version is pruned. Restoring a version from History
+  puts back its files; the kept data is there to be put back by hand.
+- Export reads the local working folder; an app served from Google Drive is exported after it is
+  imported locally.
+
 ## References
 
 - SPEC.md 7 (distribution)
 - ADR-2610071055 (state), ADR-2610071122 (working folder and history), ADR-2610071219 (SQLite)
+
+## Evidence
+
+`bash -c 'cargo test --release 2>&1 | grep -E "export|test result: ok. [1-9]"; hexa analyze . --grade A 2>&1 | grep -E "Architecture grade|coverage"'` at 1882d37 with uncommitted changes on 2026-10-07 18:25 UTC:
+
+```text
+test domain::export::tests::exports_what_check_reads ... ok
+test domain::export::tests::manifests_round_trip_and_are_checked ... ok
+test tests::export_with_data_round_trips_and_never_carries_secrets ... ok
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+  ⬡ Architecture grade: A+ — score 100/100
+    coverage 46/46 files in a layer
+```

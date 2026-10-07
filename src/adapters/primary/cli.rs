@@ -1,14 +1,19 @@
 //! The command line: `wardian check|new|add|--version|--help`. Serving apps is the composition
 //! root's job; this handles every other command and says how to run the program.
 
+use crate::ports::service::Exports;
 use crate::ports::tools::{PackageTools, COMPONENTS, FORMAT, KINDS};
 use std::path::Path;
+use std::sync::Arc;
 
 const USAGE: &str = "Wardian — runs WebAssembly apps and suites in the browser
 
 usage:
   wardian [APPS_FOLDER]          serve the apps (default: DATA_DIR/apps, filled from ./apps on the first start)
   wardian promote APP [FOLDER]   copy an app from DATA_DIR/apps into FOLDER (default: ./apps), to commit it
+  wardian export APP [FILE] [--with-data]
+                                 write APP from DATA_DIR/apps as a .wardian file (default: APP.wardian);
+                                 --with-data adds its saved data, layout and tables, never keys
   wardian new KIND PATH          create a starter package: module, page or suite
   wardian add COMPONENT... PATH  copy UI components (button, tabs, dialog…) into a package; --list shows them
   wardian check PACKAGE...       check packages (folders, .zip or .wardian files) against SPEC.md
@@ -25,9 +30,11 @@ pub enum Command {
 }
 
 /// Runs any command but serving. `args` are the program's arguments without its name.
-/// `data_dir` is where the working folder lives, for `promote`.
-pub fn run(args: &[String], tools: &dyn PackageTools, data_dir: &Path) -> Command {
+/// `data_dir` is where the working folder lives, for `promote`; `exports` builds the exporter on
+/// demand, since only `export` needs the app's data.
+pub fn run(args: &[String], tools: &dyn PackageTools, data_dir: &Path, exports: &dyn Fn() -> Arc<dyn Exports>) -> Command {
     match args.first().map(String::as_str) {
+        Some("export") => Command::Exit(export(&args[1..], exports)),
         Some("check") => Command::Exit(check(&args[1..], tools)),
         Some("promote") => Command::Exit(promote(&args[1..], tools, data_dir)),
         Some("new") => Command::Exit(new(&args[1..], tools)),
@@ -46,6 +53,34 @@ pub fn run(args: &[String], tools: &dyn PackageTools, data_dir: &Path) -> Comman
         }
         first => Command::Serve(first.map(String::from)),
     }
+}
+
+/// `wardian export <app> [<file>] [--with-data]` (ADR-2610071248).
+fn export(args: &[String], exports: &dyn Fn() -> Arc<dyn Exports>) -> i32 {
+    let with_data = args.iter().any(|a| a == "--with-data");
+    let rest: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
+    let (app, file) = match rest.as_slice() {
+        [app] => (app.as_str(), format!("{app}.wardian")),
+        [app, file] => (app.as_str(), file.to_string()),
+        _ => {
+            eprintln!("usage: wardian export <app> [<file>] [--with-data]");
+            return 2;
+        }
+    };
+    let ex = exports();
+    let bytes = match ex.export(app, with_data) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("wardian export: {e}");
+            return 1;
+        }
+    };
+    if let Err(e) = std::fs::write(&file, &bytes) {
+        eprintln!("wardian export: writing {file}: {e}");
+        return 1;
+    }
+    println!("wrote {file} ({} KB){}", bytes.len().div_ceil(1024), if with_data { ", with the app's data; keys, accounts and permission answers are never included" } else { "" });
+    0
 }
 
 /// `wardian promote <app> [<folder>]`: copies an app made or changed inside Wardian back into

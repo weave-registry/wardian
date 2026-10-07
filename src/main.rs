@@ -11,6 +11,7 @@ mod domain {
     pub mod check;
     pub mod components;
     pub mod db;
+    pub mod export;
     pub mod grants;
     pub mod history;
     pub mod import_plan;
@@ -36,6 +37,7 @@ mod usecases {
     pub mod check;
     pub mod db;
     pub mod docs;
+    pub mod export;
     pub mod history;
     pub mod import;
     pub mod scaffold;
@@ -64,13 +66,14 @@ mod adapters {
 use adapters::primary::{cli, http};
 use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest, sqlite_store::SqliteStore};
 use config::Settings;
-use ports::{assets::Assets, db::Database, llm::BedrockAuth, service::Services, storage::FileSystem};
+use ports::{assets::Assets, db::Database, llm::BedrockAuth, service::{Exports, Services, ViewerState}, storage::FileSystem};
 use std::sync::Arc;
 use usecases::{
     catalog::{Hub, HubPorts},
     check::Checker,
     db::Db,
     docs::Docs,
+    export::Exporter,
     history::History,
     scaffold::Scaffold,
     splunk::Splunk,
@@ -84,7 +87,17 @@ fn main() {
     let assets: Arc<dyn Assets> = Arc::new(Embedded);
     let checker = Arc::new(Checker::new(Arc::clone(&fs)));
     let tools = Scaffold::new(Arc::clone(&fs), Arc::clone(&assets), Arc::clone(&checker));
-    let apps_folder = match cli::run(&args, &tools, &config::data_dir()) {
+    // `wardian export` reads the working folder and the app's data, so it gets the same parts
+    // the server would use, built only when that command runs.
+    let exports_for_cli = || -> Arc<dyn Exports> {
+        let data_dir = config::data_dir();
+        let apps = data_dir.join("apps");
+        let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &data_dir));
+        let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&data_dir));
+        let history = Arc::new(History::new(Arc::clone(&fs), &data_dir, &apps));
+        Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), db, state, history, &apps, &data_dir))
+    };
+    let apps_folder = match cli::run(&args, &tools, &config::data_dir(), &exports_for_cli) {
         cli::Command::Exit(code) => std::process::exit(code),
         cli::Command::Serve(folder) => folder,
     };
@@ -124,12 +137,14 @@ fn main() {
         provider: cfg.ai_provider.clone(),
         bedrock_env: bedrock_from_env(&cfg),
     };
-    let studio = Studio::new(Arc::clone(&fs), providers, Arc::clone(&assets), Arc::clone(&hub), checker, &cfg.data_dir);
+    let studio = Studio::new(Arc::clone(&fs), providers, Arc::clone(&assets), Arc::clone(&hub), Arc::clone(&checker), &cfg.data_dir);
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&cfg.data_dir));
     let splunk = Splunk::new(Arc::clone(&fs), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone());
     hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone());
 
-    let services = Services { tables: Arc::new(Db::new(db)), history, state: Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir)), catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
+    let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir));
+    let exports = Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), Arc::clone(&db), Arc::clone(&state), Arc::clone(&history), &cfg.local_root, &cfg.data_dir));
+    let services = Services { exports, tables: Arc::new(Db::new(db)), history, state, catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
     http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
 }
 

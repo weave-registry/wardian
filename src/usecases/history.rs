@@ -54,6 +54,8 @@ impl History {
         log.push(Version { n, at: unix_now(), by: by.into(), why: why.chars().take(500).collect() });
         for old in prune(&mut log, KEEP_VERSIONS) {
             self.fs.remove_dir_all(&self.app_dir(app).join(old.to_string()));
+            // The data an import replaced is kept next to its version, and goes with it.
+            self.fs.remove_dir_all(&self.app_dir(app).join(format!("{old}.data")));
         }
         self.write_log(app, &log)?;
         Ok(n)

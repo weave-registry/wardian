@@ -172,6 +172,22 @@ fn private_file(dir: &Path, path: &Path) -> Result<(), String> {
 }
 
 impl Database for SqliteStore {
+    fn backup(&self, package: &str, dest: &Path) -> Result<bool, String> {
+        if !self.path(package)?.exists() {
+            return Ok(false);
+        }
+        let conn = self.conn(package)?;
+        let conn = conn.lock().unwrap();
+        conn.backup(rusqlite::MAIN_DB, dest, None).map_err(|e| format!("copying {package}'s database: {e}"))?;
+        Ok(true)
+    }
+
+    fn restore(&self, package: &str, src: &Path) -> Result<(), String> {
+        let conn = self.conn(package)?;
+        let mut conn = conn.lock().unwrap();
+        conn.restore(rusqlite::MAIN_DB, src, None::<fn(rusqlite::backup::Progress)>).map_err(|e| format!("installing {package}'s tables: {e}"))
+    }
+
     fn query(&self, package: &str, sql: &str, params: &[Value]) -> Result<Value, String> {
         let sql = check_statement(sql)?;
         let params: Vec<Sql> = check_params(&Value::Array(params.to_vec()))?.iter().map(to_sql).collect();
@@ -267,6 +283,10 @@ impl Database for SqliteStore {
     }
 
     fn tables(&self, package: &str) -> Result<Value, String> {
+        // Asking which tables an app has must not create its database.
+        if !self.path(package)?.exists() {
+            return Ok(json!([]));
+        }
         let conn = self.conn(package)?;
         let conn = conn.lock().unwrap();
         self.timed(&conn, |c| {

@@ -365,3 +365,98 @@ fn splunk_results_load_into_a_table_in_chunks_and_page() {
     assert!(tables.query("usl-lab", "SELECT count(*) FROM search", &json!([])).is_err(), "a package's own database does not hold another's tables");
     let _ = fs::remove_dir_all(dir);
 }
+
+// ---------- export as a .wardian file (ADR-2610071248) ----------
+
+#[test]
+fn export_with_data_round_trips_and_never_carries_secrets() {
+    use crate::adapters::secondary::sqlite_store::SqliteStore;
+    use crate::ports::{db::Database, service::{Exports, ViewerState}};
+    use crate::usecases::{export::Exporter, history::History, import::import_zip, viewer_state::State, workspace::copy_tree};
+    use serde_json::json;
+    use std::io::Read;
+
+    let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
+    let exporter = |data: &Path| -> (Exporter, Arc<dyn ViewerState>, Arc<dyn Database>) {
+        let apps = data.join("apps");
+        let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), data));
+        let db: Arc<dyn Database> = Arc::new(SqliteStore::new(data));
+        let history = Arc::new(History::new(Arc::clone(&fs), data, &apps));
+        (Exporter::new(Arc::clone(&fs), Arc::new(checker()), Arc::clone(&db), Arc::clone(&state), history, &apps, data), state, db)
+    };
+
+    // A Wardian with the loan planner, its data, a build folder, history, and every secret filled.
+    let a = tmp("export-a");
+    copy_tree(&*fs, Path::new("apps/loan-planner"), &a.join("apps/loan-planner")).unwrap();
+    fs::create_dir_all(a.join("apps/loan-planner/target/debug")).unwrap();
+    fs::write(a.join("apps/loan-planner/target/debug/x"), b"build output").unwrap();
+    fs::write(a.join("anthropic-key"), b"sk-ant-SECRET-KEY").unwrap();
+    fs::write(a.join("anthropic-workspace"), b"wrkspc_SECRET").unwrap();
+    fs::write(a.join("bedrock.json"), br#"{"region":"us-east-1","token":"BEDROCK-SECRET"}"#).unwrap();
+    fs::write(a.join("splunk.json"), br#"{"url":"https://s:8089","password":"SPLUNK-SECRET"}"#).unwrap();
+    fs::write(a.join("grants.json"), br#"[{"app":"loan-planner","channel":"GRANT-SECRET","mode":"use","allow":true}]"#).unwrap();
+    let (ex_a, state_a, db_a) = exporter(&a);
+    state_a.set_app_value("loan-planner", "inputs", "state", json!({"principal": 320000})).unwrap();
+    state_a.set_layout("loan-planner", json!({"v": 1, "hidden": ["export"]})).unwrap();
+    db_a.create_table("loan-planner", "payments", &["month".into(), "amount".into()], &["INTEGER", "NUMERIC"], true).unwrap();
+    db_a.insert_rows("loan-planner", "payments", &["month".into(), "amount".into()], &[vec![json!(1), json!(1798.65)], vec![json!(2), json!(1798.65)]]).unwrap();
+
+    // App only, then with data.
+    let plain = ex_a.export("loan-planner", false).unwrap();
+    let full = ex_a.export("loan-planner", true).unwrap();
+    let unpack = |bytes: &[u8]| -> Vec<(String, Vec<u8>)> {
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        (0..z.len()).map(|i| { let mut f = z.by_index(i).unwrap(); let mut b = Vec::new(); f.read_to_end(&mut b).unwrap(); (f.name().to_string(), b) }).collect()
+    };
+    let plain_files = unpack(&plain);
+    let full_files = unpack(&full);
+    assert!(plain_files.iter().all(|(n, _)| n.starts_with("loan-planner/")), "one package folder at the top");
+    assert!(plain_files.iter().all(|(n, _)| !n.contains("/target/") && !n.contains("/.git/") && !n.contains("history")), "no build output or history");
+    assert!(!plain_files.iter().any(|(n, _)| n.contains("/.wardian/data/")), "no data unless asked");
+    for f in ["storage.json", "layout.json", "tables.sqlite"] {
+        assert!(full_files.iter().any(|(n, _)| n == &format!("loan-planner/.wardian/data/{f}")), "{f} is in the file with data");
+    }
+    for (name, body) in plain_files.iter().chain(full_files.iter()) {
+        let text = String::from_utf8_lossy(body);
+        for secret in ["SECRET-KEY", "wrkspc_SECRET", "BEDROCK-SECRET", "SPLUNK-SECRET", "GRANT-SECRET"] {
+            assert!(!text.contains(secret), "{name} carries {secret}");
+        }
+    }
+
+    // The file passes `wardian check`, as any host imports it.
+    let file = a.join("loan-planner.wardian");
+    fs::write(&file, &full).unwrap();
+    assert!(passes(&file), "an exported file passes wardian check");
+
+    // Preview before import: the manifest, what the app may use, its data.
+    let b = tmp("export-b");
+    let (ex_b, state_b, db_b) = exporter(&b);
+    let preview = ex_b.preview_import(&full).unwrap();
+    assert_eq!(preview["package"], "loan-planner");
+    assert_eq!(preview["data"]["tables"][0]["rows"], 2);
+
+    // Into a fresh Wardian, without the data: the app only.
+    import_zip(&*fs, &full, "loan-planner.wardian", &b.join("apps"), false, &|_| {}).unwrap();
+    assert!(b.join("apps/loan-planner/suite.json").is_file());
+    assert!(!b.join("apps/loan-planner/.wardian").exists(), "the manifest folder is not installed as part of the app");
+    assert_eq!(state_b.app_data("loan-planner").unwrap(), json!({}), "no data unless asked");
+
+    // Then with it: the same data, layout and tables; no permission answers come along.
+    ex_b.install_data("loan-planner", &full).unwrap();
+    assert_eq!(state_b.app_data("loan-planner").unwrap()["inputs"]["state"]["principal"], 320000);
+    assert_eq!(state_b.layout("loan-planner").unwrap()["hidden"][0], "export");
+    assert_eq!(db_b.tables("loan-planner").unwrap()[0]["rows"], 2);
+    assert!(!b.join("grants.json").exists() && !b.join("anthropic-key").exists());
+
+    // Replacing installed data keeps what was there next to the app's latest version.
+    state_b.set_app_value("loan-planner", "inputs", "state", json!({"principal": 1})).unwrap();
+    ex_b.keep_data_before_import("loan-planner").unwrap();
+    let kept = b.join("history/loan-planner/1.data/storage.json");
+    assert!(String::from_utf8_lossy(&fs::read(&kept).unwrap()).contains("\"principal\": 1"), "the replaced data is kept in history");
+
+    // A package that fails the check is not exported.
+    fs::write(b.join("apps/loan-planner/suite.json"), b"{ not json").unwrap();
+    assert!(ex_b.export("loan-planner", false).is_err());
+    let _ = fs::remove_dir_all(a);
+    let _ = fs::remove_dir_all(b);
+}
