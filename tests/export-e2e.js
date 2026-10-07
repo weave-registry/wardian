@@ -70,7 +70,8 @@ function unzip(buf) {
   await page.check('#importData');
   await page.click('#importGo');
   await page.locator('#importMsg', { hasText: 'Imported' }).waitFor({ timeout: 10000 });
-  ok(/Its data was installed \(storage, layout, tables\)/.test(await page.locator('#importMsg').textContent()), 'imported with its data: ' + await page.locator('#importMsg').textContent());
+  const installed = ((await page.locator('#importMsg').textContent()).match(/Its data was installed \(([^)]*)\)/) || [, ''])[1].split(', ').sort().join(',');
+  ok(installed === 'layout,storage,tables', 'imported with its data: ' + await page.locator('#importMsg').textContent());
   const st = await (await fetch(B + '/api/state/apps/splunk-table')).json();
   ok(st.table && st.table.state && st.table.state.name === 'Checkout errors', 'B has the same saved data');
   const lay = await (await fetch(B + '/api/state/layout/splunk-table')).json();
