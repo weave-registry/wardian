@@ -39,7 +39,7 @@ async function answer(page, re, yes, what) {
   r = await post('/api/splunk/search', { package: 'usl-lab', app: 'inputs', search: 'index=x' });
   ok(/does not declare/.test(r.body.error), 'the USL lab no longer runs searches itself');
 
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(require('./browser')({ headless: true }));
   const context = await browser.newContext({ viewport: { width: 1360, height: 1000 } });
   const tab = await context.newPage(), lab = await context.newPage();
   const pageErrors = [];
@@ -87,7 +87,9 @@ async function answer(page, re, yes, what) {
   ok(/Splunk search: 8 rows, Last 24 hours/.test(await inputs.locator('#tblName').textContent()) && /by splunk-table/.test(await inputs.locator('#tblName').textContent()), 'the latest table arrives: ' + await inputs.locator('#tblName').textContent());
   ok(await inputs.locator('#colN').inputValue() === 'concurrency' && await inputs.locator('#colX').inputValue() === 'x' && await inputs.locator('#colR').inputValue() === 'r', 'the first three columns are suggested');
   await useTable(inputs);
-  await sleep(1500);
+  // Wait for the chart rather than a fixed time: Playwright's headless Chromium can take longer.
+  await frameOf(lab, 'chart').locator('#chart circle.pt').nth(7).waitFor({ timeout: 10000 }).catch(() => {});
+  await sleep(500);
   const data = await inputs.locator('#data').inputValue();
   ok(data.split('\n')[0] === '# threads, req/s, response time (ms)' && data.split('\n').length === 9, 'measurements filled, with a readable header');
   ok(await frameOf(lab, 'chart').locator('#chart circle.pt').count() === 8, 'the chart shows the 8 rows');
@@ -100,6 +102,7 @@ async function answer(page, re, yes, what) {
   await t.locator('#btnRun').click();
   await t.locator('#status', { hasText: '6 rows from Splunk' }).waitFor({ timeout: 5000 }).catch(async () => console.log('STATUS', await t.locator('#status').textContent()));
   ok(await tab.locator('.wardian-perm').count() === 0, 'no second question');
+  await t.locator('#out th', { hasText: 'minutes' }).waitFor({ timeout: 5000 }).catch(() => {});
   ok((await t.locator('#out th').allTextContents()).join(',') === 'n,x,r,minutes', 'the minutes behind each row are visible');
   await inputs.locator('#tblName', { hasText: 'Requests in production' }).waitFor({ timeout: 5000 });
   ok(await inputs.locator('#colN').inputValue() === 'n' && await inputs.locator('#colR').inputValue() === 'r', 'the lab picks n, x, r');

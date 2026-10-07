@@ -378,6 +378,10 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 - `grants.json` — your answers to channel and Splunk permission questions
 - `splunk.json` — the Splunk address and account, readable by its owner only
 - `apps/` — the working folder: the apps Wardian serves and saves
+- `wardian.log` — every start and stop of the server, with the time in UTC: Ctrl-C, SIGTERM, a
+  closed terminal (SIGHUP, caught only when stderr is a terminal), a panic, an address already in
+  use. A start with no stop before it means the previous run was killed (SIGKILL, out of memory,
+  the machine stopped). Past 1 MB it moves to `wardian.log.1`.
 - `history/<app>/` — each app's versions, with `log.json` saying when, by what and why
 - `state/` — layouts, apps' saved data and the latest channel messages
 - `db/<app>.sqlite` — each app's own database (the `db` capability), readable by its owner only
@@ -407,6 +411,69 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 | `GDRIVE_API_BASE` | Google | For tests only |
 | `ANTHROPIC_BASE_URL` | Anthropic | For tests only |
 | `WARDIAN_BEDROCK_BASE_URL` | the region's endpoint | For tests only |
+
+## Tests
+
+    cargo test --release
+    tests/run-all.sh          # what CI runs: unit tests, hexa (if installed), every browser suite
+
+Each `tests/run-*-e2e.sh` starts its own Wardian with a throwaway data folder, fakes for Splunk,
+Claude and Bedrock where it needs them, and drives the pages in a browser. They need python3 and
+Node with the `playwright` package (`npm i -g playwright`). They launch Google Chrome; set
+`WARDIAN_BROWSER=chromium` to use Playwright's own Chromium instead (`npx playwright install
+chromium`), as CI does. `tests/run-all.sh` stops at the first failure.
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request on GitHub. hexa lives on
+git.local, which GitHub's runners cannot reach, so its two steps run only when the repository
+variable `HEXA_INSTALL` holds a command that installs it; otherwise the job notes that it skipped
+them, and `tests/run-all.sh` on a machine with hexa covers them.
+
+## Live checks
+
+The suites above use fakes. `tests/live/` checks Wardian against the real services: Bedrock by API
+key and by SigV4, a Splunk search of at least 100,000 rows loaded and paged, a Google Drive folder
+listed and an app opened from it, and an export just under the 100 MB limit imported into a second,
+empty Wardian. Each check runs only when its credentials are set and prints `SKIP` otherwise; the
+export check needs none.
+
+    AWS_BEARER_TOKEN_BEDROCK=… AWS_REGION=us-east-1 \
+    SPLUNK_URL=https://splunk:8089 SPLUNK_TOKEN=… \
+    GDRIVE_SA_KEY=~/keys/wardian.json LIVE_GDRIVE_FOLDER_ID=… \
+      tests/live/run.sh
+
+Every check starts its own Wardian on `127.0.0.1:0` with a throwaway data folder, hands it only the
+variables it names, and uses the same HTTP API as the browser. [tests/live/README.md](tests/live/README.md)
+lists each check's variables and what it proves. Run them once per release.
+
+## Releasing
+
+1. On `main`, with everything committed: `tests/run-all.sh` passes, on a machine with hexa
+   (`hexa analyze . --grade A` and `hexa adr gates`).
+2. `tests/live/run.sh` with every credential you have. Its last lines (`PASS` / `SKIP` / `FAIL`
+   per check) go into the release's section of `CHANGELOG.md`, so the notes say which ran.
+3. Move the `[Unreleased]` entries in `CHANGELOG.md` under the new version and date, and set the
+   same `version` in `Cargo.toml` (`cargo build` updates `Cargo.lock`). Commit.
+4. Build the packages, which land in `dist/`:
+
+       scripts/package-macos.sh     # dist/Wardian.app and Wardian-<version>-macos-<arch>.zip
+       scripts/package-linux.sh     # dist/wardian-<version>-linux-<arch>.tar.gz
+
+   Without credentials the macOS bundle is signed ad hoc: it runs on the Mac that built it, and
+   Gatekeeper refuses it elsewhere. To sign it, set `DEVELOPER_ID` to a Developer ID Application
+   identity (`security find-identity -v -p codesigning`); to notarize it too, set `NOTARY_PROFILE`
+   (from `xcrun notarytool store-credentials`) or `APPLE_ID`, `APPLE_TEAM_ID` and
+   `APPLE_APP_PASSWORD`. Both need an Apple Developer account. The bundle's Info.plist declares the
+   type `studio.wardian.package` for `.wardian` files (`application/vnd.wardian+zip`), so Finder
+   shows them as Wardian apps and opens Wardian; installing still goes through Import, which shows
+   what a file holds first. On Linux, `install.sh` in the tarball registers the same MIME type and
+   a desktop entry.
+5. Tag and push to both remotes:
+
+       git tag -a v1.0.0 -m "Wardian 1.0.0"
+       git push origin main v1.0.0 && git push upstream main v1.0.0
+
+6. Attach the zip and the tarball to the release on GitHub, with the version's `CHANGELOG.md`
+   section as its notes.
 
 ## License
 

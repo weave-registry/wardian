@@ -24,6 +24,7 @@ mod domain {
 }
 mod ports {
     pub mod assets;
+    pub mod calendar;
     pub mod db;
     pub mod drive;
     pub mod llm;
@@ -52,6 +53,8 @@ mod adapters {
     pub mod primary {
         pub mod cli;
         pub mod http;
+        mod http_server;
+        pub mod stop_log;
     }
     pub mod secondary {
         pub mod anthropic_inference;
@@ -65,7 +68,7 @@ mod adapters {
     }
 }
 
-use adapters::primary::{cli, http};
+use adapters::primary::{cli, http, stop_log::StopLog};
 use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest, sqlite_store::SqliteStore};
 use config::Settings;
 use ports::{assets::Assets, db::Database, llm::BedrockAuth, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
@@ -126,6 +129,11 @@ fn serve(cfg: Settings) {
     if let Err(e) = usecases::workspace::mark_first_run(&*fs, &cfg.data_dir) {
         eprintln!("data: could not prepare {}: {e}", cfg.data_dir.display());
     }
+    // From here on Wardian is a server, and every way it stops is written down (ADR-2610072033).
+    let stops = StopLog::new(&cfg.data_dir);
+    stops.catch_panics();
+    stops.catch_signals();
+    stops.started(&format!("serving {} on {}", cfg.local_root.display(), cfg.addr));
     // The working folder (ADR-2610071122): filled from the repository's apps on the first start,
     // and the repository is never changed. A folder named on the command line is served as it is.
     if cfg.chosen_folder {
@@ -170,7 +178,9 @@ fn serve(cfg: Settings) {
     let (builder, searches): (Arc<dyn Builder>, Arc<dyn Searches>) = (Arc::new(studio), Arc::new(splunk));
     let jobs = Arc::new(JobRunner::new(Arc::clone(&searches), Arc::clone(&builder)));
     let services = Services { exports, tables: Arc::new(Db::new(db)), history, state, catalog: hub, builder, searches, jobs, pages: Arc::new(Docs::new(assets)) };
-    http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
+    let why = http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
+    stops.record(&format!("stopped: {why}"));
+    std::process::exit(1);
 }
 
 /// Bedrock from the usual AWS variables: a region, and a Bedrock API key or access keys.

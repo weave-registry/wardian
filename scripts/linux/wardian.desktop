@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Wardian
+Comment=Run sealed WebAssembly and web apps in the browser
+Exec=wardian-desktop %F
+Icon=wardian
+Terminal=false
+Categories=Development;
+MimeType=application/vnd.wardian+zip;

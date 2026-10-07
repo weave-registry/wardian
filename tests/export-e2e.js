@@ -31,7 +31,7 @@ function unzip(buf) {
   const ins = await post(A, '/api/db/insert', { package: 'splunk-table', app: 'table', table: 'errors', columns: ['host', 'n'], rows: [['web-1', 3], ['web-2', 5], ['web-3', 8]], create: true });
   ok(ins.inserted === 3, 'a table of 3 rows');
 
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(require('./browser')({ headless: true }));
   const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   const errors = [];

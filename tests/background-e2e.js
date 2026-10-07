@@ -19,7 +19,7 @@ async function until(fn, ms, what) {
     ? await post('/api/ai/provider', { provider: 'bedrock', region: 'us-east-1', auth: 'access-keys', access_key_id: 'AKIDTEST', secret_access_key: 'test-secret' })
     : await post('/api/ai/key', { key: 'test-key' });
   ok(k.ready && k.provider === (process.env.PROVIDER || 'anthropic'), 'Claude is set up: ' + (process.env.PROVIDER || 'anthropic'));
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(require('./browser')({ headless: true }));
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const a = await context.newPage();
   const errors = [];

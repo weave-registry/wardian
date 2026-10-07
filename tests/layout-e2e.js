@@ -9,7 +9,7 @@ const order = (page, col) => page.$$eval('.' + col + ' > [data-arrange-panel]', 
 const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 'boot').length);
 
 (async () => {
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(require('./browser')({ headless: true }));
   const page = await (await browser.newContext({ viewport: { width: 1360, height: 1000 } })).newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));

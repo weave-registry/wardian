@@ -5,7 +5,6 @@ license = "MIT"
 edition = "2021"
 
 [dependencies]
-tiny_http = "0.12"
 ureq = { version = "2", features = ["json"] }
 # The same TLS stack ureq uses; Splunk needs a custom CA or its self-signed certificate.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
@@ -20,3 +19,9 @@ pulldown-cmark = { version = "0.13.4", default-features = false, features = ["ht
 # SQLite for the `db` capability (ADR-2610071219), compiled in; "hooks" gives the authorizer and
 # the progress handler that keep apps inside their own database.
 rusqlite = { version = "0.40.2", features = ["bundled", "hooks", "backup", "limits"] }
+
+# The stop log (ADR-2610072033) records SIGINT, SIGTERM and SIGHUP. The standard library cannot
+# catch a signal; signal-hook does it with no unsafe code in Wardian, and adds only
+# signal-hook-registry (libc is already in the build).
+[target.'cfg(unix)'.dependencies]
+signal-hook = { version = "0.4", default-features = false, features = ["iterator"] }

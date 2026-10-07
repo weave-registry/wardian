@@ -2,7 +2,7 @@
 # End-to-end test of first use (ADR-2610072033): the first-run setup appears once on a start with
 # an empty data folder, and every control in the app list, Settings, Arrange and History has a name
 # a screen reader reads out and is reached by the keyboard.
-# Needs: Node with the playwright package (npm i -g playwright) and Google Chrome.
+# Needs: Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian

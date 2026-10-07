@@ -7,7 +7,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + app));
 
 (async () => {
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(require('./browser')({ headless: true }));
   const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1360, height: 1000 } });
   const page = await ctx.newPage();
   const pageErrors = [];
