@@ -46,7 +46,8 @@
    - Retained topics are replayed to apps that start listening late.
    - Calls to a method whose app has not started yet wait for it (up to 15 s) instead of failing.
    - Capabilities are granted here: storage (kept per app), asset (files from this package),
-     claude:downloads (a file download), splunk (searches the server runs) and claude:sample (Claude,
+     claude:downloads (a file download), splunk (searches the server runs), db (the package's own
+     SQLite database, ADR-2610071219) and claude:sample (Claude,
      with the server's Anthropic key). The user allows splunk and Claude once per package first.
    - Channels to other packages (channels.js): only those declared in suite.json, and only once the
      user allows them. Other packages see this suite's name as the sender.
@@ -139,6 +140,28 @@
           .catch(e => { throw new Error(String(e.message).replace(/^not_granted: you did not allow this app to use splunk$/, 'you did not allow this app to run Splunk searches')); });
       },
     },
+    // db: the package's own SQLite database, kept by the server (ADR-2610071219). No question for
+    // its own tables; reading another package's tables asks the user once ("tables.<package>"),
+    // and loading a Splunk search into a table needs the splunk permission. The server checks again.
+    db: {
+      async query(args, app){ const {sql, params = []} = args || {}; return hostPost('/api/db/query', '', app, {sql, params}); },
+      async page(args, app){ return hostPost('/api/db/page', '', app, pageArgs(args)); },
+      async readPage(args, app){
+        const a = args || {};
+        if (typeof a.package !== 'string' || !a.package) throw new Error('readPage needs the package that owns the table');
+        if (a.package === suiteName) return hostPost('/api/db/page', '', app, pageArgs(a));
+        return hostPost('/api/db/page', 'tables.' + a.package, app, Object.assign(pageArgs(a), {source: a.package}))
+          .catch(e => { throw new Error(String(e.message).replace(/^not_granted: you did not allow this app to use tables\.(.+)$/, 'you did not allow this app to read the tables of $1')); });
+      },
+      async insertRows(args, app){ const {table, columns, rows, create = false, replace = false} = args || {}; return hostPost('/api/db/insert', '', app, {table, columns, rows, create, replace}); },
+      async tables(args, app){ return (await hostPost('/api/db/tables', '', app, {})).tables; },
+      async searchInto(args, app){
+        const {search, earliest = '', latest = '', table = 'search'} = args || {};
+        if (typeof search !== 'string' || !search.trim()) throw new Error('the search is empty');
+        return hostPost('/api/db/search-into', 'splunk', app, {search, earliest, latest, table})
+          .catch(e => { throw new Error(String(e.message).replace(/^not_granted: you did not allow this app to use splunk$/, 'you did not allow this app to run Splunk searches')); });
+      },
+    },
     // claude:sample: Claude, through the provider set up in Settings (Anthropic API or Amazon
     // Bedrock). Offered only when one is ready; the user allows each package once (asked as "ai"),
     // and the server checks that again.
@@ -152,9 +175,11 @@
     const r = await fetch('/api/status', {cache: 'no-store'});
     return r.json();
   }
-  // A call to this server for an app, after the user allowed `grant` for this package.
+  const pageArgs = a => { const {table, offset = 0, limit = 100, orderBy = '', desc = false, where = '', params = []} = a || {}; return {table, offset, limit, orderBy, desc, where, params}; };
+  // A call to this server for an app, after the user allowed `grant` for this package (none needed
+  // when `grant` is empty).
   async function hostPost(path, grant, app, body){
-    if (!(await WardianChannels.permit(suiteName, grant))) throw new Error('not_granted: you did not allow this app to use ' + (grant === 'ai' ? 'Claude' : grant));
+    if (grant && !(await WardianChannels.permit(suiteName, grant))) throw new Error('not_granted: you did not allow this app to use ' + (grant === 'ai' ? 'Claude' : grant));
     const headers = {'Content-Type': 'application/json'};
     try { const t = sessionStorage.getItem('adminToken'); if (t) headers['X-Admin-Token'] = t; } catch { /* blocked */ }
     const r = await fetch(path, {method: 'POST', headers, body: JSON.stringify(Object.assign({package: suiteName, app}, body))});
@@ -163,7 +188,7 @@
     return j;
   }
   // Capabilities this host provides under their own name (not "claude:…").
-  const HOST_CAPS = ['splunk'];
+  const HOST_CAPS = ['splunk', 'db'];
   const capDeclared = (app, name) => frames.get(app).contract.caps.includes(HOST_CAPS.includes(name) ? name : 'claude:' + name);
 
   // ---------- message handling ----------

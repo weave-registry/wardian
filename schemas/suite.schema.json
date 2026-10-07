@@ -154,7 +154,8 @@
               "source",
               "claude:downloads",
               "claude:sample",
-              "splunk"
+              "splunk",
+              "db"
             ]
           }
         },

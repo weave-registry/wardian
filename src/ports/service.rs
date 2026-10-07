@@ -54,6 +54,9 @@ pub trait Searches: Send + Sync {
     fn status(&self) -> Value;
     fn set_config(&self, body: &Value) -> Result<Value, String>;
     fn search(&self, spl: &str, earliest: &str, latest: &str) -> Result<Value, String>;
+    /// Runs a search and loads its results into `table` of `package`'s database, in chunks:
+    /// {table, columns, fields, total, truncated, seconds, messages}.
+    fn search_into(&self, package: &str, table: &str, spl: &str, earliest: &str, latest: &str) -> Result<Value, String>;
 }
 
 /// The docs, the JSON Schemas and the component library, as pages.
@@ -91,11 +94,24 @@ pub trait AppHistory: Send + Sync {
     fn restore(&self, app: &str, n: u64) -> Result<Value, String>;
 }
 
+/// Each package's own SQLite database, for apps that declare `db` (ADR-2610071219). The web server
+/// checks the declaration and the user's permission first.
+pub trait Tables: Send + Sync {
+    /// One statement in the package's database. `params` is a list.
+    fn query(&self, package: &str, sql: &str, params: &Value) -> Result<Value, String>;
+    /// One page of a table. `source` names another package to read from, read-only.
+    fn page(&self, package: &str, source: Option<&str>, request: &Value) -> Result<Value, String>;
+    /// Rows into a table: {table, columns, rows, create, replace}.
+    fn insert(&self, package: &str, body: &Value) -> Result<Value, String>;
+    fn tables(&self, package: &str) -> Result<Value, String>;
+}
+
 /// Everything the web server serves.
 #[derive(Clone)]
 pub struct Services {
     pub catalog: Arc<dyn Catalog>,
     pub state: Arc<dyn ViewerState>,
+    pub tables: Arc<dyn Tables>,
     pub history: Arc<dyn AppHistory>,
     pub builder: Arc<dyn Builder>,
     pub searches: Arc<dyn Searches>,

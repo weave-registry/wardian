@@ -10,6 +10,7 @@ mod tests;
 mod domain {
     pub mod check;
     pub mod components;
+    pub mod db;
     pub mod grants;
     pub mod history;
     pub mod import_plan;
@@ -21,6 +22,7 @@ mod domain {
 }
 mod ports {
     pub mod assets;
+    pub mod db;
     pub mod drive;
     pub mod llm;
     pub mod service;
@@ -32,6 +34,7 @@ mod ports {
 mod usecases {
     pub mod catalog;
     pub mod check;
+    pub mod db;
     pub mod docs;
     pub mod history;
     pub mod import;
@@ -54,17 +57,19 @@ mod adapters {
         pub mod link_fetch;
         pub mod local_disk;
         pub mod splunk_rest;
+        pub mod sqlite_store;
     }
 }
 
 use adapters::primary::{cli, http};
-use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest};
+use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest, sqlite_store::SqliteStore};
 use config::Settings;
-use ports::{assets::Assets, llm::BedrockAuth, service::Services, storage::FileSystem};
+use ports::{assets::Assets, db::Database, llm::BedrockAuth, service::Services, storage::FileSystem};
 use std::sync::Arc;
 use usecases::{
     catalog::{Hub, HubPorts},
     check::Checker,
+    db::Db,
     docs::Docs,
     history::History,
     scaffold::Scaffold,
@@ -120,10 +125,11 @@ fn main() {
         bedrock_env: bedrock_from_env(&cfg),
     };
     let studio = Studio::new(Arc::clone(&fs), providers, Arc::clone(&assets), Arc::clone(&hub), checker, &cfg.data_dir);
-    let splunk = Splunk::new(Arc::clone(&fs), Arc::new(SplunkRest), &cfg.data_dir, cfg.splunk.clone());
+    let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&cfg.data_dir));
+    let splunk = Splunk::new(Arc::clone(&fs), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone());
     hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone());
 
-    let services = Services { history, state: Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir)), catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
+    let services = Services { tables: Arc::new(Db::new(db)), history, state: Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir)), catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
     http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
 }
 

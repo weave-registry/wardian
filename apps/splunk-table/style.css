@@ -37,3 +37,7 @@ details.ai[open] summary { margin-bottom: var(--w-space-3); }
 .find[hidden] { display: none; }
 .find .w-input { font-family: var(--w-font-mono); font-size: var(--w-text-sm); }
 .find .w-hint.warn { color: var(--w-destructive); }
+
+/* Paging through a table kept in the database (ADR-2610071219). */
+.pager { display: flex; gap: var(--w-space-3, 12px); align-items: center; justify-content: flex-end; margin-top: var(--w-space-3, 12px); font-size: var(--w-text-sm, 13px); color: var(--w-muted); font-variant-numeric: tabular-nums; }
+.pager[hidden] { display: none; }

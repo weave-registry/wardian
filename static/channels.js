@@ -132,7 +132,9 @@ const WardianChannels = (() => {
       bar.setAttribute('role', 'alertdialog');
       const text = document.createElement('span');
       const b = s => Object.assign(document.createElement('strong'), {textContent: s});
-      if (mode === 'use') text.append('🍂 ', b(pkg), ' wants to run ', b(USE_WORDS[channel] || channel), '. ', USE_HINT[channel] || '');
+      if (mode === 'use' && channel.startsWith('tables.'))
+        text.append('🍂 ', b(pkg), ' wants to read the tables of ', b(channel.slice(7)), '. It can only read them, not change them.');
+      else if (mode === 'use') text.append('🍂 ', b(pkg), ' wants to run ', b(USE_WORDS[channel] || channel), '. ', USE_HINT[channel] || '');
       else text.append('🍂 ', b(pkg), mode === 'send' ? ' wants to send messages on the channel ' : ' wants to read messages on the channel ', b(channel), '. ',
         mode === 'send' ? 'Other apps you allow can read them.' : 'They come from other apps you allow.');
       const btn = (label, cls, answer) => Object.assign(document.createElement('button'), {textContent: label, className: cls, onclick: () => { bar.remove(); resolve(answer); }});

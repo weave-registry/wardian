@@ -78,3 +78,21 @@ them, and the USL lab reading the referenced dataset.
 - ADR-2610071055 (viewer state on the server), ADR-2610071122 (working folder and history)
 - SPEC.md 6.6 (capabilities), 6.9 (channels)
 - SQLite: authorizer callback, `max_page_count`, progress handler
+
+## Evidence
+
+`bash -c 'cargo test --release 2>&1 | grep -E "sqlite_store|domain::db|splunk_results|test result: ok. [1-9]"; hexa analyze . --grade A 2>&1 | grep -E "Architecture grade|coverage"'` at 6e918a4 with uncommitted changes on 2026-10-07 17:21 UTC:
+
+```text
+test domain::db::tests::identifiers ... ok
+test domain::db::tests::one_statement_only ... ok
+test domain::db::tests::loaded_columns_are_named_and_typed ... ok
+test domain::db::tests::pages_are_built_from_checked_parts ... ok
+test adapters::secondary::sqlite_store::tests::the_escapes_are_refused ... ok
+test adapters::secondary::sqlite_store::tests::pages_sort_filter_and_only_read ... ok
+test adapters::secondary::sqlite_store::tests::size_and_time_are_limited ... ok
+test tests::splunk_results_load_into_a_table_in_chunks_and_page ... ok
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+  ⬡ Architecture grade: A+ — score 100/100
+    coverage 44/44 files in a layer
+```

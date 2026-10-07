@@ -104,6 +104,7 @@ Capabilities:
 | `claude:downloads` | `ctx.cap("downloads")` → `save({filename, data})` saves a file |
 | `claude:sample` | `ctx.cap("sample")` → `sample(prompt, opts)` and `sample.json(prompt, opts)`, through the Claude provider set up in Settings (Anthropic API or Amazon Bedrock), after the user allows it; `null` when none is set up |
 | `splunk` | `ctx.cap("splunk")` → `status()`, `search({search, earliest, latest})`; see [Splunk](#splunk) |
+| `db` | `ctx.cap("db")` → the app's own SQLite database: `query`, `page`, `insertRows`, `tables`, `readPage`, `searchInto`; see [Large tables](#large-tables) |
 
 Debug in the browser console on the suite page: `Kernel.apps()`, `Kernel.trace()`, `Kernel.faults()`.
 Faults also show in a box at the bottom of the page.
@@ -292,6 +293,30 @@ when there were more. A search that does not start with `|` or `search` gets `se
 Splunk searches run only for an admin (see the next section): from a browser on this machine,
 or with `ADMIN_TOKEN`.
 
+## Large tables
+
+An app that declares `db` gets its own SQLite database, kept by Wardian in `DATA_DIR/db/<app>.sqlite`
+(ADR-2610071219). Use it for data: rows you page, sort and filter. Keep `storage` for small settings.
+
+```js
+const db = await ctx.cap('db');
+await db.insertRows({table: 'runs', columns: ['n', 'x'], rows: [[1, 980], [2, 1900]], create: true});
+const page = await db.page({table: 'runs', offset: 0, limit: 100, orderBy: 'x', desc: true, where: 'n > ?', params: [1]});
+// page = {columns, rows, total, offset}
+const big = await db.searchInto({search: 'index=web | table host status ms', earliest: '-24h', table: 'search'});
+// loads up to 1,000,000 Splunk rows, read in chunks of 50,000; big = {table, columns, fields, total, truncated}
+```
+
+The Splunk table app works this way: a search loads into its database, the page shows 100 rows at a
+time, and sorting, **Find in results** and the CSV run in the database. It sends other apps a
+reference to the table instead of the rows; the USL lab reads the pages it needs (up to 10,000 rows
+for a fit) after you allow it once to read the Splunk table app's tables.
+
+Apps write their own SQL, so Wardian keeps each one inside its file: it refuses `ATTACH`, loading
+extensions, and pragmas that change settings; another app's tables can only be read, and only with
+your permission; a database may hold 1 GB, and a statement that runs longer than 10 seconds is
+stopped.
+
 ## Who can change settings
 
 With no `ADMIN_TOKEN`, only a browser on the same machine can change settings or browse Drive.
@@ -312,6 +337,7 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 - `apps/` — the working folder: the apps Wardian serves and saves
 - `history/<app>/` — each app's versions, with `log.json` saying when, by what and why
 - `state/` — layouts, apps' saved data and the latest channel messages
+- `db/<app>.sqlite` — each app's own database (the `db` capability), readable by its owner only
 
 ## Environment variables
 

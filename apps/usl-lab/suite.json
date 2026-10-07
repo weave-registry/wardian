@@ -66,7 +66,8 @@
         }
       },
       "caps": [
-        "storage"
+        "storage",
+        "db"
       ],
       "channels": {
         "receive": [

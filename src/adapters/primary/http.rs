@@ -271,6 +271,39 @@ fn post_state(kind: &str, name: &str, body: Value, s: &Services) -> Result<Value
     }
 }
 
+/// The `db` capability (ADR-2610071219). The app must declare "db" in suite.json; reading another
+/// package's tables also needs the user's permission ("tables.<package>"), and loading a Splunk
+/// search needs "splunk" and its permission.
+fn post_db(op: &str, body: Value, s: &Services) -> Result<Value, String> {
+    let package = body["package"].as_str().unwrap_or("");
+    let app = body["app"].as_str().unwrap_or("");
+    s.catalog.check_host_cap(package, app, "db", "")?;
+    match op {
+        "query" => s.tables.query(package, body["sql"].as_str().unwrap_or(""), &body["params"]),
+        "page" => {
+            let source = body["source"].as_str().filter(|x| !x.is_empty() && *x != package);
+            if let Some(src) = source {
+                s.catalog.check_host_cap(package, app, "db", &format!("tables.{src}"))?;
+            }
+            s.tables.page(package, source, &body)
+        }
+        "insert" => s.tables.insert(package, &body),
+        "tables" => s.tables.tables(package),
+        "search-into" => {
+            s.catalog.check_host_cap(package, app, "splunk", "splunk")?;
+            let t = |k: &str| body[k].as_str().unwrap_or("").to_string();
+            let table = Some(t("table")).filter(|x| !x.is_empty()).unwrap_or_else(|| "search".into());
+            let out = s.searches.search_into(package, &table, &t("search"), &t("earliest"), &t("latest"));
+            match &out {
+                Ok(v) => println!("splunk: {package}/{app} loaded {} rows into {table}", v["total"]),
+                Err(_) => println!("splunk: {package}/{app} loading a search failed"),
+            }
+            out
+        }
+        _ => Err("not found".into()),
+    }
+}
+
 fn handle(mut req: Request, s: &Services, token: Option<&str>) {
     let (hub, studio, splunk) = (&s.catalog, &s.builder, &s.searches);
     let url = req.url().to_string();
@@ -285,6 +318,9 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
         })),
         // The viewer's state, kept by the host. Like the settings it needs admin; without it the
         // page keeps the state in the browser instead.
+        (Method::Post, ["api", "db", op]) if admin => {
+            result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| post_db(op, body, s)))
+        }
         (Method::Post, ["api", "state", kind, name]) if admin => {
             result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| post_state(kind, name, body, s)))
         }

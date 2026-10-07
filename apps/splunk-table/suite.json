@@ -21,6 +21,7 @@
       "caps": [
         "storage",
         "splunk",
+        "db",
         "claude:sample",
         "claude:downloads"
       ],

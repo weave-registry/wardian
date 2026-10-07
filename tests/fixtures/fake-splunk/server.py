@@ -19,7 +19,14 @@ class H(BaseHTTPRequestHandler):
             sid = self.path.split("/")[4].split("?")[0]
             job = JOBS.get(sid)
             if not job: return self.reply(404, {"messages": [{"type": "ERROR", "text": "Unknown sid."}]})
-            if "/results" in self.path: return self.reply(job[0], job[1])
+            if "/results" in self.path:
+                # Like Splunk: count and offset page through the results (count 0 means all).
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                if job[0] != 200 or "results" not in job[1]: return self.reply(job[0], job[1])
+                offset = int(q.get("offset", ["0"])[0]); count = int(q.get("count", ["100"])[0])
+                rows = job[1]["results"]
+                page = rows[offset:] if count == 0 else rows[offset:offset + count]
+                return self.reply(200, dict(job[1], results=page))
             failed = job[0] != 200
             return self.reply(200, {"entry": [{"content": {"isDone": True, "isFailed": failed, "dispatchState": "FAILED" if failed else "DONE",
                                                             "messages": job[1].get("messages", []) if failed else []}}]})
@@ -64,6 +71,10 @@ class H(BaseHTTPRequestHandler):
         if "_raw" in q:
             return self.reply(200, {"fields": [{"name": "_raw"}], "results": [{"_raw": "step=3 concurrency=4 throughput=3400 user=ann.lee@example.com"}]})
         rows = []
+        if "bigtable" in q:  # 50,000 rows, for loading a large table into the database
+            for i in range(50000):
+                rows.append({"n": str(i + 1), "host": "web-%d" % (i % 7), "status": "500" if i % 10 == 0 else "200", "ms": "%.1f" % (10 + (i * 37) % 900)})
+            return self.reply(200, {"fields": [{"name": "n"}, {"name": "host"}, {"name": "status"}, {"name": "ms"}], "results": rows, "messages": []})
         if "minutes" in q:  # a ready-made Little's Law search: n x r minutes
             for i, n in enumerate([0.5, 1, 1.5, 2, 3, 4]):
                 x = 3 * n / (1 + 0.1 * (n - 1))

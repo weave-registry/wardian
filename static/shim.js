@@ -8,7 +8,7 @@ const Kernel = (() => {
   let def = null, contract = null, nextId = 1, root = null, booted = false;
   const pending = new Map(), handlers = new Map(), methods = new Map(), chans = new Map();
   let saved = {};
-  const HOST_CAPS = ['splunk'];   // capabilities the host provides under their own name (not "claude:…")
+  const HOST_CAPS = ['splunk', 'db'];   // capabilities the host provides under their own name (not "claude:…")
 
   const post = m => parent.postMessage(m, '*');
   const fault = e => { post({k: 'fault', message: String(e && e.message || e)}); console.error(e); };

@@ -72,41 +72,56 @@ pub fn normalize_search(spl: &str) -> Result<String, String> {
 /// named its fields. Internal fields (_raw, _time …) are left out unless the
 /// search keeps nothing else. A multivalue cell keeps its first value.
 pub fn table(body: &Value) -> Value {
-    let mut fields: Vec<String> = body["fields"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|f| f["name"].as_str().or_else(|| f.as_str()).map(String::from)).collect())
-        .unwrap_or_default();
+    let fields = fields_of(body);
     let results = body["results"].as_array().cloned().unwrap_or_default();
-    if fields.is_empty() {
-        if let Some(first) = results.first().and_then(Value::as_object) {
-            fields = first.keys().cloned().collect();
-        }
-    }
-    let visible: Vec<String> = fields.iter().filter(|f| !f.starts_with('_')).cloned().collect();
-    if !visible.is_empty() {
-        fields = visible;
-    }
     let truncated = results.len() > MAX_ROWS;
-    let rows: Vec<Value> = results
-        .iter()
-        .take(MAX_ROWS)
-        .map(|r| {
-            Value::Array(
-                fields
-                    .iter()
-                    .map(|f| match &r[f] {
-                        Value::Array(a) => a.first().cloned().unwrap_or(Value::Null),
-                        v => v.clone(),
-                    })
-                    .collect(),
-            )
-        })
-        .collect();
+    let rows: Vec<Value> = rows_of(body, &fields).into_iter().take(MAX_ROWS).map(Value::Array).collect();
     let messages: Vec<Value> = body["messages"]
         .as_array()
         .map(|a| a.iter().filter_map(|m| m["text"].as_str().map(|t| json!(t))).collect())
         .unwrap_or_default();
     json!({ "fields": fields, "rows": rows, "truncated": truncated, "messages": messages })
+}
+
+/// The columns of a results reply, in the order the search named them. Internal fields (_raw,
+/// _time …) are left out unless the search keeps nothing else.
+pub fn fields_of(body: &Value) -> Vec<String> {
+    let mut fields: Vec<String> = body["fields"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|f| f["name"].as_str().or_else(|| f.as_str()).map(String::from)).collect())
+        .unwrap_or_default();
+    if fields.is_empty() {
+        if let Some(first) = body["results"].as_array().and_then(|r| r.first()).and_then(Value::as_object) {
+            fields = first.keys().cloned().collect();
+        }
+    }
+    let visible: Vec<String> = fields.iter().filter(|f| !f.starts_with('_')).cloned().collect();
+    if visible.is_empty() {
+        fields
+    } else {
+        visible
+    }
+}
+
+/// The rows of a results reply, one cell per field; a multivalue cell keeps its first value.
+pub fn rows_of(body: &Value, fields: &[String]) -> Vec<Vec<Value>> {
+    body["results"]
+        .as_array()
+        .map(|results| {
+            results
+                .iter()
+                .map(|r| {
+                    fields
+                        .iter()
+                        .map(|f| match &r[f] {
+                            Value::Array(a) => a.first().cloned().unwrap_or(Value::Null),
+                            v => v.clone(),
+                        })
+                        .collect()
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The address people paste is often the web UI ("https://host:8000/en-US/app/search")

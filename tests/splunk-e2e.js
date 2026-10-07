@@ -64,14 +64,17 @@ async function answer(page, re, yes, what) {
   await answer(tab, /splunk-table.*Splunk searches/, true, 'asked about searches');
   await answer(tab, /send messages on the channel splunk\.table/, true, 'then asked about sending the table');
   await t.locator('#status', { hasText: 'rows from Splunk' }).waitFor({ timeout: 5000 });
-  ok(/8 rows from Splunk\. Sent to other apps\./.test(await t.locator('#status').textContent()), 'status: ' + await t.locator('#status').textContent());
+  ok(/8 rows from Splunk, kept in this app's database\. Sent to other apps\./.test(await t.locator('#status').textContent()), 'status: ' + await t.locator('#status').textContent());
   ok(await t.locator('#out tbody tr').count() === 8 && (await t.locator('#out th').allTextContents()).join(',') === 'concurrency,x,r', 'the table shows 8 rows of concurrency, x, r');
   const bar = t.locator('wardian-progress');
   ok(await bar.getAttribute('state') === 'done' && /^8 rows in \d+ s$/.test(await bar.getAttribute('label')) && await bar.getAttribute('role') === 'progressbar',
     'the standard progress bar ends as done: ' + await bar.getAttribute('label'));
   ok(/stats avg\(tput\)/.test(await t.locator('#facts').textContent()) && /Last 24 hours/.test(await t.locator('#facts').textContent()), 'with the search and the time range above it');
   await t.locator('#out th', { hasText: 'concurrency' }).click();
+  await t.locator('#out th .arrow', { hasText: '▲' }).waitFor({ timeout: 5000 });
   await t.locator('#out th', { hasText: 'concurrency' }).click();
+  // Sorting runs in the database, so the page redraws when the answer arrives.
+  await t.locator('#out tbody tr:first-child td:first-child', { hasText: /^64$/ }).waitFor({ timeout: 5000 }).catch(() => {});
   ok(await t.locator('#out tbody tr:first-child td:first-child').textContent() === '64', 'a header click sorts, again reverses');
 
   console.log('== the lab gets the table after the user allows it');
@@ -111,6 +114,51 @@ async function answer(page, re, yes, what) {
   inputs = frameOf(lab, 'inputs');
   await inputs.locator('#tblPick').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
   ok(await lab.locator('.wardian-perm').count() === 0 && /Requests in production/.test(await inputs.locator('#tblName').textContent()), 'after a reload the lab listens again without asking');
+
+  console.log('== a large table: 50,000 rows in the database, paged, sorted, filtered, and read by the lab');
+  await t.locator('#preset').selectOption('');
+  await t.locator('#spl').fill('index=big bigtable | table n host status ms');
+  await t.locator('#title').fill('Big table');
+  await t.locator('#btnRun').click();
+  await t.locator('#status', { hasText: '50,000 rows from Splunk' }).waitFor({ timeout: 60000 });
+  await t.locator('#pageInfo', { hasText: 'of 50,000' }).waitFor({ timeout: 10000 });
+  ok(await t.locator('#out tbody tr').count() === 100 && /Rows 1–100 of 50,000/.test(await t.locator('#pageInfo').textContent()), 'the page shows 100 of 50,000 rows');
+  ok(/all 50,000 rows, which they read/.test(await t.locator('#status').textContent()), 'the channel carries a reference to all of them');
+  // The pager sits below a hundred rows; Chrome does not draw a sandboxed frame's parts out of
+  // sight, so scroll to it first, as a person would.
+  const press = async sel => { await t.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center' })); await sleep(300); await t.locator(sel).click(); };
+  await press('#next');
+  await t.locator('#pageInfo', { hasText: 'Rows 101–200' }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok(await t.locator('#out tbody tr:first-child td:first-child').textContent() === '101', 'Next shows rows 101–200');
+  await press('#prev');
+  await t.locator('#pageInfo', { hasText: 'Rows 1–100' }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok(await t.locator('#out tbody tr:first-child td:first-child').textContent() === '1', 'Previous goes back');
+  await t.locator('#out th', { hasText: 'ms' }).evaluate(el => el.scrollIntoView({ block: 'center' })); await sleep(300);
+  await t.locator('#out th', { hasText: 'ms' }).click();
+  await t.locator('#out th .arrow', { hasText: '▲' }).waitFor({ timeout: 5000 });
+  await t.locator('#out th', { hasText: 'ms' }).click();
+  await t.locator('#out tbody tr:first-child td:nth-child(4)', { hasText: /^909$/ }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok(await t.locator('#out tbody tr:first-child td:nth-child(4)').textContent() === '909', 'sorting all 50,000 rows by ms, largest first, is done by the database');
+  let expected = 0;
+  for (let i = 0; i < 50000; i++) if (i % 10 === 0 && i % 7 === 3) expected++;
+  await t.locator('#find').fill('status=500 web-3');
+  await t.locator('#findHint', { hasText: expected.toLocaleString() + ' of 50,000 rows match' }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok((await t.locator('#findHint').textContent()).startsWith(expected.toLocaleString() + ' of 50,000 rows match'), 'Find in results filters in the database: ' + await t.locator('#findHint').textContent());
+  await t.locator('#btnCsv').evaluate(el => el.scrollIntoView({ block: 'center' })); await sleep(300);
+  const [csvFile] = await Promise.all([tab.waitForEvent('download', { timeout: 20000 }), t.locator('#btnCsv').click()]);
+  const csvLines = require('fs').readFileSync(await csvFile.path(), 'utf8').trim().split('\n');
+  ok(csvLines.length === expected + 1 && csvLines.slice(1).every(l => l.includes('web-3') && l.includes(',500,')), 'the CSV holds exactly the matching rows: ' + (csvLines.length - 1));
+  await inputs.locator('#tblName', { hasText: '50,000 rows' }).waitFor({ timeout: 10000 });
+  await inputs.locator('#colN').selectOption('n');
+  await inputs.locator('#colX').selectOption('ms');
+  await inputs.locator('#colR').selectOption('');
+  await useTable(inputs);
+  await answer(lab, /usl-lab wants to read the tables of splunk-table/, true, 'the lab asks once to read the table app\'s tables');
+  await inputs.locator('#tblStatus', { hasText: 'Using 10,000 rows' }).waitFor({ timeout: 60000 }).catch(() => {});
+  ok(/Using 10,000 rows \(the first 10,000 of 50,000; the fit reads at most 10,000\)/.test(await inputs.locator('#tblStatus').textContent()), 'the lab reads the table in pages, up to its 10,000-row cap, and says so: ' + await inputs.locator('#tblStatus').textContent());
+  ok((await inputs.locator('#data').inputValue()).split('\n').length === 10001, 'and they fill its measurements');
+  const undeclared = await post('/api/db/page', { package: 'usl-lab', app: 'chart', table: 'search', source: 'splunk-table' });
+  ok(/does not declare/.test(undeclared.body.error || ''), 'an app that does not declare db is refused on the server');
 
   console.log('== Splunk errors are shown');
   await t.locator('#spl').fill('| badsyntax');
@@ -168,9 +216,12 @@ async function answer(page, re, yes, what) {
   if (process.env.PROVIDER === 'bedrock') ok(prompts[0].model.startsWith('us.anthropic.') && (await (await fetch(process.env.BEDROCK + '/seen')).json()).includes('bearer'), 'the requests went through Bedrock with its model ids and the bearer key');
   ok(!JSON.stringify(prompts).includes('ann.lee@example.com') && JSON.stringify(prompts).includes('<email>'), 'email addresses never reach Claude');
   await inputs.locator('#tblName', { hasText: 'JMeter' }).waitFor({ timeout: 5000 }).catch(() => {});
-  await useTable(inputs); await sleep(1500);
+  await useTable(inputs);
+  // The lab may still be fitting the 50,000 rows of the step before; wait for the new labels.
+  const labelsAt = Date.now();
+  await frameOf(lab, 'chart').locator('#about', { hasText: 'JMeter load test steps' }).waitFor({ timeout: 30000 }).catch(() => {});
   aboutText = await frameOf(lab, 'chart').locator('#about').textContent();
-  ok(/JMeter load test steps/.test(aboutText) && /Claude wrote this search/.test(aboutText), 'Claude\'s labels reach the lab');
+  ok(/JMeter load test steps/.test(aboutText) && /Claude wrote this search/.test(aboutText), 'Claude\'s labels reach the lab (after ' + (Date.now() - labelsAt) + ' ms)');
 
   await lab.reload(); await sleep(3000);
   const diag = frameOf(lab, 'diagnosis');

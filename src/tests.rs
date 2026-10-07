@@ -303,3 +303,65 @@ fn seeding_history_and_promote() {
     assert_eq!(history.versions("hello").unwrap()["versions"][0]["by"], "promote");
     let _ = fs::remove_dir_all(dir);
 }
+
+// ---------- the db capability (ADR-2610071219) ----------
+
+/// A Splunk that has finished one job with `rows` results, and serves them by offset and count.
+struct FakeSplunk {
+    rows: usize,
+    asked: std::sync::Mutex<Vec<(usize, usize)>>,
+}
+
+struct FakeSession(Arc<FakeSplunk>);
+
+impl crate::ports::splunk::SplunkApi for Arc<FakeSplunk> {
+    fn connect(&self, _: &crate::ports::splunk::SplunkConfig) -> Result<Box<dyn crate::ports::splunk::SplunkSession>, String> {
+        Ok(Box::new(FakeSession(Arc::clone(self))))
+    }
+}
+
+impl crate::ports::splunk::SplunkSession for FakeSession {
+    fn get(&self, path: &str, query: &[(&str, &str)]) -> Result<Value, crate::ports::splunk::SplunkError> {
+        use serde_json::json;
+        if !path.ends_with("/results") {
+            return Ok(json!({"entry": [{"content": {"isDone": true, "dispatchState": "DONE"}}]}));
+        }
+        let q = |k: &str| query.iter().find(|(n, _)| *n == k).and_then(|(_, v)| v.parse::<usize>().ok()).unwrap_or(0);
+        let (offset, count) = (q("offset"), q("count"));
+        self.0.asked.lock().unwrap().push((offset, count));
+        let results: Vec<Value> = (offset..(offset + count).min(self.0.rows)).map(|i| json!({"n": i.to_string(), "host": format!("h{}", i % 3), "_time": "x"})).collect();
+        Ok(json!({"fields": [{"name": "n"}, {"name": "host"}, {"name": "_time"}], "results": results}))
+    }
+    fn post(&self, _: &str, _: &[(&str, &str)]) -> Result<Value, crate::ports::splunk::SplunkError> {
+        Ok(serde_json::json!({"sid": "job1"}))
+    }
+    fn url(&self, path: &str) -> String {
+        path.into()
+    }
+}
+
+#[test]
+fn splunk_results_load_into_a_table_in_chunks_and_page() {
+    use crate::adapters::secondary::sqlite_store::SqliteStore;
+    use crate::ports::{db::Database, service::Tables};
+    use crate::usecases::{db::Db, splunk::Splunk};
+    use serde_json::json;
+    let dir = tmp("dbload");
+    let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&dir));
+    let fake = Arc::new(FakeSplunk { rows: 120_000, asked: std::sync::Mutex::new(Vec::new()) });
+    let cfg = crate::ports::splunk::SplunkConfig { url: "https://splunk.test:8089".into(), token: "t".into(), ..Default::default() };
+    let splunk = Splunk::new(Arc::new(LocalDisk), Arc::new(Arc::clone(&fake)), Arc::clone(&db), &dir, Some(cfg));
+    let out = splunk.search_into("splunk-table", "search", "index=x", "-24h", "").unwrap();
+    assert_eq!(out["total"], 120_000);
+    assert_eq!(out["columns"], json!(["n", "host"]), "internal fields stay out");
+    assert_eq!(*fake.asked.lock().unwrap(), vec![(0, 50_000), (50_000, 50_000), (100_000, 50_000)], "read in chunks");
+
+    let tables = Db::new(Arc::clone(&db));
+    let page = tables.page("splunk-table", None, &json!({"table": "search", "offset": 0, "limit": 3, "orderBy": "n", "desc": true})).unwrap();
+    assert_eq!(page["total"], 120_000);
+    assert_eq!(page["rows"][0][0], json!(119_999), "n is numeric, so it sorts as a number");
+    let filtered = tables.page("usl-lab", Some("splunk-table"), &json!({"table": "search", "where": "host = ?", "params": ["h1"], "limit": 2})).unwrap();
+    assert_eq!(filtered["total"], 40_000, "another package reads the same table, read-only");
+    assert!(tables.query("usl-lab", "SELECT count(*) FROM search", &json!([])).is_err(), "a package's own database does not hold another's tables");
+    let _ = fs::remove_dir_all(dir);
+}

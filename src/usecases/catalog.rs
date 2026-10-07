@@ -412,7 +412,8 @@ impl Hub {
         if !grants::declares_cap(&suite, app, cap) {
             return Err(format!("{package}/{app} does not declare the capability \"{cap}\" in suite.json"));
         }
-        if !grants::granted(&self.grant_list(), package, grant, "use") {
+        // An empty grant: the capability needs only the declaration (an app's own database).
+        if !grant.is_empty() && !grants::granted(&self.grant_list(), package, grant, "use") {
             return Err(format!("you have not allowed {package} to use {grant}"));
         }
         Ok(())

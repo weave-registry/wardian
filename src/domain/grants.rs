@@ -41,7 +41,7 @@ pub fn apply(mut list: Vec<Value>, a: &Answer, now: u64) -> Result<Vec<Value>, S
         return Err("not a channel name".into());
     }
     // "use" is an answer about a host capability (the "channel" is its name), not a channel.
-    let ok_mode = matches!(a.mode, "send" | "receive") || (a.mode == "use" && HOST_CAPS.contains(&a.channel));
+    let ok_mode = matches!(a.mode, "send" | "receive") || (a.mode == "use" && (HOST_CAPS.contains(&a.channel) || reads_tables_of(a.channel).is_some()));
     if !ok_mode || !matches!(a.decision, "allow" | "deny" | "ask") {
         return Err("mode must be send, receive, or use (for a host capability); decision must be allow, deny or ask".into());
     }
@@ -50,6 +50,11 @@ pub fn apply(mut list: Vec<Value>, a: &Answer, now: u64) -> Result<Vec<Value>, S
         list.push(json!({ "app": a.app, "channel": a.channel, "mode": a.mode, "allow": a.decision == "allow", "at": now }));
     }
     Ok(list)
+}
+
+/// The package whose tables a "tables.<package>" permission is about (ADR-2610071219).
+fn reads_tables_of(grant: &str) -> Option<&str> {
+    grant.strip_prefix("tables.").filter(|p| safe_segment(p))
 }
 
 /// True when the list says the user allowed `app` this mode on this channel or capability.

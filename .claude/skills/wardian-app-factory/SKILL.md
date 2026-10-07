@@ -84,6 +84,11 @@ ask for Rust or WebAssembly, a page or suite may skip WebAssembly entirely — s
   in `suite.json`). `wardian add --list` names them all; `/ui/` on a running Wardian shows their
   markup. Classes start with `w-` (`<button class="w-button" data-variant="outline">`); restyle
   through the tokens in `ui/theme.css`, not by overriding each class.
+- Small settings go in `ctx.store` (capability `storage`). Data — rows to page, sort, filter or share —
+  goes in the app's own SQLite database (capability `db`, SPEC.md §6.6): `insertRows`, `page`,
+  `query`. Show large tables a page at a time with `page({offset, limit: 100, orderBy, where})`
+  instead of loading every row. To hand a large table to another package, send a dataset reference
+  on a channel; the receiver reads it with `readPage` (SPEC.md §6.9).
 - Every app uses the library and offers Arrange (SPEC.md §6.10–6.11); `wardian check` warns when
   one does not. A page app marks each part `data-panel="name"` (columns `data-arrange-column="side"`
   / `"main"` inside a `data-arrange-grid` element) and adds `arrange`. A suite and a module get

@@ -9,7 +9,7 @@ use super::suite::{tag_name, FONT_CSS};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashSet};
 
-const KNOWN_CAPS: &[&str] = &["storage", "asset", "worker", "source", "claude:downloads", "claude:sample", "splunk"];
+const KNOWN_CAPS: &[&str] = &["storage", "asset", "worker", "source", "claude:downloads", "claude:sample", "splunk", "db"];
 const APP_JSON_KEYS: &[&str] = &["$schema", "format", "title", "description", "page", "channels"];
 const SUITE_KEYS: &[&str] = &["$schema", "format", "title", "description", "styles", "scripts", "header", "columns", "apps"];
 const ENTRY_KEYS: &[&str] = &["name", "slot", "wrap", "dir", "scripts", "emits", "listens", "provides", "needs", "caps", "channels"];

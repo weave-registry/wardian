@@ -288,6 +288,7 @@ between apps. A value that cannot be copied, such as a function, makes `emit` or
 | `claude:downloads` | `ctx.cap('downloads')` → `{ save({ filename, data }) }`. `filename` matches `[A-Za-z0-9_. -]{1,120}`. `data` is a string, `Blob`, `ArrayBuffer` or typed array. Resolves to `{ status: 'saved' }`. | kernel |
 | `claude:sample` | `ctx.cap('sample')` → a function `sample(prompt, {signal, onText, modelTier})` resolving to `{ text, truncated }`, and `sample.json(prompt, opts)` resolving to parsed JSON. Errors carry `e.code` (`not_granted`, `rate_limited`, `refused`, `invalid_json`, `prompt_too_large`, `cancelled`, `error`). Wardian answers through the Claude provider set up in Settings, the Anthropic API or Amazon Bedrock, and resolves to `null` when there is none, so apps MUST handle `null`. The user allows each package once, as for `splunk`. | host server |
 | `splunk` | `ctx.cap('splunk')` → `{ status(), search({ search, earliest?, latest? }) }`. `status()` resolves to `{ ready }`. `search` resolves to `{ fields, rows, truncated, messages }`, at most 10 000 rows. The server runs the search with its own Splunk account; the app never sees it. | host server |
+| `db` | `ctx.cap('db')` → the package's own SQLite database, kept by the host (ADR-2610071219): `query({ sql, params })` → `{ columns, rows, changed, truncated }` for one statement, at most 1 000 rows; `page({ table, offset, limit, orderBy, desc, where, params })` → `{ columns, rows, total, offset }`, `limit` at most 1 000, `where` a condition with `?` (or `?N`) placeholders, read-only; `insertRows({ table, columns, rows, create, replace })`; `tables()`; `readPage({ package, ...page })` reads another package's table, read-only, after the user allows it once (asked as `tables.<package>`); `searchInto({ search, earliest, latest, table })` loads a Splunk search into a table, up to 1 000 000 rows (needs `splunk` too). The host refuses ATTACH, DETACH, loading extensions and pragmas that set anything; a database may hold 1 GB and a statement may run 10 seconds. | host server |
 
 A `splunk` search MUST NOT run until the user allows the package, the same way as a channel
 (6.9), with the answer kept under mode `use`. The server MUST check that answer, and that the
@@ -357,6 +358,11 @@ packages, the user decides, the way a phone asks before an app uses the camera.
    the sending package's name, so a package cannot pretend to be another.
 5. **Keep the latest.** The host keeps the latest message on each channel. A
    package that starts receiving gets it first, like a retained topic.
+
+A table too large for one message travels as a **dataset reference**: the message carries
+`{ dataset: { package, table, total, columns, fields } }` (and MAY carry the first rows inline), and
+a receiving suite app that declares `db` reads the rows with `ctx.cap('db').readPage({ package,
+table, … })`, read-only, after the user allows it to read that package's tables.
 
 Data MUST be JSON-compatible and at most 256 KB. A package may send at most 100 messages in 10
 seconds. The permission belongs to the package, not to one app inside a suite: in a suite, only

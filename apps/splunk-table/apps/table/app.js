@@ -2,15 +2,25 @@
    The time range can be a ready-made one, "last N minutes/hours/days…", two dates, or Splunk time codes.
    "Find words in all my data" builds a keyword search for you; "Find in results" filters the rows shown.
    Sends the table on the channel "splunk.table", so other apps (the USL lab) can use it.
-   Capabilities: storage, splunk, claude:sample, claude:downloads.  Channels: sends splunk.table. */
+   With the db capability (ADR-2610071219) the results load into this app's own SQLite table on the
+   server, up to a million rows: the page shows 100 at a time, and sorting, "Find in results" and the
+   CSV run in the database. The channel then carries a reference to the table, not its rows.
+   Capabilities: storage, splunk, db, claude:sample, claude:downloads.  Channels: sends splunk.table. */
 Kernel.register({
   name: 'table',
-  caps: ['storage', 'splunk', 'claude:sample', 'claude:downloads'],
+  caps: ['storage', 'splunk', 'db', 'claude:sample', 'claude:downloads'],
   channels: {send: ['splunk.table']},
   init(ctx){
     const $ = ctx.$;
     const SHOW_ROWS = 1000;                    // rows drawn on the page; the CSV and the channel carry more
     const CHANNEL_BYTES = 240 * 1024;          // a channel message may be at most 256 KB
+    const PAGE = 100;                          // rows per page when the table is in the database
+    const INLINE_ROWS = 1000;                  // a table in the database also travels inline up to this many rows
+    const TABLE_NAME = 'search';               // this app's table in its database
+    let db = null;                             // ctx.cap('db'), or null on a host without it
+    let dbKnown = false;                       // whether the host has answered about db yet
+    let pageAt = 0;                            // the first row on the page (database mode)
+    let pageView = null;                       // {columns, rows, total} of the page shown
 
     const bar = $('#bar');
     function status(text, kind){ const st = $('#status'); st.className = 'status' + (kind ? ' ' + kind : ''); st.textContent = text; }
@@ -220,16 +230,71 @@ Kernel.register({
       }
       return {test: r => tests.every(t => t(r)), problems, active: tests.length > 0};
     }
+    // The same rules as a condition for the database: {where, params, problems}. Each value is a
+    // bound parameter; columns are the table's own names, matched from the fields people see.
+    function findWhere(text, fields, columns){
+      const lower = fields.map(f => String(f).toLowerCase());
+      const parts = [], params = [], problems = [];
+      const like = v => '%' + String(v).replace(/[\\%_]/g, c => '\\' + c) + '%';
+      const tokens = text.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+      for (const tok of tokens){
+        const m = tok.match(/^([^=<>!"]+)(!=|>=|<=|=|>|<)(.*)$/);
+        if (!m){
+          const w = tok.replace(/"/g, '');
+          if (!w) continue;
+          params.push(like(w));
+          const n = params.length;
+          parts.push('(' + columns.map(c => 'CAST("' + c + '" AS TEXT) LIKE ?' + n + " ESCAPE '\\'").join(' OR ') + ')');
+          continue;
+        }
+        const i = lower.indexOf(m[1].toLowerCase());
+        if (i < 0){ problems.push('There is no column called ' + m[1] + '.'); continue; }
+        const op = m[2], val = m[3].replace(/"/g, ''), col = '"' + columns[i] + '"';
+        if (op === '=' || op === '!='){
+          params.push(like(val));
+          parts.push(op === '=' ? 'CAST(' + col + ' AS TEXT) LIKE ?' + params.length + " ESCAPE '\\'" : '(' + col + ' IS NULL OR CAST(' + col + ' AS TEXT) NOT LIKE ?' + params.length + " ESCAPE '\\')");
+        } else {
+          if (!isNum(val)){ problems.push(m[1] + op + ' needs a number after it.'); continue; }
+          params.push(num(val));
+          parts.push('CAST(' + col + ' AS REAL) ' + op + ' ?' + params.length);
+        }
+      }
+      return {where: parts.join(' AND '), params, problems, active: parts.length > 0};
+    }
+    // One page request for the table in the database, with the sort and "Find in results".
+    function pageRequest(offset, limit){
+      const d = table.dataset, f = findWhere($('#find').value.trim(), table.fields, d.columns);
+      return {req: {table: d.table, offset, limit, orderBy: sort.col >= 0 ? d.columns[sort.col] : '', desc: sort.dir < 0, where: f.where, params: f.params}, find: f};
+    }
     let findTimer = null;
-    $('#find').addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(draw, 150); });
+    $('#find').addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(() => { pageAt = 0; draw(); }, 200); });
 
     // ---------- the result ----------
-    function draw(){
-      const out = $('#out'), facts = $('#facts'), hint = $('#findHint');
-      $('#btnSend').disabled = !table; $('#btnCsv').disabled = !table || !downloads;
-      $('#findBox').hidden = !table || !table.rows.length;
-      shown = [];
-      if (!table){ facts.hidden = true; return; }
+    // One table element for rows: header clicks sort; `numeric` right-aligns number columns.
+    function tableEl(fields, rows, numeric){
+      const t = ctx.el('table'), thead = ctx.el('thead'), hr = ctx.el('tr');
+      t.className = 'w-table';
+      fields.forEach((f, i) => {
+        const th = ctx.el('th'); th.textContent = f; th.title = 'Sort by ' + f; th.scope = 'col';
+        if (numeric[i]) th.className = 'num';
+        if (sort.col === i){ const a = ctx.el('span'); a.className = 'arrow'; a.textContent = sort.dir > 0 ? '▲' : '▼'; th.appendChild(a); }
+        th.addEventListener('click', () => { sort = {col: i, dir: sort.col === i ? -sort.dir : 1}; pageAt = 0; draw(); });
+        hr.appendChild(th);
+      });
+      thead.appendChild(hr); t.appendChild(thead);
+      const tb = ctx.el('tbody');
+      for (const r of rows){
+        const tr = ctx.el('tr');
+        r.forEach((v, i) => { const td = ctx.el('td'); td.textContent = v == null ? '' : String(v); if (numeric[i]) td.className = 'num'; tr.appendChild(td); });
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      const wrap = ctx.el('div'); wrap.className = 'w-table-wrap'; wrap.appendChild(t);
+      return wrap;
+    }
+
+    function drawFacts(){
+      const facts = $('#facts');
       facts.replaceChildren();
       const fact = (k, v, code) => {
         if (!v) return;
@@ -237,12 +302,62 @@ Kernel.register({
         if (code){ const c = ctx.el('code'); c.textContent = v; dd.appendChild(c); } else dd.textContent = v;
         facts.append(dt, dd);
       };
+      const n = table.dataset ? table.dataset.total : table.rows.length;
       fact('Table', table.title);
-      fact('Rows', table.rows.length + (table.rows.length === 1 ? ' row' : ' rows') + ' × ' + table.fields.length + ' columns' + (table.truncated ? ' (Splunk returned more; only the first ' + table.rows.length + ' are kept)' : ''));
+      fact('Rows', n.toLocaleString() + (n === 1 ? ' row' : ' rows') + ' × ' + table.fields.length + ' columns' +
+        (table.truncated ? ' (Splunk returned more; only the first ' + n.toLocaleString() + ' are kept)' : '') + (table.dataset ? ', kept in this app\'s database' : ''));
       fact('Time range', table.rangeLabel);
       fact('Fetched', new Date(table.at).toLocaleString() + (table.seconds ? ', the search took ' + table.seconds + ' s' : ''));
       fact('Search', table.search, true);
       facts.hidden = false;
+    }
+
+    // Database mode: asks for one page and draws it, with "rows X–Y of N" and Previous / Next.
+    let drawing = 0;
+    async function drawPage(){
+      const out = $('#out'), hint = $('#findHint'), pager = $('#pager'), mine = ++drawing;
+      const {req, find} = pageRequest(pageAt, PAGE);
+      if (find.problems.length){ hint.className = 'w-hint warn'; hint.textContent = find.problems.join(' '); }
+      let page;
+      try { page = await db.page(req); }
+      catch (e){ if (mine === drawing){ out.replaceChildren(Object.assign(ctx.el('p'), {className: 'empty', textContent: 'Could not read the table: ' + (e && e.message || e)})); pager.hidden = true; } return; }
+      if (mine !== drawing) return;                         // a newer request was made meanwhile
+      pageView = page;
+      const total = table.dataset.total;
+      if (!find.problems.length){
+        if (find.active){ hint.className = 'w-hint'; hint.textContent = page.total.toLocaleString() + ' of ' + total.toLocaleString() + ' rows match. Download CSV saves the matching rows.'; }
+        else { hint.className = 'w-hint'; hint.textContent = 'Words keep rows that contain them anywhere. Use column=text, column!=text, or column>number (also <, >=, <=) to look in one column. Put spaces inside "quotes".'; }
+      }
+      if (!page.total){
+        out.replaceChildren(Object.assign(ctx.el('p'), {className: 'empty', textContent: total ? 'No rows match what you typed under Find in results.' : 'The search returned no rows. Try a longer time range.'}));
+        pager.hidden = true; return;
+      }
+      const numeric = table.fields.map((_, i) => page.rows.every(r => r[i] == null || r[i] === '' || isNum(r[i])));
+      out.replaceChildren(tableEl(table.fields, page.rows, numeric));
+      const last = Math.min(pageAt + page.rows.length, page.total);
+      $('#pageInfo').textContent = 'Rows ' + (pageAt + 1).toLocaleString() + '–' + last.toLocaleString() + ' of ' + page.total.toLocaleString();
+      $('#prev').disabled = pageAt === 0;
+      $('#next').disabled = last >= page.total;
+      pager.hidden = false;
+    }
+    $('#prev').addEventListener('click', () => { pageAt = Math.max(0, pageAt - PAGE); draw(); });
+    $('#next').addEventListener('click', () => { pageAt += PAGE; draw(); });
+
+    function draw(){
+      const out = $('#out'), facts = $('#facts'), hint = $('#findHint');
+      $('#btnSend').disabled = !table; $('#btnCsv').disabled = !table || !downloads;
+      $('#findBox').hidden = !table || !(table.dataset ? table.dataset.total : table.rows.length);
+      $('#pager').hidden = true;
+      shown = [];
+      if (!table){ facts.hidden = true; return; }
+      if (table.dataset){
+        if (!dbKnown) return;                               // drawn again once the host answers
+        if (!db){ out.replaceChildren(Object.assign(ctx.el('p'), {className: 'empty', textContent: 'This table is in the database, which this host does not offer. Run the search again.'})); return; }
+        drawFacts();
+        drawPage();
+        return;
+      }
+      drawFacts();
 
       if (!table.rows.length){ out.replaceChildren(Object.assign(ctx.el('p'), {className: 'empty', textContent: 'The search returned no rows. Try a longer time range.'})); return; }
       const numeric = table.fields.map((_, i) => table.rows.every(r => r[i] == null || r[i] === '' || isNum(r[i])));
@@ -261,25 +376,7 @@ Kernel.register({
       shown = rows;
       if (!rows.length){ out.replaceChildren(Object.assign(ctx.el('p'), {className: 'empty', textContent: 'No rows match what you typed under Find in results.'})); return; }
 
-      const t = ctx.el('table'), thead = ctx.el('thead'), hr = ctx.el('tr');
-      t.className = 'w-table';
-      table.fields.forEach((f, i) => {
-        const th = ctx.el('th'); th.textContent = f; th.title = 'Sort by ' + f; th.scope = 'col';
-        if (numeric[i]) th.className = 'num';
-        if (sort.col === i){ const a = ctx.el('span'); a.className = 'arrow'; a.textContent = sort.dir > 0 ? '▲' : '▼'; th.appendChild(a); }
-        th.addEventListener('click', () => { sort = {col: i, dir: sort.col === i ? -sort.dir : 1}; draw(); });
-        hr.appendChild(th);
-      });
-      thead.appendChild(hr); t.appendChild(thead);
-      const tb = ctx.el('tbody');
-      for (const r of rows.slice(0, SHOW_ROWS)){
-        const tr = ctx.el('tr');
-        r.forEach((v, i) => { const td = ctx.el('td'); td.textContent = v == null ? '' : String(v); if (numeric[i]) td.className = 'num'; tr.appendChild(td); });
-        tb.appendChild(tr);
-      }
-      t.appendChild(tb);
-      const wrap = ctx.el('div'); wrap.className = 'w-table-wrap'; wrap.appendChild(t);
-      const parts = [wrap];
+      const parts = [tableEl(table.fields, rows.slice(0, SHOW_ROWS), numeric)];
       if (rows.length > SHOW_ROWS) parts.push(Object.assign(ctx.el('p'), {className: 'note', textContent: 'Showing the first ' + SHOW_ROWS + ' of ' + rows.length + ' rows. Download the CSV to see all of them.'}));
       out.replaceChildren(...parts);
     }
@@ -289,6 +386,7 @@ Kernel.register({
     // when it ran, and (for ready-made searches) what each column means.
     async function share(){
       if (!table) return;
+      if (table.dataset) return shareDataset();
       let msg = Object.assign({}, table, {cut: false});
       if (JSON.stringify(msg).length > CHANNEL_BYTES){
         let keep = table.rows.length;
@@ -302,6 +400,31 @@ Kernel.register({
         return 'Not sent to other apps: ' + (e && e.message || e) + '. Settings → App permissions can change that.';
       }
     }
+    // A table in the database travels as a reference: the receiving app reads the pages it needs,
+    // after the user allows it. Up to INLINE_ROWS rows also travel inline, for apps that read only rows.
+    async function shareDataset(){
+      const d = table.dataset;
+      let rows = [];
+      try {
+        for (let at = 0; at < Math.min(d.total, INLINE_ROWS); at += 1000){
+          const p = await db.page({table: d.table, offset: at, limit: Math.min(1000, INLINE_ROWS - at)});
+          rows = rows.concat(p.rows);
+        }
+      } catch { rows = []; }
+      const msg = Object.assign({}, table, {rows, cut: rows.length < d.total, dataset: {package: 'splunk-table', table: d.table, total: d.total, columns: d.columns, fields: table.fields}});
+      if (JSON.stringify(msg).length > CHANNEL_BYTES){
+        let keep = rows.length;
+        while (keep > 0 && JSON.stringify(Object.assign({}, msg, {rows: rows.slice(0, keep)})).length > CHANNEL_BYTES) keep = Math.floor(keep * 0.8);
+        msg.rows = rows.slice(0, keep); msg.cut = true;
+      }
+      try {
+        await ctx.channel('splunk.table').send(msg);
+        return msg.rows.length >= d.total ? 'Sent to other apps.'
+          : 'Sent to other apps: all ' + d.total.toLocaleString() + ' rows, which they read from this app\'s database after you allow it.';
+      } catch (e) {
+        return 'Not sent to other apps: ' + (e && e.message || e) + '. Settings → App permissions can change that.';
+      }
+    }
     $('#btnSend').addEventListener('click', async () => { status(await share()); });
 
     // ---------- CSV ----------
@@ -311,12 +434,35 @@ Kernel.register({
     const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     $('#btnCsv').addEventListener('click', async () => {
       if (!table || !downloads) return;
+      if (table.dataset) return csvFromDatabase();
       const rows = $('#find').value.trim() ? shown : table.rows;
       const lines = [table.fields.map(csvCell).join(',')].concat(rows.map(r => r.map(csvCell).join(',')));
       const name = (table.title || 'splunk-table').replace(/[^\w.\- ]+/g, ' ').trim().slice(0, 80) || 'splunk-table';
       try { await downloads.save({filename: name + '.csv', data: lines.join('\n') + '\n'}); }
       catch (e) { status('Could not save the file: ' + (e && e.message || e), 'warn'); }
     });
+
+    // Reads every matching row from the database, a thousand at a time, in the order shown.
+    async function csvFromDatabase(){
+      $('#btnCsv').disabled = true;
+      const lines = [table.fields.map(csvCell).join(',')];
+      try {
+        const first = await db.page(pageRequest(0, 1).req);
+        const total = first.total;
+        bar.start('Writing the CSV', {value: 0, max: total || 1});
+        for (let at = 0; at < total; at += 1000){
+          const p = await db.page(pageRequest(at, 1000).req);
+          for (const r of p.rows) lines.push(r.map(csvCell).join(','));
+          bar.update({value: Math.min(at + 1000, total), detail: Math.min(at + 1000, total).toLocaleString() + ' of ' + total.toLocaleString() + ' rows'});
+        }
+        const name = (table.title || 'splunk-table').replace(/[^\w.\- ]+/g, ' ').trim().slice(0, 80) || 'splunk-table';
+        await downloads.save({filename: name + '.csv', data: lines.join('\n') + '\n'});
+        bar.done((lines.length - 1).toLocaleString() + ' rows saved');
+      } catch (e) {
+        bar.fail('Could not save the file');
+        status('Could not save the file: ' + (e && e.message || e), 'warn');
+      } finally { $('#btnCsv').disabled = false; }
+    }
 
     // ---------- running the search ----------
     async function run(why){
@@ -336,8 +482,30 @@ Kernel.register({
       try {
         const q = {search, earliest: range.earliest};
         if (range.latest) q.latest = range.latest;
-        const res = await splunk.search(q);
         const m = meta || {};
+        if (db){
+          // Into this app's database, read from Splunk in chunks; the page then shows 100 rows at a time.
+          const res = await db.searchInto(Object.assign({table: TABLE_NAME}, q));
+          table = {
+            title: $('#title').value.trim() || (m.about && m.about.title) || 'Splunk search',
+            fields: res.fields || [], rows: [], truncated: !!res.truncated,
+            dataset: {table: res.table, total: res.total || 0, columns: res.columns || []},
+            search, range: range.earliest, latest: range.latest, rangeLabel: range.label,
+            at: new Date().toISOString(), seconds: res.seconds || 0,
+            about: m.about || null, units: m.units || null, use: m.use || null,
+          };
+          sort = {col: -1, dir: 1}; pageAt = 0;
+          $('#find').value = '';
+          persist(); draw();
+          const n = table.dataset.total;
+          bar.done(n.toLocaleString() + (n === 1 ? ' row' : ' rows') + ' in ' + bar.seconds + ' s');
+          const msgs = (res.messages || []).filter(Boolean);
+          const sent = n ? await share() : '';
+          status([why, n.toLocaleString() + (n === 1 ? ' row' : ' rows') + ' from Splunk, kept in this app\'s database.', sent, msgs.length ? 'Splunk says: ' + msgs.join(' ') : ''].filter(Boolean).join(' '),
+            table.truncated || !n ? 'warn' : '');
+          return;
+        }
+        const res = await splunk.search(q);
         table = {
           title: $('#title').value.trim() || (m.about && m.about.title) || 'Splunk search',
           fields: res.fields || [], rows: res.rows || [], truncated: !!res.truncated,
@@ -419,8 +587,10 @@ Kernel.register({
       });
     }
 
-    draw();
     (async () => {
+      db = await ctx.cap('db').catch(() => null);
+      dbKnown = true;
+      draw();
       const splunk = await ctx.cap('splunk').catch(() => null);
       const ready = splunk && (await splunk.status().catch(() => ({ready: false}))).ready;
       if (!ready){ $('#btnRun').disabled = true; status('Splunk is not set up in this Wardian. An admin adds it in Settings → Splunk.', 'warn'); return; }
