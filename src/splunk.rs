@@ -21,7 +21,7 @@ use std::{
 };
 
 /// The most rows one search returns to an app.
-pub const MAX_ROWS: usize = 10_000;
+const MAX_ROWS: usize = 10_000;
 /// The longest Wardian waits for one search before it cancels the job.
 const MAX_SEARCH_TIME: Duration = Duration::from_secs(15 * 60);
 const MAX_SEARCH_CHARS: usize = 10_000;
@@ -431,7 +431,7 @@ fn base64(input: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
     for chunk in input.chunks(3) {
-        let n = chunk.iter().enumerate().fold(0u32, |acc, (i, &b)| acc | (b as u32) << (16 - 8 * i));
+        let n = chunk.iter().enumerate().fold(0u32, |acc, (i, &b)| acc | u32::from(b) << (16 - 8 * i));
         for i in 0..4 {
             out.push(if i <= chunk.len() { T[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
         }

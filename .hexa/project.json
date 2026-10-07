@@ -1,0 +1,7 @@
+{
+  "name": "wardian",
+  "hexVersion": "26.9.12",
+  "analyze": {
+    "exclude": ["apps", "templates", "tests", "target", "data"]
+  }
+}

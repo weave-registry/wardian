@@ -61,7 +61,7 @@ const SUITE: Files = &[
 const UI_PAGE: &[&str] = &["theme.css", "button.css", "field.css", "card.css", "arrange.js"];
 const UI_SUITE: &[&str] = &["theme.css", "button.css", "field.css", "card.css"];
 
-pub const KINDS: &[(&str, &str)] = &[
+const KINDS: &[(&str, &str)] = &[
     ("module", "WebAssembly functions of numbers; Wardian builds the interface"),
     ("page", "WebAssembly plus your own page; for text, arrays, JSON or a real interface"),
     ("suite", "several sealed apps on one screen, talking through the kernel"),

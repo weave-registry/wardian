@@ -15,7 +15,7 @@ macro_rules! ui {
 }
 
 /// Every file, by name. theme.css comes with every component.
-pub const FILES: &[(&str, &str)] = &[
+const FILES: &[(&str, &str)] = &[
     ui!("theme.css"),
     ui!("button.css"),
     ui!("field.css"),
@@ -39,7 +39,7 @@ pub const FILES: &[(&str, &str)] = &[
 pub const GALLERY: &str = include_str!("../static/ui/index.html");
 
 /// (name, what it is, its files).
-pub const COMPONENTS: &[(&str, &str, &[&str])] = &[
+const COMPONENTS: &[(&str, &str, &[&str])] = &[
     ("button", "buttons in five variants and three sizes", &["button.css"]),
     ("field", "text inputs, selects, text areas, labels and hints", &["field.css"]),
     ("card", "a bordered box with a title, a description, content and a footer", &["card.css"]),

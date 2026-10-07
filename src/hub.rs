@@ -94,7 +94,7 @@ pub struct Hub {
 }
 
 /// Capabilities the host provides itself, which the user allows per package.
-pub const HOST_CAPS: &[&str] = &["splunk", "ai"];
+const HOST_CAPS: &[&str] = &["splunk", "ai"];
 
 /// A channel name: lowercase letters, digits, '.', '-', '_' (SPEC.md §6.9).
 pub fn valid_channel(s: &str) -> bool {
