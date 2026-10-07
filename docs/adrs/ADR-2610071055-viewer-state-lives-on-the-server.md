@@ -48,6 +48,8 @@ Gate: `cargo build --release && cargo test --release && hexa analyze . --grade A
 suites (`tests/run-suite-e2e.sh`, `tests/run-splunk-e2e.sh`, `tests/layout-e2e.js`).
 
 
+## Enforced-By: hexa adr gates (run on demand)
+
 ## Gate
 
 `env CARGO_TARGET_DIR=target/verify cargo test --release viewer_state`

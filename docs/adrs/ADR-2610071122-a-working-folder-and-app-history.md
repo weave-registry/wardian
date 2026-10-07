@@ -69,6 +69,8 @@ suites, with `tests/run-background-e2e.sh` checking that a build and its automat
 versions with Claude's reasons, that a restore brings the first back, and that `./apps` is untouched.
 
 
+## Enforced-By: hexa adr gates (run on demand)
+
 ## Gate
 
 `env CARGO_TARGET_DIR=target/verify cargo test --release -- history seeding_history_and_promote`

@@ -81,6 +81,8 @@ Gate: `cargo build --release && cargo test --release && hexa analyze . --grade A
 and once against the fake Bedrock, and the SigV4 unit tests against AWS's signing test vectors.
 
 
+## Enforced-By: hexa adr gates (run on demand)
+
 ## Gate
 
 `env CARGO_TARGET_DIR=target/verify cargo test --release bedrock_inference`

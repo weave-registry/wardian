@@ -25,6 +25,8 @@ the domain reads packages only through the readers it is given.
 - A domain module may parse and build JSON directly, so the package rules read like the spec.
 - Any other crate in the domain still fails the grade, and needs its own decision here.
 
+## Enforced-By: hexa analyze (every run)
+
 ## Gate
 
 `hexa analyze . --grade A`

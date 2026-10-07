@@ -24,6 +24,8 @@ recorded here in a Wardian ADR that supersedes this one.
 `.hexa/ADR-rules.toml`.
 
 
+## Enforced-By: hexa analyze (every run)
+
 ## Gate
 
 `hexa analyze . --grade A`

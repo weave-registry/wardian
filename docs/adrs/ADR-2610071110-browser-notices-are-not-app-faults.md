@@ -37,6 +37,8 @@ Gate: `cargo build --release && cargo test --release && hexa analyze . --grade A
 a repeat is counted.
 
 
+## Enforced-By: hexa adr gates (run on demand)
+
 ## Gate
 
 `env CARGO_TARGET_DIR=target/verify bash tests/run-suite-e2e.sh`

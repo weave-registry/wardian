@@ -74,6 +74,8 @@ paging; then the browser suites, with the Splunk test loading 50,000 fake rows, 
 them, and the USL lab reading the referenced dataset.
 
 
+## Enforced-By: hexa adr gates (run on demand)
+
 ## Gate
 
 `env CARGO_TARGET_DIR=target/verify cargo test --release -- db:: sqlite_store splunk_results_load`
