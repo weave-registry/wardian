@@ -10,6 +10,10 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
   const browser = await chromium.launch(require('./browser')());
   const ctx = await browser.newContext();               // one browser profile: tabs share channels
   const errors = [];
+  // A freshly loaded sandboxed frame runs in its own process, and a mouse click sent in its first
+  // moments can be lost before it reaches the frame. This test is about channels, not the mouse, so
+  // it presses the app's buttons from inside the frame.
+  const press = (frame, sel) => frame.locator(sel).dispatchEvent('click');
   const open = async (title) => {
     const p = await ctx.newPage();
     p.on('pageerror', e => errors.push(e.message));
@@ -28,7 +32,7 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
   // Tab B: the sender page asks to send.
   const b = await open('Channel sender');
   const page = b.frameLocator('.appframe');
-  await page.locator('#send').click();
+  await press(page, '#send');
   await b.locator('.wardian-perm').waitFor();
   ok(/send messages on the channel budget/.test(await b.locator('.wardian-perm').innerText()), 'sender asks to send on "budget"');
   await b.locator('.wardian-perm button.yes').click();
@@ -40,7 +44,7 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
   ok((await view.locator('#v').textContent()) === '1798.65', 'viewer in the other tab received the message');
   ok((await view.locator('#from').textContent()) === 'from chan-sender', 'the sender is stamped by Wardian', `(${await view.locator('#from').textContent()})`);
 
-  await page.locator('#sneak').click();
+  await press(page, '#sneak');
   await page.locator('#out:has-text("error")').waitFor();
   ok(/not in app.json/.test(await page.locator('#out').textContent()), 'an undeclared channel is refused without asking');
 
@@ -59,13 +63,13 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
   await b.locator('#permList li:has-text("chan-sender") button').click();
   await b.waitForFunction(() => document.querySelectorAll('#permList li').length === 1);
   await b.click('#closeSettings');
-  await page.locator('#send').click();
+  await press(page, '#send');
   await b.locator('.wardian-perm').waitFor();
   ok(true, 'after Revoke, the sender is asked again');
   await b.locator('.wardian-perm button:has-text("Don\'t allow")').click();
   await page.locator('#out:has-text("not allowed")').waitFor({ timeout: 5000 }).catch(() => {});
   ok(/not allowed to send/.test(await page.locator('#out').textContent()), '"Don\'t allow" refuses the send');
-  await page.locator('#send').click();
+  await press(page, '#send');
   await b.waitForTimeout(500);
   ok(await b.locator('.wardian-perm').count() === 0, '"Don\'t allow" is remembered: no second question');
 
