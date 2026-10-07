@@ -678,3 +678,221 @@ fn hostile_data_in_a_wardian_file_is_refused_and_the_app_keeps_its_own() {
     assert_eq!(state.app_data("hello").unwrap()["main"]["k"], "theirs");
     let _ = fs::remove_dir_all(data);
 }
+
+// ---------- secrets never leave (ADR-2610072033) ----------
+
+/// A stand-in for Anthropic, Bedrock, Splunk and Google: every request gets 200 and one JSON body
+/// holding the fields each of their clients reads. Returns its address.
+fn fake_upstream() -> String {
+    use std::io::{BufRead, BufReader, Read, Write};
+    const REPLY: &str = r#"{"id":"msg_1","type":"message","role":"assistant","model":"m","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"entry":[{"content":{"username":"admin","serverName":"fake","version":"9.0"}}]}"#;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for conn in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut reader = BufReader::new(conn.try_clone().unwrap());
+                let mut len = 0;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                        return;
+                    }
+                    let line = line.trim_end().to_ascii_lowercase();
+                    if line.is_empty() {
+                        break;
+                    }
+                    if let Some(v) = line.strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0; len];
+                let _ = reader.read_exact(&mut body);
+                let _ = write!(&conn, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{REPLY}", REPLY.len());
+            });
+        }
+    });
+    format!("http://{addr}")
+}
+
+/// Not a test by itself: the secrets test runs this binary again with WARDIAN_SECRETS_CHILD set,
+/// and this starts the real server, so the test can read everything it prints.
+#[test]
+fn secrets_server_child() {
+    let Ok(apps) = std::env::var("WARDIAN_SECRETS_CHILD") else { return };
+    crate::serve(crate::config::Settings::from_env(Some(&apps)));
+}
+
+/// Every key and account filled, from the environment and through Settings, then every answer
+/// that shows settings or status, an export with data and its import preview, and every line the
+/// server printed, are searched for them.
+#[test]
+fn secrets_never_leave_in_answers_exports_or_logs() {
+    use crate::usecases::workspace::copy_tree;
+    use serde_json::json;
+    use std::io::{BufRead, BufReader, Read};
+    use std::process::{Command, Stdio};
+    use std::sync::{mpsc, Mutex};
+
+    let up = fake_upstream();
+    let base = tmp("secrets");
+    let (data, apps) = (base.join("data"), base.join("apps"));
+    copy_tree(&LocalDisk, Path::new("apps/loan-planner"), &apps.join("loan-planner")).unwrap();
+    let key_file = |marker: &str| json!({"type": "service_account", "client_email": "wardian@example.iam.gserviceaccount.com", "token_uri": format!("{up}/token"),
+        "private_key": format!("-----BEGIN PRIVATE KEY-----\n{marker}\n-----END PRIVATE KEY-----\n")});
+    fs::write(base.join("sa.json"), key_file("ENV-GOOGLE-PRIVATE-KEY-SECRET").to_string()).unwrap();
+    let admin = "ADMIN-TOKEN-SECRET-0123456789";
+    let env = [
+        ("ANTHROPIC_API_KEY", "sk-ant-ENV-ANTHROPIC-SECRET"),
+        ("AWS_BEARER_TOKEN_BEDROCK", "ENV-BEDROCK-API-KEY-SECRET"),
+        ("AWS_ACCESS_KEY_ID", "AKIAENVACCESSKEYSECRET"),
+        ("AWS_SECRET_ACCESS_KEY", "ENV-AWS-SECRET-ACCESS-KEY-SECRET"),
+        ("AWS_SESSION_TOKEN", "ENV-AWS-SESSION-TOKEN-SECRET"),
+        ("SPLUNK_PASSWORD", "ENV-SPLUNK-PASSWORD-SECRET"),
+    ];
+    let typed = [
+        "sk-ant-SET-ANTHROPIC-SECRET",
+        "SET-BEDROCK-API-KEY-SECRET",
+        "AKIASETACCESSKEYSECRET",
+        "SET-AWS-SECRET-ACCESS-KEY-SECRET",
+        "SET-AWS-SESSION-TOKEN-SECRET",
+        "SET-SPLUNK-TOKEN-SECRET",
+        "SET-SPLUNK-PASSWORD-SECRET",
+        "POSTED-GOOGLE-PRIVATE-KEY-SECRET",
+    ];
+
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args(["tests::secrets_server_child", "--exact", "--nocapture", "--test-threads=1"])
+        .env("WARDIAN_SECRETS_CHILD", &apps)
+        .env("DATA_DIR", &data)
+        .env("ADDR", "127.0.0.1:0")
+        .env("ADMIN_TOKEN", admin)
+        .envs(env)
+        .env("ANTHROPIC_WORKSPACE_ID", "wrkspc_ENVWORKSPACESECRET")
+        .env("ANTHROPIC_BASE_URL", &up)
+        .env("AWS_REGION", "us-east-1")
+        .env("WARDIAN_BEDROCK_BASE_URL", &up)
+        .env("WARDIAN_AI_PROVIDER", "bedrock")
+        .env("SPLUNK_URL", &up)
+        .env("SPLUNK_USERNAME", "admin")
+        .env("GDRIVE_SA_KEY", base.join("sa.json"))
+        .env("GDRIVE_API_BASE", &up)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let log = Arc::new(Mutex::new(String::new()));
+    let (port_tx, port_rx) = mpsc::channel();
+    let out = BufReader::new(child.stdout.take().unwrap());
+    let out_log = Arc::clone(&log);
+    let out_thread = std::thread::spawn(move || {
+        for line in out.lines().map_while(Result::ok) {
+            if let Some(addr) = line.split("listening on http://").nth(1) {
+                let _ = port_tx.send(addr.trim().to_string());
+            }
+            out_log.lock().unwrap().push_str(&format!("{line}\n"));
+        }
+    });
+    let mut err = child.stderr.take().unwrap();
+    let err_log = Arc::clone(&log);
+    let err_thread = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = err.read_to_string(&mut s);
+        err_log.lock().unwrap().push_str(&s);
+    });
+    let Ok(addr) = port_rx.recv_timeout(std::time::Duration::from_secs(60)) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("the server did not start:\n{}", log.lock().unwrap());
+    };
+
+    // Every answer the server gives, with what was asked.
+    let agent = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(30)).build();
+    // (what was asked, whether by an admin, the answer)
+    let answers: Mutex<Vec<(String, bool, Vec<u8>)>> = Mutex::new(Vec::new());
+    let ask = |method: &str, path: &str, body: Option<(&str, Vec<u8>)>, token: bool| -> Vec<u8> {
+        let mut req = agent.request(method, &format!("http://{addr}{path}"));
+        if token {
+            req = req.set("X-Admin-Token", admin);
+        }
+        let resp = match body {
+            Some((ct, b)) => req.set("Content-Type", ct).send_bytes(&b),
+            None => req.call(),
+        };
+        let resp = match resp {
+            Ok(r) | Err(ureq::Error::Status(_, r)) => r,
+            Err(e) => panic!("{method} {path}: {e}"),
+        };
+        let mut bytes = Vec::new();
+        resp.into_reader().read_to_end(&mut bytes).unwrap();
+        answers.lock().unwrap().push((format!("{method} {path}"), token, bytes.clone()));
+        bytes
+    };
+    let post = |path: &str, v: serde_json::Value| -> serde_json::Value {
+        serde_json::from_slice(&ask("POST", path, Some(("application/json", v.to_string().into_bytes())), true)).unwrap_or_default()
+    };
+
+    // Fill every setting through Settings, as a user would; each is tested against the stand-in.
+    let ai = post("/api/ai/key", json!({"key": typed[0], "workspace": "wrkspc_SETWORKSPACESECRET"}));
+    assert_eq!(ai["anthropic"]["ready"], true, "{ai}");
+    let bedrock = post("/api/ai/provider", json!({"provider": "bedrock", "region": "us-east-1", "auth": "api-key", "token": typed[1]}));
+    assert_eq!(bedrock["bedrock"]["settings"]["from"], "settings", "{bedrock}");
+    let bedrock = post("/api/ai/provider", json!({"provider": "bedrock", "region": "us-west-2", "auth": "access-keys", "access_key_id": typed[2], "secret_access_key": typed[3], "session_token": typed[4]}));
+    assert_eq!(bedrock["bedrock"]["settings"]["auth"], "access-keys", "{bedrock}");
+    let splunk = post("/api/splunk/config", json!({"url": up, "token": typed[5]}));
+    assert_eq!(splunk["from"], "settings", "{splunk}");
+    let splunk = post("/api/splunk/config", json!({"url": up, "username": "admin", "password": typed[6]}));
+    assert_eq!(splunk["auth"], "user admin", "{splunk}");
+    post("/api/drive/key", key_file(typed[7]));
+    // Settings that are refused must not echo what was typed either.
+    post("/api/ai/key", json!({"key": format!("{} bad", typed[0])}));
+    post("/api/ai/provider", json!({"provider": "bedrock", "region": "Not A Region", "auth": "api-key", "token": typed[1]}));
+    post("/api/splunk/config", json!({"url": "ftp://nowhere", "password": typed[6]}));
+    post("/api/drive/key", json!({"private_key": [typed[7]]}));
+    post("/api/state/apps/loan-planner", json!({"app": "inputs", "key": "state", "value": {"principal": 320000}}));
+
+    // Everything that shows settings or status, with and without the token.
+    for path in ["/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/trash", "/api/ai/sessions", "/api/history/loan-planner", "/api/state/apps/loan-planner", "/api/state/layout/loan-planner", "/api/apps/loan-planner/export?data=1&preview=1"] {
+        ask("GET", path, None, true);
+    }
+    for path in ["/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/ai/sessions", "/api/drive/browse"] {
+        ask("GET", path, None, false);
+    }
+    let status: serde_json::Value = serde_json::from_slice(&ask("GET", "/api/status", None, true)).unwrap();
+    assert_eq!((status["ai"]["provider"].as_str(), status["splunk"]["ready"].as_bool()), (Some("bedrock"), Some(true)), "{status}");
+
+    // An export with data, and what an import shows of it.
+    let export = ask("GET", "/api/apps/loan-planner/export?data=1", None, true);
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(export.clone())).expect("an export");
+    assert!(zip.file_names().any(|n| n == "loan-planner/.wardian/data/storage.json"), "the export carries data");
+    let mut inside = Vec::new();
+    for i in 0..zip.len() {
+        let mut f = zip.by_index(i).unwrap();
+        let mut b = Vec::new();
+        f.read_to_end(&mut b).unwrap();
+        inside.push((format!("export: {}", f.name()), false, b));
+    }
+    ask("POST", "/api/import/preview", Some(("application/zip", export)), true);
+
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = out_thread.join();
+    let _ = err_thread.join();
+    let log = log.lock().unwrap().clone();
+    assert!(log.contains("admin: whoever sends ADMIN_TOKEN") && log.contains("export: loan-planner with its data"), "the server's log was read:\n{log}");
+
+    let mut searched = answers.into_inner().unwrap();
+    searched.extend(inside);
+    searched.push(("the server's log".into(), false, log.into_bytes()));
+    let secrets: Vec<&str> = env.iter().map(|(_, v)| *v).chain(typed).chain(["ENV-GOOGLE-PRIVATE-KEY-SECRET", admin]).collect();
+    // The workspace ID is an identifier, not a key: Settings shows it to an admin, and nobody else.
+    let workspaces = ["wrkspc_SETWORKSPACESECRET", "wrkspc_ENVWORKSPACESECRET"];
+    for (what, by_admin, body) in &searched {
+        let text = String::from_utf8_lossy(body);
+        for s in secrets.iter().chain(if *by_admin { &[][..] } else { &workspaces[..] }) {
+            assert!(!text.contains(s), "{what} carries the secret {s}:\n{text}");
+        }
+    }
+    assert!(searched.len() > 30, "{} answers searched", searched.len());
+    let _ = fs::remove_dir_all(base);
+}

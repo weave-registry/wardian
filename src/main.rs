@@ -102,7 +102,15 @@ fn main() {
         cli::Command::Serve(folder) => folder,
     };
 
-    let cfg = Settings::from_env(apps_folder.as_deref());
+    serve(Settings::from_env(apps_folder.as_deref()));
+}
+
+/// Builds the adapters and use cases for these settings and serves them; it does not return. The
+/// secrets test starts the same server in a child process.
+fn serve(cfg: Settings) {
+    let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
+    let assets: Arc<dyn Assets> = Arc::new(Embedded);
+    let checker = Arc::new(Checker::new(Arc::clone(&fs)));
     // Before anything else: an address other machines can reach needs ADMIN_TOKEN (ADR-2610072033).
     match config::admins(&cfg.addr, cfg.admin_token.is_some()) {
         Ok(who) => println!("{who}"),

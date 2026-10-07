@@ -436,6 +436,10 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
             s["admin"] = json!(admin);
             s["ai"] = studio.status();
             s["splunk"] = splunk.status();
+            // The Anthropic workspace ID is a setting only an admin sees and edits.
+            if let Some(ai) = s["ai"].as_object_mut().filter(|_| !admin) {
+                ai.remove("workspace");
+            }
             json_resp(200, s)
         }
         (Method::Get, ["api", "trash"]) if admin => json_resp(200, hub.trash()),
