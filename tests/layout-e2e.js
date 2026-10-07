@@ -20,6 +20,7 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
 
   console.log('== Arrange');
   await page.click('.w-arrange-btn');
+  await sleep(400);   // the covers raise each panel's height; let the page settle before clicking in it
   ok(await page.locator('.w-arrange-bar').isVisible() && await page.locator('.w-arrange-cover').first().isVisible(), 'Arrange shows the bar and a cover on each panel');
   await page.locator('[data-arrange-panel=readouts] > .w-arrange-cover button[data-a=up]').click();
   ok((await order(page, 'main')).join() === 'chart,meaning,whatif,readouts,checks,diagnosis,export'.replace('whatif,readouts', 'readouts,whatif'), 'Move up');
@@ -57,6 +58,26 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   await page.goto(B + '/run/splunk-table/'); await sleep(2000);
   const box = await page.locator('iframe[title=table]').boundingBox();
   ok(box && box.height > 100, 'its panel has a height: ' + (box && box.height));
+
+  console.log('== from the app list, Arrange is in view and works');
+  // The app's frame is taller than the window, so a button in the frame's corner can sit below
+  // the screen. The toolbar's Arrange button must be inside the window.
+  await page.goto(B + '/'); await sleep(800);
+  await page.locator('#apps li button', { hasText: /USL/i }).first().click();
+  const tool = page.locator('#arrangeTool');
+  await tool.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+  const tb = await tool.boundingBox();
+  ok(tb && tb.y >= 0 && tb.y + tb.height <= 1000, 'the suite\'s Arrange button is in the toolbar, inside the window: ' + JSON.stringify(tb));
+  await tool.click();
+  const suiteFrame = page.frames().find(f => f.url().endsWith('/run/usl-lab/'));
+  await suiteFrame.locator('.w-arrange-bar').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  ok(await suiteFrame.locator('.w-arrange-bar').isVisible() && (await tool.textContent()) === 'Done arranging', 'pressing it opens Arrange in the app');
+  ok(!(await suiteFrame.locator('.w-arrange-btn').isVisible()), 'the frame\'s own corner button is hidden inside the app list');
+  await tool.click(); await sleep(300);
+  ok(await suiteFrame.locator('.w-arrange-bar').isHidden(), 'pressing it again closes Arrange');
+  await page.locator('#apps li button', { hasText: /mandelbrot/i }).first().click();
+  await tool.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+  ok(await page.locator('#arrangeTool').isVisible(), 'a page app with panels gets the toolbar button too');
 
   console.log('== a module app: Wardian draws its functions as cards, with Arrange');
   await page.goto(B + '/'); await sleep(800);

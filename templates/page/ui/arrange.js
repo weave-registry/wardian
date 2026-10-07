@@ -215,17 +215,30 @@
       if (!apply(null, true)){ opts.reload(); return; }
       refresh();
     });
+    const embedded = parent !== window;
     const open = on => {
       document.documentElement.classList.toggle('w-arrange-on', on); bar.hidden = !on;
-      if (on){ refresh(); (modeSel || doneBtn).focus(); } else btn.focus();
+      if (on){ refresh(); (modeSel || doneBtn).focus(); } else if (!btn.hidden) btn.focus();
+      if (embedded) parent.postMessage({wardian: 'arrange', k: 'state', open: on}, '*');
     };
     btn.addEventListener('click', () => open(true));
     doneBtn.addEventListener('click', () => open(false));
     const onKey = e => { if (e.key === 'Escape' && !bar.hidden) open(false); };
     addEventListener('keydown', onKey);
+    // Inside Wardian's app list, the app's frame is taller than the window, so a button in the
+    // frame's corner can sit below the screen. The app list shows Arrange in its own toolbar
+    // instead: this page says it has panels, and the toolbar asks it to open or close Arrange.
+    const onHost = e => {
+      if (e.source !== parent || !e.data || e.data.wardian !== 'arrange') return;
+      if (e.data.k === 'host') btn.hidden = true;
+      else if (e.data.k === 'open') open(true);
+      else if (e.data.k === 'close') open(false);
+    };
+    if (embedded){ addEventListener('message', onHost); parent.postMessage({wardian: 'arrange', k: 'ready'}, '*'); }
     if (opts.startOpen) open(true);
     function destroy(){
       removeEventListener('keydown', onKey);
+      removeEventListener('message', onHost);
       document.documentElement.classList.remove('w-arrange-on');
       bar.remove(); btn.remove();
       for (const p of panels.values()){ p.el.querySelector(':scope > .w-arrange-cover')?.remove(); }

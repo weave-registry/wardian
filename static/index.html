@@ -550,6 +550,23 @@ function sealedLabel(app) {
     ...can.map((t) => el('li', { className: 'can', textContent: t }))));
 }
 
+let arrangeHost = null;   // the open app's Arrange button in the toolbar: {btn, win, open}
+addEventListener('message', (e) => {
+  const m = e.data;
+  if (!arrangeHost || !m || m.wardian !== 'arrange') return;
+  const frame = $('runner').querySelector('iframe.appframe');
+  if (!frame || e.source !== frame.contentWindow) return;
+  if (m.k === 'ready') {
+    arrangeHost.win = e.source;
+    arrangeHost.btn.classList.remove('hidden');
+    e.source.postMessage({ wardian: 'arrange', k: 'host' }, '*');
+  } else if (m.k === 'state') {
+    arrangeHost.open = !!m.open;
+    arrangeHost.btn.textContent = m.open ? 'Done arranging' : 'Arrange';
+    arrangeHost.btn.setAttribute('aria-pressed', String(!!m.open));
+  }
+});
+
 async function openApp(app) {
   const { name } = app;
   clearPageFrames();
@@ -560,6 +577,17 @@ async function openApp(app) {
   if (status.admin && status.source === 'local') {
     tools.append(el('button', { textContent: 'Change this app', onclick: () => openAi({ app: name }) }));
   }
+  // Arrange: shown once the app's frame says it has panels (ui/arrange.js). It lives here, in
+  // view, because the app's own frame is often taller than the window.
+  const arrangeTool = el('button', { id: 'arrangeTool', textContent: 'Arrange', className: 'hidden', title: 'Change the layout of this app, for you only' });
+  arrangeTool.setAttribute('aria-pressed', 'false');
+  arrangeHost = { btn: arrangeTool, win: null, open: false };
+  arrangeTool.onclick = () => {
+    if (!arrangeHost.win) return;
+    arrangeHost.win.postMessage({ wardian: 'arrange', k: arrangeHost.open ? 'close' : 'open' }, '*');
+    if (!arrangeHost.open) $('runner').querySelector('iframe.appframe')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+  tools.prepend(arrangeTool);
   tools.append(removeControl(name));
   const head = [el('div', { className: 'row apphead' }, el('h2', { textContent: app.title || name }), tools)];
   if (app.description) head.push(el('p', { className: 'muted', textContent: app.description }));
