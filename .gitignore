@@ -12,3 +12,6 @@ service-account.json
 /apps/*/Cargo.lock
 /templates/*/target
 .hexa/loop.lock
+
+# Helper agents work in their own copies here
+/.claude/worktrees/

@@ -7,7 +7,8 @@
       "templates",
       "tests",
       "target",
-      "data"
+      "data",
+      ".claude"
     ],
     "layers": {
       "src/config.rs": "composition-root",
