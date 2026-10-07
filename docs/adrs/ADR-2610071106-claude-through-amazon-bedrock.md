@@ -80,6 +80,13 @@ Gate: `cargo build --release && cargo test --release && hexa analyze . --grade A
 `tests/run-background-e2e.sh` and `tests/run-splunk-e2e.sh` run once against the fake Anthropic API
 and once against the fake Bedrock, and the SigV4 unit tests against AWS's signing test vectors.
 
+
+## Gate
+
+`env CARGO_TARGET_DIR=target/verify cargo test --release bedrock_inference`
+
+Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy of Wardian a user runs.
+
 ## References
 
 - ADR-2610071055 (viewer state on the server): how settings and secrets are kept

@@ -6,6 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian
+BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_DIR
 
 TMP=$(mktemp -d)
 PIDS=()
@@ -26,7 +27,7 @@ if [ "${PROVIDER:-anthropic}" = bedrock ]; then
   PIDS+=($!)
 fi
 PORT=${PORT:-8767}
-WARDIAN_BEDROCK_BASE_URL="http://127.0.0.1:$BPORT" ANTHROPIC_BASE_URL="http://127.0.0.1:$APORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" ./target/release/wardian "$TMP/apps" >"$TMP/server.log" 2>&1 &
+WARDIAN_BEDROCK_BASE_URL="http://127.0.0.1:$BPORT" ANTHROPIC_BASE_URL="http://127.0.0.1:$APORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" "$BIN" "$TMP/apps" >"$TMP/server.log" 2>&1 &
 PIDS+=($!)
 for _ in $(seq 50); do curl -sf "http://127.0.0.1:$PORT/api/status" >/dev/null && break; sleep 0.1; done
 

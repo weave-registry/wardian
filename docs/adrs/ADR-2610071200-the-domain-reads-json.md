@@ -24,3 +24,10 @@ the domain reads packages only through the readers it is given.
 
 - A domain module may parse and build JSON directly, so the package rules read like the spec.
 - Any other crate in the domain still fails the grade, and needs its own decision here.
+
+## Gate
+
+`hexa analyze . --grade A`
+
+Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy of Wardian a user runs.
+

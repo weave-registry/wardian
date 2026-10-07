@@ -4,6 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian
+BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_DIR
 
 TMP=$(mktemp -d)
 PIDS=()
@@ -12,7 +13,6 @@ trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
 # working folder (DATA_DIR/apps) from ./apps, and must leave ./apps untouched (ADR-2610071122).
 mkdir -p "$TMP/work/apps"
 cp -R apps/adder "$TMP/work/apps/"
-BIN="$PWD/target/release/wardian"
 FPORT=${FAKE_PORT:-18191}
 python3 tests/fixtures/fake-builder.py "$FPORT" &
 PIDS+=($!)

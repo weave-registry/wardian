@@ -47,6 +47,13 @@ message 256 KB and 500 channels. Names must be package and channel names.
 Gate: `cargo build --release && cargo test --release && hexa analyze . --grade A`, then the browser
 suites (`tests/run-suite-e2e.sh`, `tests/run-splunk-e2e.sh`, `tests/layout-e2e.js`).
 
+
+## Gate
+
+`env CARGO_TARGET_DIR=target/verify cargo test --release viewer_state`
+
+Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy of Wardian a user runs.
+
 ## References
 
 - ADR-2610071200 (the domain reads JSON)

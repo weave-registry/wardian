@@ -73,6 +73,13 @@ the authorizer (ATTACH, extension loading and write pragmas refused), the size a
 paging; then the browser suites, with the Splunk test loading 50,000 fake rows, paging and sorting
 them, and the USL lab reading the referenced dataset.
 
+
+## Gate
+
+`env CARGO_TARGET_DIR=target/verify cargo test --release -- db:: sqlite_store splunk_results_load`
+
+Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy of Wardian a user runs.
+
 ## References
 
 - ADR-2610071055 (viewer state on the server), ADR-2610071122 (working folder and history)

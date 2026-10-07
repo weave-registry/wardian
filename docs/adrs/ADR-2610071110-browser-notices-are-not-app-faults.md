@@ -36,6 +36,13 @@ Gate: `cargo build --release && cargo test --release && hexa analyze . --grade A
 `tests/run-suite-e2e.sh`, which checks that the notice is not a fault, that a real error is, and that
 a repeat is counted.
 
+
+## Gate
+
+`env CARGO_TARGET_DIR=target/verify bash tests/run-suite-e2e.sh`
+
+Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy of Wardian a user runs.
+
 ## References
 
 - SPEC.md 6.5 (`ctx.observe`), 6.7 (kernel guarantees)

@@ -68,6 +68,13 @@ Gate: `cargo build --release && cargo test --release && hexa analyze . --grade A
 suites, with `tests/run-background-e2e.sh` checking that a build and its automatic fix are two
 versions with Claude's reasons, that a restore brings the first back, and that `./apps` is untouched.
 
+
+## Gate
+
+`env CARGO_TARGET_DIR=target/verify cargo test --release -- history seeding_history_and_promote`
+
+Rerun by `hexa adr gates`. It builds into `target/verify`, never into the copy of Wardian a user runs.
+
 ## References
 
 - ADR-2610071055 (viewer state on the server)
