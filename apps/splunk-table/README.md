@@ -6,7 +6,11 @@ receives it and lets you choose which columns are load, throughput and response 
 
 | Part | Does | Contract |
 |---|---|---|
-| table | search box, ready-made searches, AI-written search (`claude:sample`), the table (sort by any column), CSV download (`claude:downloads`) | caps `storage`, `splunk`, `claude:sample`, `claude:downloads`; sends `splunk.table` |
+| table | search box, ready-made searches, keyword search ("Find words in all my data"), AI-written search (`claude:sample`), the table (sort by any column, filter with "Find in results"), CSV download (`claude:downloads`) | caps `storage`, `splunk`, `claude:sample`, `claude:downloads`; sends `splunk.table` |
+
+**Find in results** filters the rows on the page. Plain words match any cell; `column=text`,
+`column!=text` and `column>number` (also `<`, `>=`, `<=`) look in one column. The CSV then holds
+only the matching rows. The table sent to other apps is always the full result.
 
 The message on `splunk.table` holds `title`, `fields`, `rows`, `search`, `range`, `rangeLabel`, `at`,
 `seconds`, `truncated` and `cut` (rows left out to fit one 256 KB message). A ready-made search also

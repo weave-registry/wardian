@@ -1,5 +1,6 @@
 /* table: runs a Splunk search on the Wardian server and shows every row it returns.
    The time range can be a ready-made one, "last N minutes/hours/days…", two dates, or Splunk time codes.
+   "Find words in all my data" builds a keyword search for you; "Find in results" filters the rows shown.
    Sends the table on the channel "splunk.table", so other apps (the USL lab) can use it.
    Capabilities: storage, splunk, claude:sample, claude:downloads.  Channels: sends splunk.table. */
 Kernel.register({
@@ -98,10 +99,31 @@ Kernel.register({
           method: 'Not a load test: real users made this traffic. Splunk counts the finished requests in each minute and their average time. Requests in progress = requests per second × seconds per request (Little\'s Law). Minutes with the same load are averaged into one point; a load seen in fewer than 10 minutes is left out.'}},
     };
 
+    // ---------- "Find words in all my data" ----------
+    // Builds a plain keyword search: every word (or "quoted phrase") must appear in the event.
+    function wordList(){
+      return ($('#words').value.match(/"[^"]*"|[^\s"]+/g) || [])
+        .map(w => w.replace(/["\\]/g, '').trim()).filter(Boolean);
+    }
+    function findSearch(){
+      const words = wordList().map(w => '"' + w + '"');
+      const idx = $('#wordsIndex').value.trim().replace(/[^\w\-*.]/g, '') || '*';
+      return 'index=' + idx + (words.length ? ' ' + words.join(' ') : '') +
+        ' | head 1000 | table _time index sourcetype host source _raw';
+    }
+    function fillFind(){
+      $('#spl').value = findSearch();
+      const w = wordList();
+      $('#title').value = w.length ? 'Events with: ' + w.join(', ').slice(0, 80) : 'Events with words';
+      meta = null;
+      persist();
+    }
+
     // What the search in the box means, for the apps that use the table. Cleared when you edit the search.
     let meta = null;                           // {about, units, use}
     let table = null;                          // the latest result, as sent on the channel
     let sort = {col: -1, dir: 1};
+    let shown = [];                            // rows that match "Find in results", in sorted order
 
     const saved = ctx.store.get('state') || {};
     $('#spl').value = typeof saved.s === 'string' ? saved.s : '';
@@ -122,10 +144,14 @@ Kernel.register({
       if ($('#range').value !== t) $('#range').value = '-24h|';
     }
     $('#title').value = typeof saved.name === 'string' ? saved.name : '';
+    if (typeof saved.words === 'string') $('#words').value = saved.words;
+    if (typeof saved.wordsIndex === 'string') $('#wordsIndex').value = saved.wordsIndex;
+    if (saved.preset === 'find'){ $('#preset').value = 'find'; $('#findWords').hidden = false; }
     if (saved.meta && typeof saved.meta === 'object') meta = saved.meta;
     if (saved.table && Array.isArray(saved.table.fields)) table = saved.table;
     function persist(){
       const state = {s: $('#spl').value, t: $('#range').value, name: $('#title').value, meta, table,
+        preset: $('#preset').value, words: $('#words').value, wordsIndex: $('#wordsIndex').value,
         tr: {n: $('#relN').value, u: $('#relUnit').value, from: $('#absFrom').value, to: $('#absTo').value, e: $('#advE').value, l: $('#advL').value}};
       // A big table may not fit in this browser's storage: then keep the search and drop the rows.
       if (JSON.stringify(state).length > 1500000) state.table = null;
@@ -138,6 +164,10 @@ Kernel.register({
       $(id).addEventListener('change', () => { showRange(); persist(); });
     }
     $('#title').addEventListener('input', persist);
+    for (const id of ['#words', '#wordsIndex']){
+      $(id).addEventListener('input', () => { if ($('#preset').value === 'find') fillFind(); });
+      $(id).addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+    }
     showRange();
 
     function useSearch(p){
@@ -148,14 +178,57 @@ Kernel.register({
       persist();
     }
     $('#preset').addEventListener('change', () => {
-      const p = PRESETS[$('#preset').value]; if (!p) return;
+      const v = $('#preset').value;
+      $('#findWords').hidden = v !== 'find';
+      if (v === 'find'){
+        fillFind();
+        status('Type the words to find. Each word must appear in the event; put a phrase in "quotes". Then press Run search.');
+        $('#words').focus();
+        return;
+      }
+      persist();
+      const p = PRESETS[v]; if (!p) return;
       useSearch(p); status(p.note);
     });
 
+    // ---------- "Find in results": filter the rows on the page ----------
+    // Splits the text into words and rules. A word matches any cell; a rule looks in one column.
+    // Returns {test(row), problems: [short messages]}.
+    function parseFind(text, fields){
+      const lower = fields.map(f => String(f).toLowerCase());
+      const tests = [], problems = [];
+      const tokens = text.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+      for (const tok of tokens){
+        const m = tok.match(/^([^=<>!"]+)(!=|>=|<=|=|>|<)(.*)$/);
+        if (!m){
+          const w = tok.replace(/"/g, '').toLowerCase();
+          if (w) tests.push(r => r.some(v => v != null && String(v).toLowerCase().includes(w)));
+          continue;
+        }
+        const i = lower.indexOf(m[1].toLowerCase());
+        if (i < 0){ problems.push('There is no column called ' + m[1] + '.'); continue; }
+        const op = m[2], val = m[3].replace(/"/g, '');
+        const cell = r => (r[i] == null ? '' : String(r[i]));
+        if (op === '=') tests.push(r => cell(r).toLowerCase().includes(val.toLowerCase()));
+        else if (op === '!=') tests.push(r => !cell(r).toLowerCase().includes(val.toLowerCase()));
+        else {
+          if (!isNum(val)){ problems.push(m[1] + op + ' needs a number after it.'); continue; }
+          const n = num(val);
+          const cmp = {'>': (a, b) => a > b, '<': (a, b) => a < b, '>=': (a, b) => a >= b, '<=': (a, b) => a <= b}[op];
+          tests.push(r => isNum(r[i]) && cmp(num(r[i]), n));
+        }
+      }
+      return {test: r => tests.every(t => t(r)), problems, active: tests.length > 0};
+    }
+    let findTimer = null;
+    $('#find').addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(draw, 150); });
+
     // ---------- the result ----------
     function draw(){
-      const out = $('#out'), facts = $('#facts');
+      const out = $('#out'), facts = $('#facts'), hint = $('#findHint');
       $('#btnSend').disabled = !table; $('#btnCsv').disabled = !table || !downloads;
+      $('#findBox').hidden = !table || !table.rows.length;
+      shown = [];
       if (!table){ facts.hidden = true; return; }
       facts.replaceChildren();
       const fact = (k, v, code) => {
@@ -173,11 +246,21 @@ Kernel.register({
 
       if (!table.rows.length){ out.replaceChildren(Object.assign(ctx.el('p'), {className: 'empty', textContent: 'The search returned no rows. Try a longer time range.'})); return; }
       const numeric = table.fields.map((_, i) => table.rows.every(r => r[i] == null || r[i] === '' || isNum(r[i])));
-      let rows = table.rows;
+
+      // Filter with "Find in results", then sort.
+      const find = parseFind($('#find').value.trim(), table.fields);
+      let rows = find.active ? table.rows.filter(r => { try { return find.test(r); } catch { return false; } }) : table.rows;
+      if (find.problems.length){ hint.className = 'w-hint warn'; hint.textContent = find.problems.join(' '); }
+      else if (find.active){ hint.className = 'w-hint'; hint.textContent = rows.length + ' of ' + table.rows.length + ' rows match. Download CSV saves the matching rows.'; }
+      else { hint.className = 'w-hint'; hint.textContent = 'Words keep rows that contain them anywhere. Use column=text, column!=text, or column>number (also <, >=, <=) to look in one column. Put spaces inside "quotes".'; }
+
       if (sort.col >= 0){
         const i = sort.col;
         rows = rows.slice().sort((a, b) => sort.dir * (numeric[i] ? num(a[i]) - num(b[i]) : String(a[i] ?? '').localeCompare(String(b[i] ?? ''))));
       }
+      shown = rows;
+      if (!rows.length){ out.replaceChildren(Object.assign(ctx.el('p'), {className: 'empty', textContent: 'No rows match what you typed under Find in results.'})); return; }
+
       const t = ctx.el('table'), thead = ctx.el('thead'), hr = ctx.el('tr');
       t.className = 'w-table';
       table.fields.forEach((f, i) => {
@@ -222,12 +305,14 @@ Kernel.register({
     $('#btnSend').addEventListener('click', async () => { status(await share()); });
 
     // ---------- CSV ----------
+    // Saves the rows on the page: all of them, or only those that match "Find in results".
     let downloads = null;
     ctx.cap('downloads').then(d => { downloads = d; draw(); }).catch(() => {});
     const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     $('#btnCsv').addEventListener('click', async () => {
       if (!table || !downloads) return;
-      const lines = [table.fields.map(csvCell).join(',')].concat(table.rows.map(r => r.map(csvCell).join(',')));
+      const rows = $('#find').value.trim() ? shown : table.rows;
+      const lines = [table.fields.map(csvCell).join(',')].concat(rows.map(r => r.map(csvCell).join(',')));
       const name = (table.title || 'splunk-table').replace(/[^\w.\- ]+/g, ' ').trim().slice(0, 80) || 'splunk-table';
       try { await downloads.save({filename: name + '.csv', data: lines.join('\n') + '\n'}); }
       catch (e) { status('Could not save the file: ' + (e && e.message || e), 'warn'); }
@@ -235,7 +320,9 @@ Kernel.register({
 
     // ---------- running the search ----------
     async function run(why){
-      const splunk = await ctx.cap('splunk');
+      const splunk = await ctx.cap('splunk').catch(() => null);
+      if (!splunk){ status('Splunk is not set up in this Wardian.', 'warn'); return; }
+      if (!why && $('#preset').value === 'find' && !wordList().length){ status('Type the words to find first.', 'warn'); $('#words').focus(); return; }
       const search = $('#spl').value.trim();
       if (!search){ status('Type a search first, or pick one under Start from.', 'warn'); $('#spl').focus(); return; }
       const range = readRange();
@@ -259,6 +346,7 @@ Kernel.register({
           about: m.about || null, units: m.units || null, use: m.use || null,
         };
         sort = {col: -1, dir: 1};
+        $('#find').value = '';
         persist(); draw();
         bar.done(table.rows.length + (table.rows.length === 1 ? ' row' : ' rows') + ' in ' + bar.seconds + ' s');
         const msgs = (res.messages || []).filter(Boolean);
@@ -322,7 +410,7 @@ Kernel.register({
             units: usl ? {n: str(out.loadUnit), x: str(out.throughputUnit), r: out.responseUnit === 's' ? 's' : 'ms'} : null,
             about: {title: str(out.title) || 'Search written by Claude', load: str(out.load), throughput: str(out.throughput), response: str(out.response),
               method: str(out.method) + ' Claude wrote this search from: “' + what.slice(0, 200) + '”.'}});
-          $('#preset').value = '';
+          $('#preset').value = ''; $('#findWords').hidden = true;
           await run(out.explanation);
         } catch (e) {
           bar.fail('Could not write the search');

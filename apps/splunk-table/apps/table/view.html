@@ -3,9 +3,14 @@
   <label class="w-label" for="preset">Start from</label>
   <select class="w-input" id="preset">
     <option value="">My own search</option>
+    <option value="find">Find words in all my data</option>
     <option value="loadtest">A load test (template, for the USL lab)</option>
     <option value="traffic">Live traffic: requests in progress (template, for the USL lab)</option>
   </select>
+</div>
+<div class="grid range-more" id="findWords" hidden>
+  <div class="w-field"><label class="w-label" for="words">Words to find</label><input class="w-input" type="text" id="words" placeholder="For example: timeout checkout"></div>
+  <div class="w-field"><label class="w-label" for="wordsIndex">In index (empty means all)</label><input class="w-input" type="text" id="wordsIndex" spellcheck="false" placeholder="main"></div>
 </div>
 <details class="ai" id="aiAsk" hidden>
   <summary>Describe what you want, and Claude writes the search</summary>
@@ -80,4 +85,9 @@
 
 <h2 class="result-head">Result</h2>
 <dl class="facts" id="facts" hidden></dl>
+<div class="w-field find" id="findBox" hidden>
+  <label class="w-label" for="find">Find in results</label>
+  <input class="w-input" type="search" id="find" spellcheck="false" placeholder="For example: checkout status=500 duration_ms>800">
+  <p class="w-hint" id="findHint">Words keep rows that contain them anywhere. Use column=text, column!=text, or column&gt;number (also &lt;, &gt;=, &lt;=) to look in one column. Put spaces inside "quotes".</p>
+</div>
 <div id="out"><p class="empty">No table yet. Run a search.</p></div>

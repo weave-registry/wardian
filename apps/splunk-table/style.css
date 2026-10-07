@@ -32,3 +32,8 @@ details.ai[open] summary { margin-bottom: var(--w-space-3); }
 .range-hint { margin: 0 0 var(--w-space-3); min-height: 1.2em; }
 .range-hint:empty { display: none; }
 .range-hint.warn { color: var(--w-destructive); }
+
+/* "Find in results" sits between the facts and the table. */
+.find[hidden] { display: none; }
+.find .w-input { font-family: var(--w-font-mono); font-size: var(--w-text-sm); }
+.find .w-hint.warn { color: var(--w-destructive); }
