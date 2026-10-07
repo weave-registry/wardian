@@ -45,7 +45,7 @@ impl Checker {
         if self.fs.is_file(path) {
             let tmp = self.fs.temp_path("wardian-check");
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("package.zip");
-            let result = self.fs.read(path).ok_or_else(|| "cannot read the file".to_string()).and_then(|bytes| import_zip(&*self.fs, &bytes, name, &tmp, true));
+            let result = self.fs.read(path).ok_or_else(|| "cannot read the file".to_string()).and_then(|bytes| import_zip(&*self.fs, &bytes, name, &tmp, true, &|_| {}));
             let out = match result {
                 Err(e) => (false, vec![format!("{shown}\n  error    {e}\n")]),
                 Ok(done) => {

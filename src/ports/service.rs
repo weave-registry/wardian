@@ -79,11 +79,22 @@ pub trait ViewerState: Send + Sync {
     fn set_channel(&self, channel: &str, message: Value) -> Result<Value, String>;
 }
 
+/// The history of each local app (ADR-2610071122): its versions, what changed, and restoring one.
+pub trait AppHistory: Send + Sync {
+    /// {app, versions: [{n, at, by, why, current}]}, newest first.
+    fn versions(&self, app: &str) -> Result<Value, String>;
+    /// {app, n, files: [{path, status, diff}]}: version `n` against the app as it is now.
+    fn diff(&self, app: &str, n: u64) -> Result<Value, String>;
+    /// Puts version `n` back, recorded as a new version.
+    fn restore(&self, app: &str, n: u64) -> Result<Value, String>;
+}
+
 /// Everything the web server serves.
 #[derive(Clone)]
 pub struct Services {
     pub catalog: Arc<dyn Catalog>,
     pub state: Arc<dyn ViewerState>,
+    pub history: Arc<dyn AppHistory>,
     pub builder: Arc<dyn Builder>,
     pub searches: Arc<dyn Searches>,
     pub pages: Arc<dyn Pages>,

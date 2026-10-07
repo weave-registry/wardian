@@ -17,7 +17,9 @@ pub struct Imported {
     pub skipped: Vec<String>,
 }
 
-pub fn import_zip(fs: &dyn FileSystem, bytes: &[u8], zip_name: &str, root: &Path, replace: bool) -> Result<Imported, String> {
+/// `before_replace` is called with the name of each app an import is about to replace, so its
+/// history can keep the version that is going away.
+pub fn import_zip(fs: &dyn FileSystem, bytes: &[u8], zip_name: &str, root: &Path, replace: bool, before_replace: &dyn Fn(&str)) -> Result<Imported, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("not a valid zip: {e}"))?;
     if zip.len() > MAX_ENTRIES {
         return Err(format!("zip has more than {MAX_ENTRIES} entries"));
@@ -34,7 +36,7 @@ pub fn import_zip(fs: &dyn FileSystem, bytes: &[u8], zip_name: &str, root: &Path
     // Unpack everything into a hidden staging folder first, so a bad file
     // part-way through leaves the apps folder exactly as it was.
     let staging = root.join(format!(".import-{}-{:08x}", unix_now(), random_u32()));
-    let result = stage(fs, &mut zip, &plans, &staging).and_then(|()| commit(fs, &plans, &staging, root));
+    let result = stage(fs, &mut zip, &plans, &staging).and_then(|()| commit(fs, &plans, &staging, root, before_replace));
     fs.remove_dir_all(&staging);
     result?;
 
@@ -96,10 +98,11 @@ fn stage(fs: &dyn FileSystem, zip: &mut zip::ZipArchive<Cursor<&[u8]>>, plans: &
     Ok(())
 }
 
-fn commit(fs: &dyn FileSystem, plans: &[Plan], staging: &Path, root: &Path) -> Result<(), String> {
+fn commit(fs: &dyn FileSystem, plans: &[Plan], staging: &Path, root: &Path, before_replace: &dyn Fn(&str)) -> Result<(), String> {
     for plan in plans {
         let target = root.join(&plan.name);
         if fs.exists(&target) {
+            before_replace(&plan.name);
             // Move the old copy aside before deleting it, so the app is
             // never missing for longer than one rename.
             let old = staging.join(format!(".old-{}", plan.name));

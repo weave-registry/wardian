@@ -7,7 +7,8 @@ use std::path::Path;
 const USAGE: &str = "Wardian — runs WebAssembly apps and suites in the browser
 
 usage:
-  wardian [APPS_FOLDER]          serve the apps in APPS_FOLDER (default: ./apps)
+  wardian [APPS_FOLDER]          serve the apps (default: DATA_DIR/apps, filled from ./apps on the first start)
+  wardian promote APP [FOLDER]   copy an app from DATA_DIR/apps into FOLDER (default: ./apps), to commit it
   wardian new KIND PATH          create a starter package: module, page or suite
   wardian add COMPONENT... PATH  copy UI components (button, tabs, dialog…) into a package; --list shows them
   wardian check PACKAGE...       check packages (folders, .zip or .wardian files) against SPEC.md
@@ -17,16 +18,18 @@ settings come from environment variables; see README.md";
 
 /// What the arguments ask for.
 pub enum Command {
-    /// Serve the apps in this folder (the first argument, or "apps").
-    Serve(String),
+    /// Serve the apps in this folder (the first argument), or in the working folder when None.
+    Serve(Option<String>),
     /// A command that runs and exits with this code.
     Exit(i32),
 }
 
 /// Runs any command but serving. `args` are the program's arguments without its name.
-pub fn run(args: &[String], tools: &dyn PackageTools) -> Command {
+/// `data_dir` is where the working folder lives, for `promote`.
+pub fn run(args: &[String], tools: &dyn PackageTools, data_dir: &Path) -> Command {
     match args.first().map(String::as_str) {
         Some("check") => Command::Exit(check(&args[1..], tools)),
+        Some("promote") => Command::Exit(promote(&args[1..], tools, data_dir)),
         Some("new") => Command::Exit(new(&args[1..], tools)),
         Some("add") => Command::Exit(add(&args[1..], tools)),
         Some("--version" | "-V") => {
@@ -41,7 +44,43 @@ pub fn run(args: &[String], tools: &dyn PackageTools) -> Command {
             eprintln!("unknown option {a}\n\n{USAGE}");
             Command::Exit(2)
         }
-        first => Command::Serve(first.unwrap_or("apps").to_string()),
+        first => Command::Serve(first.map(String::from)),
+    }
+}
+
+/// `wardian promote <app> [<folder>]`: copies an app made or changed inside Wardian back into
+/// the repository's apps folder, where it can be reviewed and committed (ADR-2610071122).
+fn promote(args: &[String], tools: &dyn PackageTools, data_dir: &Path) -> i32 {
+    let (app, folder) = match args {
+        [app] => (app.as_str(), "apps"),
+        [app, folder] => (app.as_str(), folder.as_str()),
+        _ => {
+            eprintln!("usage: wardian promote <app> [<folder>]   (folder default: ./apps)");
+            return 2;
+        }
+    };
+    match tools.promote(app, data_dir, Path::new(folder)) {
+        Err(e) => {
+            eprintln!("wardian promote: {e}");
+            1
+        }
+        Ok(p) => {
+            let show = |what: &str, list: &[String]| {
+                for f in list {
+                    println!("  {what:<8} {folder}/{app}/{f}");
+                }
+            };
+            show("added", &p.added);
+            show("changed", &p.changed);
+            show("removed", &p.removed);
+            if p.added.is_empty() && p.changed.is_empty() && p.removed.is_empty() {
+                println!("{folder}/{app} already matches {}/apps/{app}", data_dir.display());
+            } else {
+                println!("
+review it with: git diff -- {folder}/{app}");
+            }
+            0
+        }
     }
 }
 

@@ -3,6 +3,7 @@
 //! `<data dir>/config.json`. Removed apps go to a trash inside the apps folder; imports and the
 //! user's permission answers live here too.
 
+use super::history::History;
 use super::import::import_zip;
 use crate::domain::grants::{self, Answer};
 use crate::domain::import_plan::{app_name_from, MAX_ZIP_BYTES};
@@ -40,6 +41,8 @@ pub struct Hub {
     serving: RwLock<Arc<Serving>>,
     /// Serializes changes to grants.json.
     grants_lock: Mutex<()>,
+    /// Every save of a local app is a version here (ADR-2610071122).
+    history: Arc<History>,
 }
 
 /// The parts of the outside world the catalog uses.
@@ -51,7 +54,7 @@ pub struct HubPorts {
 }
 
 impl Hub {
-    pub fn new(ports: HubPorts, data_dir: PathBuf, local_root: PathBuf, refresh_every: Duration) -> Hub {
+    pub fn new(ports: HubPorts, history: Arc<History>, data_dir: PathBuf, local_root: PathBuf, refresh_every: Duration) -> Hub {
         Hub {
             fs: ports.fs,
             drive: ports.drive,
@@ -63,7 +66,13 @@ impl Hub {
             client: Mutex::new(None),
             serving: RwLock::new(Arc::new(Serving::Local)),
             grants_lock: Mutex::new(()),
+            history,
         }
+    }
+
+    /// The history of the local apps, for the use cases that save them.
+    pub fn history(&self) -> &History {
+        &self.history
     }
 
     fn key_path(&self) -> PathBuf {
@@ -277,7 +286,7 @@ impl Hub {
     }
 
     /// Moves a local app folder into the trash and returns its trash id.
-    pub fn move_to_trash(&self, name: &str) -> Result<String, String> {
+    fn move_to_trash(&self, name: &str) -> Result<String, String> {
         if !safe_segment(name) {
             return Err(format!("\"{name}\" is not an app name"));
         }
@@ -314,6 +323,7 @@ impl Hub {
         }
         self.fs.rename(&from, &to).map_err(|e| format!("restoring {name}: {e}"))?;
         println!("restored: {name}");
+        self.history.record(name, "restore", "put back from the removed apps");
         Ok(json!({ "restored": name }))
     }
 
@@ -333,8 +343,14 @@ impl Hub {
     /// Unpacks a zip into the local apps folder. The apps show up once the
     /// local folder is the source; the reply says whether it is.
     pub fn import(&self, bytes: &[u8], zip_name: &str, replace: bool) -> Result<Value, String> {
-        let done = import_zip(&*self.fs, bytes, zip_name, &self.local_root, replace)?;
+        let history = &self.history;
+        let done = import_zip(&*self.fs, bytes, zip_name, &self.local_root, replace, &|app| {
+            history.before_change(app);
+        })?;
         println!("import: {} -> {}", zip_name, done.apps.join(", "));
+        for app in &done.apps {
+            history.record(app, "import", &format!("imported from {zip_name}"));
+        }
         Ok(json!({ "apps": done.apps, "skipped": done.skipped, "serving_local": self.serving_local() }))
     }
 

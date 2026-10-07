@@ -111,6 +111,10 @@ impl FileSystem for LocalDisk {
         std::env::temp_dir().join(format!("{prefix}-{nanos}"))
     }
 
+    fn canonical(&self, path: &Path) -> Option<PathBuf> {
+        fs::canonicalize(path).ok()
+    }
+
     fn real_name(&self, path: &Path) -> Option<String> {
         path.canonicalize().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
     }

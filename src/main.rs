@@ -11,6 +11,7 @@ mod domain {
     pub mod check;
     pub mod components;
     pub mod grants;
+    pub mod history;
     pub mod import_plan;
     pub mod package;
     pub mod splunk;
@@ -32,11 +33,13 @@ mod usecases {
     pub mod catalog;
     pub mod check;
     pub mod docs;
+    pub mod history;
     pub mod import;
     pub mod scaffold;
     pub mod splunk;
     pub mod studio;
     pub mod viewer_state;
+    pub mod workspace;
 }
 mod adapters {
     pub mod primary {
@@ -62,6 +65,7 @@ use usecases::{
     catalog::{Hub, HubPorts},
     check::Checker,
     docs::Docs,
+    history::History,
     scaffold::Scaffold,
     splunk::Splunk,
     studio::Studio,
@@ -74,12 +78,26 @@ fn main() {
     let assets: Arc<dyn Assets> = Arc::new(Embedded);
     let checker = Arc::new(Checker::new(Arc::clone(&fs)));
     let tools = Scaffold::new(Arc::clone(&fs), Arc::clone(&assets), Arc::clone(&checker));
-    let apps_folder = match cli::run(&args, &tools) {
+    let apps_folder = match cli::run(&args, &tools, &config::data_dir()) {
         cli::Command::Exit(code) => std::process::exit(code),
         cli::Command::Serve(folder) => folder,
     };
 
-    let cfg = Settings::from_env(&apps_folder);
+    let cfg = Settings::from_env(apps_folder.as_deref());
+    // The working folder (ADR-2610071122): filled from the repository's apps on the first start,
+    // and the repository is never changed. A folder named on the command line is served as it is.
+    if cfg.chosen_folder {
+        if usecases::workspace::inside_git(&*fs, &cfg.local_root) {
+            println!("note: {} is inside a git repository, so apps changed in Wardian show up there as uncommitted changes. Run without a folder to use {}.", cfg.local_root.display(), cfg.data_dir.join("apps").display());
+        }
+    } else {
+        match usecases::workspace::seed(&*fs, std::path::Path::new(config::SOURCE_APPS), &cfg.local_root) {
+            Ok(Some(n)) => println!("apps: copied {n} app(s) from ./{} into {} (the working folder; ./{} is not changed)", config::SOURCE_APPS, cfg.local_root.display(), config::SOURCE_APPS),
+            Ok(None) => {}
+            Err(e) => eprintln!("apps: could not fill {} from ./{}: {e}", cfg.local_root.display(), config::SOURCE_APPS),
+        }
+    }
+    let history = Arc::new(History::new(Arc::clone(&fs), &cfg.data_dir, &cfg.local_root));
     let hub = Arc::new(Hub::new(
         HubPorts {
             fs: Arc::clone(&fs),
@@ -87,6 +105,7 @@ fn main() {
             web: Arc::new(LinkFetcher::new(cfg.import_allow_lan)),
             assets: Arc::clone(&assets),
         },
+        Arc::clone(&history),
         cfg.data_dir.clone(),
         cfg.local_root.clone(),
         cfg.refresh_every,
@@ -96,6 +115,6 @@ fn main() {
     let splunk = Splunk::new(Arc::clone(&fs), Arc::new(SplunkRest), &cfg.data_dir, cfg.splunk.clone());
     hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone());
 
-    let services = Services { state: Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir)), catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
+    let services = Services { history, state: Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir)), catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
     http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
 }

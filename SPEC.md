@@ -436,7 +436,8 @@ Wardian keeps layouts, each app's `storage` data and the latest channel messages
 ## 7. Distribution
 
 7.1. **A folder.** Put the package folder in the host's apps folder, or in the Google Drive
-folder the host serves.
+folder the host serves. Wardian's apps folder is its working folder, `DATA_DIR/apps`, kept apart from
+any source repository; each save there is a version in the app's history (ADR-2610071122).
 
 7.2. **A `.wardian` file** is a zip. It SHOULD hold one package folder at its top:
 `my-app.wardian` → `my-app/app.wasm`, `my-app/app.json`, … A `.zip` is read the same way. A host
@@ -463,7 +464,7 @@ nothing. It refuses a package whose name is already taken, unless asked to repla
 
 7.5. **Removing.** A host SHOULD move a removed package aside rather than delete it, so the
 removal can be undone. Wardian moves it to `.trash/` inside the apps folder; hidden folders are
-never listed or served.
+never listed or served. A package a save replaces is not removed: its version stays in the history.
 
 ## 8. Starting and checking a package
 

@@ -287,6 +287,16 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
         (Method::Post, ["api", "state", kind, name]) if admin => {
             result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| post_state(kind, name, body, s)))
         }
+        // Each local app's history (ADR-2610071122): versions, what changed, restore.
+        (Method::Get, ["api", "history", app]) if admin => result_resp(s.history.versions(app)),
+        (Method::Get, ["api", "history", app, n, "diff"]) if admin => match n.parse::<u64>() {
+            Ok(n) => result_resp(s.history.diff(app, n)),
+            Err(_) => json_resp(400, json!({ "error": "not a version number" })),
+        },
+        (Method::Post, ["api", "history", app, "restore"]) if admin => result_resp(read_json(&mut req).and_then(|body| {
+            let n = body["n"].as_u64().ok_or("which version? send {\"n\": <number>}")?;
+            s.history.restore(app, n)
+        })),
         (Method::Get, ["api", "state", "layout", name]) if admin => result_resp(s.state.layout(name)),
         (Method::Get, ["api", "state", "apps", name]) if admin => result_resp(s.state.app_data(name)),
         (Method::Get, ["api", "state", "channel", name]) if admin => json_resp(200, json!({ "message": s.state.channel(name) })),

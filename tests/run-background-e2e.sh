@@ -8,14 +8,17 @@ cargo build --release -q --bin wardian
 TMP=$(mktemp -d)
 PIDS=()
 trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
-mkdir "$TMP/apps"
-cp -R apps/adder "$TMP/apps/"
+# A checkout-like folder with ./apps: Wardian runs there with no folder argument, so it fills its
+# working folder (DATA_DIR/apps) from ./apps, and must leave ./apps untouched (ADR-2610071122).
+mkdir -p "$TMP/work/apps"
+cp -R apps/adder "$TMP/work/apps/"
+BIN="$PWD/target/release/wardian"
 FPORT=${FAKE_PORT:-18191}
 python3 tests/fixtures/fake-builder.py "$FPORT" &
 PIDS+=($!)
 PORT=${PORT:-8768}
-ANTHROPIC_BASE_URL="http://127.0.0.1:$FPORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" ./target/release/wardian "$TMP/apps" >"$TMP/server.log" 2>&1 &
+(cd "$TMP/work" && ANTHROPIC_BASE_URL="http://127.0.0.1:$FPORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" exec "$BIN" >"$TMP/server.log" 2>&1) &
 PIDS+=($!)
 for _ in $(seq 50); do curl -sf "http://127.0.0.1:$PORT/api/status" >/dev/null && break; sleep 0.1; done
 
-BASE="http://127.0.0.1:$PORT" FAKE="http://127.0.0.1:$FPORT" NODE_PATH="${NODE_PATH:-$(npm root -g)}" node tests/background-e2e.js
+SRC="$TMP/work/apps" WORKING="$TMP/data/apps" BASE="http://127.0.0.1:$PORT" FAKE="http://127.0.0.1:$FPORT" NODE_PATH="${NODE_PATH:-$(npm root -g)}" node tests/background-e2e.js

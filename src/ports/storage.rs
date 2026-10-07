@@ -30,4 +30,6 @@ pub trait FileSystem: Send + Sync {
     fn temp_path(&self, prefix: &str) -> PathBuf;
     /// The folder's own name after resolving "." and links, as `wardian check .` needs.
     fn real_name(&self, path: &Path) -> Option<String>;
+    /// The absolute path, with "." , ".." and links resolved; None when it does not exist.
+    fn canonical(&self, path: &Path) -> Option<PathBuf>;
 }

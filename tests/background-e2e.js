@@ -1,7 +1,8 @@
 // End-to-end test of "Make an app" in the background: you leave the chat while Claude works, the
 // browser test runs out of sight, a failure goes back to Claude, and the button says how it went.
 const { chromium } = require('playwright');
-const B = process.env.BASE, FAKE = process.env.FAKE;
+const B = process.env.BASE, FAKE = process.env.FAKE, SRC = process.env.SRC, WORKING = process.env.WORKING;
+const nodefs = require('fs');
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ok  ', m); } else { fail++; console.log('  FAIL', m); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -65,6 +66,30 @@ async function until(fn, ms, what) {
   ok(await a.locator('#aiBtn').getAttribute('data-state') === '', 'the badge clears once you have seen it');
   await b.reload(); await sleep(1500);
   ok(await b.locator('#aiBtn').getAttribute('data-state') === '', 'in the other tab too');
+  console.log('== the working folder and the app\'s history (ADR-2610071122)');
+  ok((await (await fetch(B + '/api/apps')).json()).includes('adder') && nodefs.existsSync(WORKING + '/adder/app.wasm'), 'the working folder was filled from ./apps');
+  ok(nodefs.existsSync(WORKING + '/bg-test/suite.json') && !nodefs.existsSync(SRC + '/bg-test'), 'the new app is saved in the working folder, not in ./apps');
+  ok(nodefs.readdirSync(SRC).join() === 'adder', './apps is untouched: ' + nodefs.readdirSync(SRC).join());
+  ok(/Version 2; the earlier versions are in/.test(await a.locator('#chat').textContent()), 'the chat says which version the fix is');
+  let hist = await (await fetch(B + '/api/history/bg-test')).json();
+  ok(hist.versions.map(v => v.n + ':' + v.by).join() === '2:make-an-app,1:make-an-app' && hist.versions[0].why === 'A small test app.' && hist.versions[0].current, 'the build and its fix are two versions, with Claude\'s reason: ' + JSON.stringify(hist.versions.map(v => [v.n, v.by, v.why])));
+  await a.locator('#apps li button', { hasText: /Background test/ }).first().click();
+  await a.locator('#historyBtn').click();
+  await a.locator('#historyList .ver').first().waitFor({ timeout: 5000 });
+  ok(await a.locator('#historyList .ver').count() === 2 && /current/.test(await a.locator('#historyList .ver').first().textContent()), 'the History panel lists both, newest first');
+  const v1 = a.locator('#historyList .ver[data-n="1"]');
+  await v1.locator('button', { hasText: 'Compare with current' }).click();
+  await v1.locator('pre.diff').first().waitFor({ timeout: 5000 });
+  const diffText = await v1.locator('.diffbox').textContent();
+  ok(/apps\/main\/app\.js/.test(diffText) && /boom: the first version is broken/.test(diffText) && /fixed/.test(diffText), 'Compare shows app.js changed, old and new lines');
+  await v1.locator('button', { hasText: 'Restore' }).click();
+  await v1.locator('button', { hasText: 'Restore version 1' }).click();
+  await a.locator('iframe.suiteframe').waitFor({ timeout: 5000 });
+  hist = await (await fetch(B + '/api/history/bg-test')).json();
+  ok(hist.versions[0].n === 3 && hist.versions[0].by === 'restore' && hist.versions[0].why === 'restored version 1', 'restoring is saved as version 3');
+  ok(/boom: the first version is broken/.test(await (await fetch(B + '/apps/bg-test/apps/main/app.js')).text()), 'and the first app.js is back');
+  ok(!nodefs.existsSync(SRC + '/bg-test') && nodefs.readdirSync(SRC).join() === 'adder', './apps is still untouched');
+
   ok(errors.length === 0, 'no page errors ' + JSON.stringify(errors));
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);

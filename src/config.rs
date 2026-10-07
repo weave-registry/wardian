@@ -14,8 +14,19 @@ fn env(k: &str) -> Option<String> {
     std::env::var(k).ok().filter(|v| !v.is_empty())
 }
 
+/// The data folder: DATA_DIR, or ./data. The command line needs it before the rest (promote).
+pub fn data_dir() -> PathBuf {
+    PathBuf::from(env("DATA_DIR").unwrap_or_else(|| "data".into()))
+}
+
+/// The repository's example apps, which seed the working folder on the first start.
+pub const SOURCE_APPS: &str = "apps";
+
 pub struct Settings {
+    /// The folder Wardian serves and saves apps in: the command line's, or `<data dir>/apps`.
     pub local_root: PathBuf,
+    /// True when the command line named the folder; false for the working folder in the data dir.
+    pub chosen_folder: bool,
     pub data_dir: PathBuf,
     pub addr: String,
     pub admin_token: Option<String>,
@@ -37,12 +48,15 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// `apps_folder` comes from the command line.
-    pub fn from_env(apps_folder: &str) -> Settings {
+    /// `apps_folder` comes from the command line; without one, Wardian serves `<data dir>/apps`
+    /// (ADR-2610071122).
+    pub fn from_env(apps_folder: Option<&str>) -> Settings {
         let secs: u64 = env("REFRESH_SECS").and_then(|s| s.parse().ok()).unwrap_or(60);
+        let data = data_dir();
         Settings {
-            local_root: PathBuf::from(apps_folder),
-            data_dir: PathBuf::from(env("DATA_DIR").unwrap_or_else(|| "data".into())),
+            local_root: apps_folder.map(PathBuf::from).unwrap_or_else(|| data.join("apps")),
+            chosen_folder: apps_folder.is_some(),
+            data_dir: data,
             addr: env("ADDR").unwrap_or_else(|| DEFAULT_ADDR.into()),
             admin_token: env("ADMIN_TOKEN"),
             drive_api: env("GDRIVE_API_BASE").unwrap_or_else(|| DRIVE_API.into()),

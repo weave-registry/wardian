@@ -164,6 +164,21 @@
   .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
   .chips button { border-radius: 999px; font-size: .88rem; }
   #aiBtn { white-space: nowrap; }
+  /* History of an app (ADR-2610071122). */
+  .history-list { display: grid; gap: .6rem; margin-top: .75rem; }
+  .ver { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .8rem; background: var(--panel); }
+  .ver-head { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: baseline; }
+  .ver-head .n { font-weight: 700; }
+  .ver-head .by { font-size: .8rem; border: 1px solid var(--line); border-radius: 999px; padding: 0 .5rem; color: var(--muted); }
+  .ver-head .now { font-size: .8rem; color: var(--ok); font-weight: 600; }
+  .ver-head .acts { margin-left: auto; display: flex; gap: .4rem; flex-wrap: wrap; }
+  .ver .why { margin: .3rem 0 0; overflow-wrap: anywhere; }
+  .ver .diffbox { margin-top: .6rem; }
+  .ver .file { margin: .5rem 0 .2rem; font: 600 .85rem ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+  .ver .file .st { font-weight: 500; color: var(--muted); }
+  pre.diff { margin: 0; padding: .5rem .6rem; border: 1px solid var(--line); border-radius: 6px; overflow: auto; max-height: 50vh;
+             font: 12px/1.45 ui-monospace, Menlo, monospace; background: var(--bg); }
+  pre.diff .add { color: var(--ok); } pre.diff .del { color: var(--bad); } pre.diff .gap { color: var(--muted); }
   #aiBtn .ai-state { font-weight: 500; opacity: .9; }
   #aiBtn .ai-state::before { content: '· '; }
   #aiBtn[data-state="ready"] .ai-state::after { content: ' ✓'; }
@@ -391,6 +406,7 @@ let status = {};
 function ago(secs) {
   if (secs < 60) return `${secs}s ago`;
   if (secs < 3600) return `${Math.floor(secs / 60)} min ago`;
+  if (secs >= 2 * 86400) return `${Math.floor(secs / 86400)} days ago`;
   return `${Math.floor(secs / 3600)} h ago`;
 }
 
@@ -577,6 +593,7 @@ async function openApp(app) {
   const tools = el('span', { className: 'row' });
   if (status.admin && status.source === 'local') {
     tools.append(el('button', { textContent: 'Change this app', onclick: () => openAi({ app: name }) }));
+    tools.append(el('button', { id: 'historyBtn', textContent: 'History', title: 'Every saved version of this app', onclick: () => openHistory(app) }));
   }
   // Arrange: shown once the app's frame says it has panels (ui/arrange.js). It lives here, in
   // view, because the app's own frame is often taller than the window.
@@ -642,6 +659,84 @@ async function openApp(app) {
     fnBox.replaceChildren(el('p', { className: 'err', textContent: e.message }));
     log(`${name}: ${e.message}`, 'e');
   }
+}
+
+// ---------- the history of an app (ADR-2610071122) ----------
+// Every save is a version: by Make an app, an import, a restore or promote. Any version can be
+// compared with the app as it is now, or put back; putting one back is itself a new version.
+const BY_WORDS = { 'make-an-app': 'Make an app', import: 'import', restore: 'restore', promote: 'promote', 'first-seen': 'original' };
+async function openHistory(app) {
+  clearPageFrames();
+  moduleArrange?.destroy(); moduleArrange = null;
+  current = app.name;
+  renderApps();
+  const list = el('div', { className: 'history-list', id: 'historyList' }, el('p', { className: 'muted', textContent: 'Loading…' }));
+  $('runner').replaceChildren(
+    el('div', { className: 'row apphead' }, el('h2', { textContent: `History of ${app.title || app.name}` }),
+      el('button', { textContent: 'Back to the app', onclick: () => openApp(app) })),
+    el('p', { className: 'muted', textContent: 'Every save of this app is kept here, newest first. Compare a version with the app as it is now, or put it back. Putting one back is saved as a new version, so it can be undone too.' }),
+    list);
+  let data;
+  try { data = await api(`/api/history/${encodeURIComponent(app.name)}`); }
+  catch (e) { list.replaceChildren(el('p', { className: 'err', textContent: e.message })); return; }
+  if (!data.versions.length) {
+    list.replaceChildren(el('p', { className: 'muted', textContent: 'No versions yet. The first change made in Wardian (Change this app, an import or a restore) keeps the app as it is now as version 1.' }));
+    return;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  list.replaceChildren(...data.versions.map((v) => {
+    const box = el('div', { className: 'diffbox', hidden: true });
+    const acts = el('span', { className: 'acts' });
+    const compare = el('button', { textContent: 'Compare with current', onclick: () => showDiff(app.name, v.n, box, compare) });
+    if (!v.current) acts.append(compare);
+    if (!v.current) {
+      const restore = el('button', { textContent: 'Restore', onclick: () => {
+        // Two steps, so a stray click changes nothing.
+        acts.replaceChildren(el('span', { className: 'muted', textContent: `Put version ${v.n} back? ` }),
+          el('button', { className: 'primary', textContent: `Restore version ${v.n}`, onclick: async () => {
+            try { await api(`/api/history/${encodeURIComponent(app.name)}/restore`, { n: v.n }); }
+            catch (e) { acts.replaceChildren(el('span', { className: 'err', textContent: e.message })); return; }
+            log(`${app.name}: restored version ${v.n}`, 'a');
+            await loadApps();
+            openApp(apps.find((a) => a.name === app.name) || app);
+          } }),
+          el('button', { textContent: 'Cancel', onclick: () => openHistory(app) }));
+      } });
+      acts.append(restore);
+    }
+    const row = el('div', { className: 'ver' },
+      el('div', { className: 'ver-head' },
+        el('span', { className: 'n', textContent: `Version ${v.n}` }),
+        el('span', { className: 'muted', textContent: ago(Math.max(0, now - v.at)), title: new Date(v.at * 1000).toLocaleString() }),
+        el('span', { className: 'by', textContent: BY_WORDS[v.by] || v.by }),
+        v.current ? el('span', { className: 'now', textContent: 'current' }) : '',
+        acts),
+      v.why ? el('p', { className: 'why', textContent: v.why }) : '',
+      box);
+    row.dataset.n = v.n;
+    return row;
+  }));
+}
+
+async function showDiff(name, n, box, btn) {
+  if (!box.hidden) { box.hidden = true; btn.textContent = 'Compare with current'; return; }
+  box.hidden = false; btn.textContent = 'Hide changes';
+  box.replaceChildren(el('p', { className: 'muted', textContent: 'Comparing…' }));
+  let d;
+  try { d = await api(`/api/history/${encodeURIComponent(name)}/${n}/diff`); }
+  catch (e) { box.replaceChildren(el('p', { className: 'err', textContent: e.message })); return; }
+  if (!d.files.length) { box.replaceChildren(el('p', { className: 'muted', textContent: 'Same as the app now.' })); return; }
+  const WORDS = { added: 'only in the app now', removed: `only in version ${n}`, changed: 'changed' };
+  box.replaceChildren(el('p', { className: 'muted', textContent: `Lines marked − are in version ${n}; lines marked + are in the app now.` }),
+    ...d.files.flatMap((f) => {
+      const pre = el('pre', { className: 'diff' });
+      for (const line of String(f.diff || '').split('\n')) {
+        if (!line) continue;
+        const cls = line[0] === '+' ? 'add' : line[0] === '-' ? 'del' : line === '…' ? 'gap' : '';
+        pre.append(el('span', { className: cls, textContent: line.replace(/^-/, '−') + '\n' }));
+      }
+      return [el('p', { className: 'file' }, f.path, el('span', { className: 'st', textContent: ` · ${WORDS[f.status] || f.status}` })), pre];
+    }));
 }
 
 let moduleArrange = null;   // Arrange on the open module app's functions; removed when another app opens
@@ -1201,7 +1296,8 @@ function aiShow(ev) {
       node = el('div', { className: 'msg saved' },
         el('strong', { textContent: `Saved as ${ev.app}. ` }), ev.text || '', ' ',
         el('button', { className: 'link', textContent: 'Open it', onclick: () => { const a = apps.find((x) => x.name === ev.app); if (a) openApp(a); } }),
-        ev.replaced ? el('span', { className: 'muted', textContent: ' · The previous version is in Settings → Removed apps.' }) : '');
+        ev.replaced ? el('span', { className: 'muted' }, ` · Version ${ev.version || '?'}; the earlier versions are in `,
+          el('button', { className: 'link', textContent: 'History', onclick: () => { const a = apps.find((x) => x.name === ev.app); if (a) openHistory(a); } }), '.') : '');
       loadApps();
       break;
     case 'stopped': node = el('div', { className: 'msg tool', textContent: ev.text }); break;

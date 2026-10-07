@@ -26,14 +26,17 @@ Start with the simplest kind that fits. You can move up later.
 
 ## A module in two minutes
 
+Wardian serves the apps in its working folder, `data/apps` (or `DATA_DIR/apps`), so create apps
+there. The README's **Run** section explains the folder, and `wardian promote` for shipping an app.
+
 ```
-wardian new module apps/converter
+wardian new module data/apps/converter
 ```
 
 Open Wardian. **converter** is in the list. Click it and you see `add`, `c_to_f` and `fib`, each with
 input boxes. Type numbers and press **Run**.
 
-Now make it yours. Open `apps/converter/src/lib.rs` and add a function:
+Now make it yours. Open `data/apps/converter/src/lib.rs` and add a function:
 
 ```rust
 #[no_mangle]
@@ -45,7 +48,7 @@ pub extern "C" fn km_to_miles(km: f64) -> f64 {
 Rebuild and check it:
 
 ```
-cd apps/converter
+cd data/apps/converter
 ./build.sh
 wardian check .
 ```
@@ -62,7 +65,7 @@ WebAssembly functions only pass numbers. To work on text, your own JavaScript co
 the module's memory and reads the answer back. The page template does this for you.
 
 ```
-wardian new page apps/wordcount
+wardian new page data/apps/wordcount
 ```
 
 Open **wordcount** in Wardian: type, and it counts the words and shouts the text back. The files:
@@ -91,7 +94,7 @@ part runs in its own sealed frame. The parts never touch each other. They send m
 the **kernel**, which checks each message against the suite's contract.
 
 ```
-wardian new suite apps/notes
+wardian new suite data/apps/notes
 ```
 
 The template has three apps:
@@ -155,14 +158,14 @@ Three habits keep a suite healthy:
 
 1. Create `apps/<name>/app.js`, plus `apps/<name>/view.html` if it has a view.
 2. Add an entry to `suite.json` with its `slot` and its contract.
-3. Run `wardian check apps/<suite>`. The check reports a `needs` with no matching `provides`, a
+3. Run `wardian check data/apps/<suite>`. The check reports a `needs` with no matching `provides`, a
    topic nobody emits, and typos in field names.
 4. Reload the suite. If an app does not start, read the fault box at the bottom of the page.
 
 ## Check, then share
 
 ```
-wardian check apps/notes
+wardian check data/apps/notes
 ```
 
 The check tests everything that can be tested without running the app: names, files, sizes,

@@ -113,8 +113,25 @@ Chrome. It needs Node with the `playwright` package.
 
 ## Run
 
-    cargo run --release            # serves ./apps on http://127.0.0.1:8000
+    cargo run --release            # serves DATA_DIR/apps on http://127.0.0.1:8000
     cargo run --release -- /path/to/apps
+
+Wardian serves and saves apps in its **working folder**, `DATA_DIR/apps` (by default `./data/apps`).
+On the first start it fills that folder from `./apps`, the example apps in the repository, leaving out
+build output (`target/`, `node_modules/`, `Cargo.lock`). After that, apps made or changed inside
+Wardian (Make an app, Change this app, imports, restores) change only the working folder, never the
+repository. To ship one of them, copy it back and commit it:
+
+    wardian promote splunk-table   # copies DATA_DIR/apps/splunk-table into ./apps
+    git diff -- apps/splunk-table
+
+Naming a folder (`wardian /path/to/apps`) serves that folder as it is. When it is inside a git
+repository, Wardian says so at start, since changes made in the app then show up in git.
+
+A Wardian you keep running should not run from `target/release` while you work on Wardian itself:
+each `cargo build` replaces that file, and macOS can stop a program whose file was replaced under it.
+Install a copy instead, with `cargo install --path .` (then run `wardian`), or copy
+`target/release/wardian` somewhere else and run the copy.
 
 ## Connect Google Drive (from the browser)
 
@@ -153,9 +170,9 @@ To import from a file server on your own network, set `IMPORT_ALLOW_LAN=1`.
 
 ## Remove an app
 
-Open the app and press **Remove app**, then confirm. The app moves to `apps/.trash/`, and nothing
-is deleted. Press **Undo** right away, or restore it later in **Settings → Removed apps**. To delete
-removed apps for good, empty `apps/.trash/` yourself. Apps served from Google Drive are removed in
+Open the app and press **Remove app**, then confirm. The app moves to `.trash/` in the working folder,
+and nothing is deleted. Press **Undo** right away, or restore it later in **Settings → Removed apps**.
+To delete removed apps for good, empty that `.trash/` folder yourself. Apps served from Google Drive are removed in
 Drive: Wardian only reads Drive.
 
 ## Apps that talk to each other
@@ -193,8 +210,10 @@ How it works:
    check. It cannot touch anything outside that one app.
 2. When Claude finishes, Wardian runs `wardian check`. A package with errors is not saved, and Claude
    gets the errors to fix.
-3. Wardian saves the app. A version it replaces goes to the trash, so **Settings → Removed apps**
-   undoes any AI change.
+3. Wardian saves the app as a new version in the app's **History** (next to **Change this app**).
+   The History lists every version with Claude's reason for it, compares any of them with the app as it
+   is now, and puts one back; putting one back is a new version too, so nothing is lost. Before the
+   first change to an app, its original is kept as version 1. Each app keeps its last 50 versions.
 4. Your browser opens the app and collects its errors. If it finds any, it sends them to Claude to
    fix. It does this at most twice for each of your messages.
 
@@ -278,13 +297,16 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 - `anthropic-key` — the API key for **Make an app**, readable by its owner only
 - `grants.json` — your answers to channel and Splunk permission questions
 - `splunk.json` — the Splunk address and account, readable by its owner only
+- `apps/` — the working folder: the apps Wardian serves and saves
+- `history/<app>/` — each app's versions, with `log.json` saying when, by what and why
+- `state/` — layouts, apps' saved data and the latest channel messages
 
 ## Environment variables
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `ADDR` | `127.0.0.1:8000` | Address to listen on |
-| `DATA_DIR` | `data` | Where settings and the uploaded key are saved |
+| `DATA_DIR` | `data` | Where settings, the working folder of apps and their history are kept |
 | `ADMIN_TOKEN` | none | Lets other machines change settings |
 | `REFRESH_SECS` | `60` | How often to re-read the Drive folder |
 | `GDRIVE_FOLDER_ID` | none | Start on this folder; wins over the saved one |

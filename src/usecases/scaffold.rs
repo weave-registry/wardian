@@ -2,7 +2,10 @@
 //! component library files copied into a package (like shadcn: the package owns its copies).
 
 use super::check::Checker;
+use super::history::History;
+use super::workspace;
 use crate::domain::components::{files_for, page_tags, wire_suite, Added, UI_PAGE, UI_SUITE};
+use crate::domain::history::Promoted;
 use crate::domain::package::safe_segment;
 use crate::ports::{assets::Assets, storage::FileSystem, tools::PackageTools};
 use serde_json::Value;
@@ -23,6 +26,12 @@ impl PackageTools for Scaffold {
     }
     fn add(&self, names: &[String], pkg: &Path, force: bool) -> Result<Added, String> {
         Scaffold::add(self, names, pkg, force)
+    }
+    fn promote(&self, app: &str, data_dir: &Path, source: &Path) -> Result<Promoted, String> {
+        let working = data_dir.join("apps");
+        let done = workspace::promote(&*self.fs, app, &working, source)?;
+        History::new(Arc::clone(&self.fs), data_dir, &working).record(app, "promote", &format!("promoted to {}", source.display()));
+        Ok(done)
     }
 }
 

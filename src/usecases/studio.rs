@@ -533,9 +533,9 @@ impl Workshop<'_> {
         r.map_err(|e| format!("cannot write the files to check them: {e}"))
     }
 
-    /// Checks, then saves. The old version goes to the trash. Returns the app
-    /// name and the trash id of the old version, if there was one.
-    fn save(&self, files: &Files, app: Option<&str>, wanted: &str) -> Result<(String, Option<String>), String> {
+    /// Checks, then saves in place. The version it replaces is already in the app's history
+    /// (ADR-2610071122). Returns the app name, the version it replaced (if any) and the new one.
+    fn save(&self, files: &Files, app: Option<&str>, wanted: &str, why: &str) -> Result<(String, Option<u64>, Option<u64>), String> {
         let root = self.hub.local_root();
         let name = match app {
             Some(a) => a.to_string(),
@@ -552,13 +552,26 @@ impl Workshop<'_> {
             self.fs.remove_dir_all(&dir);
             return Err(format!("not saved: the check found errors.\n{report}"));
         }
-        let old = if self.fs.exists(&root.join(&name)) { Some(self.hub.move_to_trash(&name)?) } else { None };
-        if let Err(e) = self.fs.rename(&dir, &root.join(&name)) {
+        let history = self.hub.history();
+        let target = root.join(&name);
+        let replaced = if self.fs.exists(&target) { history.before_change(&name) } else { None };
+        // Move the current copy aside first, so the app is never missing for longer than a rename.
+        let aside = root.join(format!(".old-{name}-{:08x}", random_u32()));
+        if self.fs.exists(&target) {
+            if let Err(e) = self.fs.rename(&target, &aside) {
+                self.fs.remove_dir_all(&dir);
+                return Err(format!("cannot replace {name}: {e}"));
+            }
+        }
+        if let Err(e) = self.fs.rename(&dir, &target) {
+            let _ = self.fs.rename(&aside, &target);
             self.fs.remove_dir_all(&dir);
             return Err(format!("cannot save {name}: {e}"));
         }
+        self.fs.remove_dir_all(&aside);
+        let version = history.record(&name, "make-an-app", why);
         println!("ai: saved {name}");
-        Ok((name, old))
+        Ok((name, replaced, version))
     }
 
     /// Runs one tool. Returns the text for Claude, whether it is an error, and
@@ -653,12 +666,12 @@ impl Workshop<'_> {
             "finish" => {
                 let app = session.lock().unwrap().app.clone();
                 let wanted = input["name"].as_str().unwrap_or("my-app");
-                match self.save(files, app.as_deref(), wanted) {
-                    Ok((name, old)) => {
-                        let summary = input["summary"].as_str().unwrap_or("").to_string();
+                let summary = input["summary"].as_str().unwrap_or("").to_string();
+                match self.save(files, app.as_deref(), wanted, &summary) {
+                    Ok((name, replaced, version)) => {
                         let mut s = session.lock().unwrap();
                         s.app = Some(name.clone());
-                        s.events.push(json!({ "kind": "saved", "app": name, "replaced": old, "text": summary }));
+                        s.events.push(json!({ "kind": "saved", "app": name, "replaced": replaced, "version": version, "text": summary }));
                         (format!("Saved as \"{name}\". The user can open it now."), false, None)
                     }
                     Err(e) => (e, true, Some("not saved yet: the check found problems; fixing them".into())),

@@ -248,3 +248,58 @@ fn viewer_state_is_kept_private_on_disk() {
     }
     let _ = fs::remove_dir_all(dir);
 }
+
+// ---------- the working folder and each app's history (ADR-2610071122) ----------
+
+#[test]
+fn seeding_history_and_promote() {
+    use crate::ports::service::AppHistory;
+    use crate::ports::tools::PackageTools;
+    use crate::usecases::{history::History, workspace};
+    let dir = tmp("history");
+    let disk = LocalDisk;
+    let (source, data) = (dir.join("src-apps"), dir.join("data"));
+    let working = data.join("apps");
+    let write = |p: &Path, s: &str| disk.write(p, s.as_bytes()).unwrap();
+    write(&source.join("hello/app.json"), r#"{"format":1,"title":"Hello","page":"index.html"}"#);
+    write(&source.join("hello/app.wasm"), "\0asm\x01\0\0\0");
+    write(&source.join("hello/index.html"), "<p>one</p>\n");
+    write(&source.join("hello/target/big.bin"), "build output");
+    write(&source.join("hello/Cargo.lock"), "# build output too");
+    write(&source.join(".trash/old--1/app.wasm"), "\0asm\x01\0\0\0");
+
+    // Seeding copies the apps and the trash, leaves build output and the source alone.
+    assert_eq!(workspace::seed(&disk, &source, &working).unwrap(), Some(1));
+    assert!(disk.is_file(&working.join("hello/index.html")) && disk.is_file(&working.join(".trash/old--1/app.wasm")));
+    assert!(!disk.exists(&working.join("hello/target")) && !disk.exists(&working.join("hello/Cargo.lock")), "build output is not copied");
+    assert_eq!(workspace::seed(&disk, &source, &working).unwrap(), None, "a filled working folder is left as it is");
+
+    // The first change keeps the original as version 1; saves add versions; a restore is a version.
+    let history = History::new(Arc::new(LocalDisk), &data, &working);
+    assert_eq!(history.before_change("hello"), Some(1));
+    write(&working.join("hello/index.html"), "<p>two</p>\n");
+    assert_eq!(history.record("hello", "make-an-app", "says two"), Some(2));
+    let v = history.versions("hello").unwrap();
+    assert_eq!(v["versions"][0]["n"], 2);
+    assert_eq!(v["versions"][0]["current"], true);
+    assert_eq!(v["versions"][1]["by"], "first-seen");
+    let d = history.diff("hello", 1).unwrap();
+    assert_eq!(d["files"][0]["path"], "index.html");
+    assert_eq!(d["files"][0]["diff"], "-<p>one</p>\n+<p>two</p>\n");
+    let r = history.restore("hello", 1).unwrap();
+    assert_eq!(r["version"], 3);
+    assert_eq!(disk.read(&working.join("hello/index.html")).unwrap(), b"<p>one</p>\n");
+    assert_eq!(history.versions("hello").unwrap()["versions"][0]["why"], "restored version 1");
+    assert!(history.restore("hello", 99).is_err());
+    assert!(history.versions("../x").is_err());
+
+    // Promote copies the working app back into the source, and says what changed.
+    write(&working.join("hello/index.html"), "<p>three</p>\n");
+    write(&working.join("hello/extra.js"), "// new\n");
+    let p = scaffold().promote("hello", &data, &source).unwrap();
+    assert_eq!((p.added.clone(), p.changed.clone()), (vec!["extra.js".to_string()], vec!["index.html".to_string()]));
+    assert_eq!(disk.read(&source.join("hello/index.html")).unwrap(), b"<p>three</p>\n");
+    assert!(disk.exists(&source.join("hello/target/big.bin")), "promote leaves the source's build output alone");
+    assert_eq!(history.versions("hello").unwrap()["versions"][0]["by"], "promote");
+    let _ = fs::remove_dir_all(dir);
+}
