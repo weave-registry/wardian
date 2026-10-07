@@ -368,7 +368,7 @@ fn splunk_results_load_into_a_table_in_chunks_and_page() {
     let fake = Arc::new(FakeSplunk { rows: 120_000, asked: std::sync::Mutex::new(Vec::new()) });
     let cfg = crate::ports::splunk::SplunkConfig { url: "https://splunk.test:8089".into(), token: "t".into(), ..Default::default() };
     let splunk = Splunk::new(Arc::new(LocalDisk), Arc::new(Arc::clone(&fake)), Arc::clone(&db), &dir, Some(cfg));
-    let out = splunk.search_into("splunk-table", "search", "index=x", "-24h", "").unwrap();
+    let out = splunk.search_into("splunk-table", "search", "index=x", "-24h", "", &crate::ports::service::Unwatched).unwrap();
     assert_eq!(out["total"], 120_000);
     assert_eq!(out["columns"], json!(["n", "host"]), "internal fields stay out");
     assert_eq!(*fake.asked.lock().unwrap(), vec![(0, 50_000), (50_000, 50_000), (100_000, 50_000)], "read in chunks");
@@ -380,6 +380,146 @@ fn splunk_results_load_into_a_table_in_chunks_and_page() {
     let filtered = tables.page("usl-lab", Some("splunk-table"), &json!({"table": "search", "where": "host = ?", "params": ["h1"], "limit": 2})).unwrap();
     assert_eq!(filtered["total"], 40_000, "another package reads the same table, read-only");
     assert!(tables.query("usl-lab", "SELECT count(*) FROM search", &json!([])).is_err(), "a package's own database does not hold another's tables");
+    let _ = fs::remove_dir_all(dir);
+}
+
+// ---------- background jobs (ADR-2610072118) ----------
+
+/// A Splunk whose search job runs until `done` is set, reads results slowly, and records a cancel.
+struct SlowSplunk {
+    rows: usize,
+    done: std::sync::atomic::AtomicBool,
+    cancelled: std::sync::atomic::AtomicBool,
+}
+
+struct SlowSession(Arc<SlowSplunk>);
+
+impl crate::ports::splunk::SplunkApi for Arc<SlowSplunk> {
+    fn connect(&self, _: &crate::ports::splunk::SplunkConfig) -> Result<Box<dyn crate::ports::splunk::SplunkSession>, String> {
+        Ok(Box::new(SlowSession(Arc::clone(self))))
+    }
+}
+
+impl crate::ports::splunk::SplunkSession for SlowSession {
+    fn get(&self, path: &str, query: &[(&str, &str)]) -> Result<Value, crate::ports::splunk::SplunkError> {
+        use serde_json::json;
+        use std::sync::atomic::Ordering;
+        if !path.ends_with("/results") {
+            let done = self.0.done.load(Ordering::SeqCst);
+            return Ok(json!({"entry": [{"content": {"isDone": done, "dispatchState": if done { "DONE" } else { "RUNNING" }}}]}));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let q = |k: &str| query.iter().find(|(n, _)| *n == k).and_then(|(_, v)| v.parse::<usize>().ok()).unwrap_or(0);
+        let (offset, count) = (q("offset"), q("count"));
+        let results: Vec<Value> = (offset..(offset + count).min(self.0.rows)).map(|i| json!({"n": i.to_string()})).collect();
+        Ok(json!({"fields": [{"name": "n"}], "results": results}))
+    }
+    fn post(&self, path: &str, form: &[(&str, &str)]) -> Result<Value, crate::ports::splunk::SplunkError> {
+        if path.ends_with("/job1/control") && form.contains(&("action", "cancel")) {
+            self.0.cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        Ok(serde_json::json!({"sid": "job1"}))
+    }
+    fn url(&self, path: &str) -> String {
+        path.into()
+    }
+}
+
+/// Claude is not used by these tests.
+struct NoBuilder;
+
+impl crate::ports::service::Builder for NoBuilder {
+    fn status(&self) -> Value { Value::Null }
+    fn set_key(&self, _: &str, _: Option<&str>) -> Result<Value, String> { Err("no".into()) }
+    fn set_provider(&self, _: &Value) -> Result<Value, String> { Err("no".into()) }
+    fn send(&self, _: &Value) -> Result<Value, String> { Err("no".into()) }
+    fn sample(&self, _: &Value) -> Result<Value, String> { Err("no Claude here".into()) }
+    fn stop(&self, _: &str) -> Result<Value, String> { Err("no".into()) }
+    fn claim_test(&self, _: &str, _: usize) -> Result<Value, String> { Err("no".into()) }
+    fn tested(&self, _: &str, _: &Value) -> Result<Value, String> { Err("no".into()) }
+    fn sessions(&self) -> Value { Value::Null }
+    fn events(&self, _: &str, _: usize) -> Result<Value, String> { Err("no".into()) }
+}
+
+fn job_runner(tag: &str, rows: usize) -> (crate::usecases::jobs::JobRunner, Arc<SlowSplunk>, std::path::PathBuf) {
+    use crate::adapters::secondary::sqlite_store::SqliteStore;
+    use crate::ports::db::Database;
+    use crate::usecases::{jobs::JobRunner, splunk::Splunk};
+    let dir = tmp(tag);
+    let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&dir));
+    let fake = Arc::new(SlowSplunk { rows, done: Default::default(), cancelled: Default::default() });
+    let cfg = crate::ports::splunk::SplunkConfig { url: "https://splunk.test:8089".into(), token: "t".into(), ..Default::default() };
+    let splunk = Splunk::new(Arc::new(LocalDisk), Arc::new(Arc::clone(&fake)), db, &dir, Some(cfg));
+    (JobRunner::new(Arc::new(splunk), Arc::new(NoBuilder)), fake, dir)
+}
+
+/// Asks for the job every 50 ms until `until` holds, for at most 20 s.
+fn poll_job(jobs: &dyn crate::ports::service::Jobs, id: &str, until: impl Fn(&Value) -> bool) -> Value {
+    let t = std::time::Instant::now();
+    loop {
+        let j = jobs.get(id, Some("splunk-table")).unwrap();
+        if until(&j) || t.elapsed() > std::time::Duration::from_secs(20) {
+            return j;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn jobs_answer_at_once_report_progress_and_finish() {
+    use crate::ports::service::{JobKind, Jobs};
+    use serde_json::json;
+    use std::sync::atomic::Ordering;
+    let (jobs, fake, dir) = job_runner("jobs-run", 120_000);
+    let t = std::time::Instant::now();
+    let started = jobs.start(JobKind::SplunkInto, "splunk-table", "table", &json!({"search": "index=x", "table": "search"})).unwrap();
+    assert!(t.elapsed() < std::time::Duration::from_millis(500), "start answers at once: {:?}", t.elapsed());
+    let id = started["job"].as_str().unwrap().to_string();
+    let j = jobs.get(&id, Some("splunk-table")).unwrap();
+    assert_eq!(j["state"], "running");
+    assert_eq!(j["kind"], "splunk.into");
+    assert_eq!(j["label"], "index=x");
+    std::thread::sleep(std::time::Duration::from_millis(700));
+    assert_eq!(jobs.get(&id, Some("splunk-table")).unwrap()["state"], "running", "the Splunk job is still running");
+    fake.done.store(true, Ordering::SeqCst);
+    let mid = poll_job(&jobs, &id, |j| j["progress"].as_u64().is_some());
+    assert_eq!(mid["state"], "running");
+    assert_eq!(mid["progress"], 50_000, "rows loaded after the first chunk");
+    let end = poll_job(&jobs, &id, |j| j["state"] != "running");
+    assert_eq!(end["state"], "done");
+    assert_eq!(end["progress"], 120_000);
+    assert_eq!(end["result"]["total"], 120_000);
+    assert!(jobs.list(Some("splunk-table"))["jobs"][0].get("result").is_none(), "lists leave results out");
+    assert!(!fake.cancelled.load(Ordering::SeqCst));
+
+    // Another package sees nothing of it; the admin sees everything.
+    assert!(jobs.get(&id, Some("usl-lab")).is_err(), "another package's job is not found");
+    assert!(jobs.cancel(&id, Some("usl-lab")).is_err(), "and cannot be cancelled by it");
+    assert_eq!(jobs.list(Some("usl-lab"))["jobs"], json!([]));
+    assert_eq!(jobs.list(Some("splunk-table"))["jobs"].as_array().unwrap().len(), 1);
+    assert_eq!(jobs.list(None)["jobs"].as_array().unwrap().len(), 1);
+    assert!(jobs.get(&id, None).is_ok());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn jobs_cancel_stops_the_splunk_search_job() {
+    use crate::ports::service::{JobKind, Jobs};
+    use serde_json::json;
+    use std::sync::atomic::Ordering;
+    let (jobs, fake, dir) = job_runner("jobs-cancel", 10);
+    let id = jobs.start(JobKind::SplunkSearch, "splunk-table", "table", &json!({"search": "index=slow"})).unwrap()["job"].as_str().unwrap().to_string();
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let c = jobs.cancel(&id, Some("splunk-table")).unwrap();
+    assert_eq!(c["state"], "cancelled");
+    let t = std::time::Instant::now();
+    while !fake.cancelled.load(Ordering::SeqCst) && t.elapsed() < std::time::Duration::from_secs(10) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(fake.cancelled.load(Ordering::SeqCst), "the search job on Splunk was cancelled too");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert_eq!(jobs.get(&id, Some("splunk-table")).unwrap()["state"], "cancelled", "and the job stays cancelled");
+    assert!(jobs.cancel(&id, Some("splunk-table")).is_ok(), "cancelling again does no harm");
     let _ = fs::remove_dir_all(dir);
 }
 

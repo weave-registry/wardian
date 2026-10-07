@@ -15,6 +15,7 @@ mod domain {
     pub mod grants;
     pub mod history;
     pub mod import_plan;
+    pub mod jobs;
     pub mod package;
     pub mod splunk;
     pub mod studio;
@@ -40,6 +41,7 @@ mod usecases {
     pub mod export;
     pub mod history;
     pub mod import;
+    pub mod jobs;
     pub mod scaffold;
     pub mod splunk;
     pub mod studio;
@@ -66,7 +68,7 @@ mod adapters {
 use adapters::primary::{cli, http};
 use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest, sqlite_store::SqliteStore};
 use config::Settings;
-use ports::{assets::Assets, db::Database, llm::BedrockAuth, service::{Exports, Services, ViewerState}, storage::FileSystem};
+use ports::{assets::Assets, db::Database, llm::BedrockAuth, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
 use std::sync::Arc;
 use usecases::{
     catalog::{Hub, HubPorts},
@@ -76,6 +78,7 @@ use usecases::{
     export::Exporter,
     history::History,
     scaffold::Scaffold,
+    jobs::JobRunner,
     splunk::Splunk,
     studio::{BedrockSettings, Providers, Studio},
     viewer_state::State,
@@ -164,7 +167,9 @@ fn serve(cfg: Settings) {
 
     let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir));
     let exports = Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), Arc::clone(&db), Arc::clone(&state), Arc::clone(&history), &cfg.local_root, &cfg.data_dir));
-    let services = Services { exports, tables: Arc::new(Db::new(db)), history, state, catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
+    let (builder, searches): (Arc<dyn Builder>, Arc<dyn Searches>) = (Arc::new(studio), Arc::new(splunk));
+    let jobs = Arc::new(JobRunner::new(Arc::clone(&searches), Arc::clone(&builder)));
+    let services = Services { exports, tables: Arc::new(Db::new(db)), history, state, catalog: hub, builder, searches, jobs, pages: Arc::new(Docs::new(assets)) };
     http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
 }
 

@@ -8,7 +8,7 @@
 use crate::domain::splunk::{fields_of, normalize_search, rows_of, table, SplunkConfig, MAX_SEARCH_TIME};
 use crate::ports::{
     db::{column_names, column_types, valid_ident, Database, MAX_LOADED_ROWS},
-    service::Searches,
+    service::{Searches, Watch},
     splunk::{SplunkApi, SplunkError, SplunkSession},
     storage::FileSystem,
 };
@@ -117,8 +117,8 @@ impl Splunk {
     /// open that long breaks: proxies and load balancers cut it, and the reply
     /// arrives half-read ("error while decoding chunks"). So this starts a
     /// search job, asks every second whether it is done, then reads the rows.
-    pub fn search(&self, spl: &str, earliest: &str, latest: &str) -> Result<Value, String> {
-        let (session, job, started) = self.run_job(spl, earliest, latest)?;
+    pub fn search(&self, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<Value, String> {
+        let (session, job, started) = self.run_job(spl, earliest, latest, watch)?;
         // One more row than is kept, to know when to say "truncated".
         let body = session.get(&format!("{job}/results"), &[("output_mode", "json"), ("count", "10001")]).map_err(|e| said(e, cut_off))?;
         let mut out = table(&body);
@@ -127,12 +127,14 @@ impl Splunk {
     }
 
     /// Runs a search and loads every result, up to MAX_LOADED_ROWS, into `table` of `package`'s
-    /// database, reading CHUNK rows per request (ADR-2610071219).
-    pub fn search_into(&self, package: &str, table_name: &str, spl: &str, earliest: &str, latest: &str) -> Result<Value, String> {
+    /// database, reading CHUNK rows per request (ADR-2610071219). Reports the rows loaded to `watch`
+    /// after each chunk, and stops between chunks when it says so (ADR-2610072118); the rows loaded
+    /// until then stay in the table.
+    pub fn search_into(&self, package: &str, table_name: &str, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<Value, String> {
         if !valid_ident(table_name) {
             return Err(format!("\"{table_name}\" is not a table name (letters, digits and _)"));
         }
-        let (session, job, started) = self.run_job(spl, earliest, latest)?;
+        let (session, job, started) = self.run_job(spl, earliest, latest, watch)?;
         let mut fields: Vec<String> = Vec::new();
         let mut columns: Vec<String> = Vec::new();
         let mut total = 0usize;
@@ -160,12 +162,17 @@ impl Splunk {
                 self.db.insert_rows(package, table_name, &columns, &rows)?;
             }
             total += got;
+            watch.progress(total as u64);
             if got < want {
                 break;
             }
             if total >= MAX_LOADED_ROWS {
                 truncated = true;
                 break;
+            }
+            if watch.stopped() {
+                cancel(&*session, &job);
+                return Err(format!("cancelled after {total} rows"));
             }
         }
         Ok(json!({ "table": table_name, "columns": columns, "fields": fields, "total": total, "truncated": truncated, "seconds": started.elapsed().as_secs(), "messages": messages }))
@@ -175,7 +182,8 @@ impl Splunk {
     /// minutes. Holding one connection open that long breaks: proxies and load balancers cut it,
     /// and the reply arrives half-read ("error while decoding chunks"). So this starts a job, asks
     /// every second whether it is done, and leaves reading the rows to the caller.
-    fn run_job(&self, spl: &str, earliest: &str, latest: &str) -> Result<(Box<dyn SplunkSession>, String, Instant), String> {
+    /// When `watch` says stop, the job is cancelled on Splunk as well.
+    fn run_job(&self, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<(Box<dyn SplunkSession>, String, Instant), String> {
         let cfg = self.cfg.lock().unwrap().as_ref().map(|(c, _)| c.clone());
         let cfg = cfg.ok_or("Splunk is not set up on this Wardian: Settings → Splunk")?;
         let spl = normalize_search(spl)?;
@@ -198,6 +206,10 @@ impl Splunk {
         let started = Instant::now();
         loop {
             thread::sleep(Duration::from_millis(if started.elapsed() < Duration::from_secs(5) { 300 } else { 1000 }));
+            if watch.stopped() {
+                cancel(&*session, &job);
+                return Err("cancelled".into());
+            }
             let st = session.get(&job, &[("output_mode", "json")]).map_err(|e| said(e, cut_off))?;
             let c = &st["entry"][0]["content"];
             if c["isFailed"].as_bool() == Some(true) || c["dispatchState"] == "FAILED" {
@@ -227,10 +239,10 @@ impl Searches for Splunk {
     fn set_config(&self, body: &Value) -> Result<Value, String> {
         Splunk::set_config(self, body)
     }
-    fn search(&self, spl: &str, earliest: &str, latest: &str) -> Result<Value, String> {
-        Splunk::search(self, spl, earliest, latest)
+    fn search(&self, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<Value, String> {
+        Splunk::search(self, spl, earliest, latest, watch)
     }
-    fn search_into(&self, package: &str, table: &str, spl: &str, earliest: &str, latest: &str) -> Result<Value, String> {
-        Splunk::search_into(self, package, table, spl, earliest, latest)
+    fn search_into(&self, package: &str, table: &str, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<Value, String> {
+        Splunk::search_into(self, package, table, spl, earliest, latest, watch)
     }
 }

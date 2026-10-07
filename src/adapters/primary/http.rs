@@ -1,7 +1,7 @@
 //! The web server: Wardian's own pages, the JSON API they use, and the apps' files. It knows
 //! the driving ports only; what each request does is the use cases' business.
 
-use crate::ports::service::{export_file_name, safe_rel, safe_segment, Services, EXPORT_MIME, FRAME_CSP, MAX_ZIP_BYTES};
+use crate::ports::service::{export_file_name, safe_rel, safe_segment, JobKind, Services, Unwatched, EXPORT_MIME, FRAME_CSP, MAX_ZIP_BYTES};
 use serde_json::{json, Value};
 use std::{io::Read, path::Path, thread};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -190,6 +190,32 @@ fn read_zip(req: &mut Request) -> Result<Vec<u8>, String> {
     Ok(body)
 }
 
+/// A long call asked to run as a background job (ADR-2610072118): it answers {job: id} at once,
+/// after the same permission checks as a call that waits.
+fn background(body: &Value) -> bool {
+    body["background"].as_bool() == Some(true)
+}
+
+/// The routes whose calls can take minutes when they are not run as a job.
+fn long_route(path: &str) -> bool {
+    matches!(path, "/api/splunk/search" | "/api/ai/sample" | "/api/db/search-into")
+}
+
+/// Background jobs (ADR-2610072118): GET /api/jobs, GET /api/jobs/<id>, POST /api/jobs/<id>/cancel.
+/// The kernel names its package (`?package=` or in the body), and sees only that package's jobs;
+/// without a package, the admin's own page sees them all.
+fn jobs_route(method: &Method, rest: &[&str], package: Option<&str>, s: &Services) -> Result<Value, String> {
+    if package.is_some_and(|p| !safe_segment(p)) {
+        return Err("not an app name".into());
+    }
+    match (method, rest) {
+        (Method::Get, []) => Ok(s.jobs.list(package)),
+        (Method::Get, [id]) => s.jobs.get(id, package),
+        (Method::Post, [id, "cancel"]) => s.jobs.cancel(id, package),
+        _ => Err("not found".into()),
+    }
+}
+
 fn api_post(path: &str, body: Value, s: &Services) -> Result<Value, String> {
     let (hub, studio, splunk) = (&s.catalog, &s.builder, &s.searches);
     match path {
@@ -200,8 +226,11 @@ fn api_post(path: &str, body: Value, s: &Services) -> Result<Value, String> {
             let package = body["package"].as_str().unwrap_or("");
             let app = body["app"].as_str().unwrap_or("");
             hub.check_host_cap(package, app, "splunk", "splunk")?;
+            if background(&body) {
+                return s.jobs.start(JobKind::SplunkSearch, package, app, &body);
+            }
             let s = |k: &str| body[k].as_str().unwrap_or("").to_string();
-            let out = splunk.search(&s("search"), &s("earliest"), &s("latest"));
+            let out = splunk.search(&s("search"), &s("earliest"), &s("latest"), &Unwatched);
             println!("splunk: {package}/{app} ran a search: {}", if out.is_ok() { "ok" } else { "failed" });
             out
         }
@@ -215,6 +244,9 @@ fn api_post(path: &str, body: Value, s: &Services) -> Result<Value, String> {
             let package = body["package"].as_str().unwrap_or("");
             let app = body["app"].as_str().unwrap_or("");
             hub.check_host_cap(package, app, "claude:sample", "ai").map_err(|e| format!("not_granted: {e}"))?;
+            if background(&body) {
+                return s.jobs.start(JobKind::AiSample, package, app, &body);
+            }
             let out = studio.sample(&body);
             println!("ai: {package}/{app} asked Claude: {}", match &out { Ok(_) => "ok".to_string(), Err(e) => e.clone() });
             out
@@ -289,9 +321,12 @@ fn post_db(op: &str, body: Value, s: &Services) -> Result<Value, String> {
         "tables" => s.tables.tables(package),
         "search-into" => {
             s.catalog.check_host_cap(package, app, "splunk", "splunk")?;
+            if background(&body) {
+                return s.jobs.start(JobKind::SplunkInto, package, app, &body);
+            }
             let t = |k: &str| body[k].as_str().unwrap_or("").to_string();
             let table = Some(t("table")).filter(|x| !x.is_empty()).unwrap_or_else(|| "search".into());
-            let out = s.searches.search_into(package, &table, &t("search"), &t("earliest"), &t("latest"));
+            let out = s.searches.search_into(package, &table, &t("search"), &t("earliest"), &t("latest"), &Unwatched);
             match &out {
                 Ok(v) => println!("splunk: {package}/{app} loaded {} rows into {table}", v["total"]),
                 Err(_) => println!("splunk: {package}/{app} loading a search failed"),
@@ -308,6 +343,9 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
     let path = url.split('?').next().unwrap_or("/");
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     let admin = is_admin(&req, token);
+    // A long call that waited (no `background`) lets its connection go after it answers
+    // (ADR-2610072118, decision 5).
+    let mut close_after = false;
 
     let resp = match (req.method().clone(), parts.as_slice()) {
         (Method::Post, ["api", "import"]) if admin => result_resp(read_zip(&mut req).and_then(|bytes| {
@@ -348,9 +386,15 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
         }
         // The viewer's state, kept by the host. Like the settings it needs admin; without it the
         // page keeps the state in the browser instead.
-        (Method::Post, ["api", "db", op]) if admin => {
-            result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| post_db(op, body, s)))
-        }
+        (Method::Post, ["api", "db", op]) if admin => result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| {
+            close_after = long_route(path) && !background(&body);
+            post_db(op, body, s)
+        })),
+        (Method::Get, ["api", "jobs", rest @ ..]) if admin => result_resp(jobs_route(&Method::Get, rest, query(&url, "package"), s)),
+        (Method::Post, ["api", "jobs", rest @ ..]) if admin => result_resp(read_json(&mut req).and_then(|body| {
+            let package = body["package"].as_str().filter(|p| !p.is_empty()).map(String::from);
+            jobs_route(&Method::Post, rest, package.as_deref(), s)
+        })),
         (Method::Post, ["api", "state", kind, name]) if admin => {
             result_resp(read_json_upto(&mut req, MAX_STATE_BODY_BYTES).and_then(|body| post_state(kind, name, body, s)))
         }
@@ -371,7 +415,10 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
             if !admin {
                 json_resp(403, json!({ "error": "settings are locked; see ADMIN_TOKEN in the README" }))
             } else {
-                result_resp(read_json(&mut req).and_then(|body| api_post(path, body, s)))
+                result_resp(read_json(&mut req).and_then(|body| {
+                    close_after = long_route(path) && !background(&body);
+                    api_post(path, body, s)
+                }))
             }
         }
         // no-cache: the page and the API change together, so an old page
@@ -487,6 +534,9 @@ fn handle(mut req: Request, s: &Services, token: Option<&str>) {
         (Method::Get, _) => Response::from_string("not found").with_status_code(404),
         _ => Response::from_string("method not allowed").with_status_code(405),
     };
+    // MERGE NOTE (ADR-2610072118): tiny_http 0.12 drops a response's Connection header and keeps
+    // the connection; the server that replaces it must close the connection when `close_after` is set.
+    let resp = if close_after { resp.with_header(header("Connection", "close")) } else { resp };
     if let Err(e) = req.respond(resp) {
         eprintln!("response error: {e}");
     }

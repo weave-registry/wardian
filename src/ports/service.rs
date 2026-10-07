@@ -5,6 +5,7 @@ pub use crate::domain::import_plan::MAX_ZIP_BYTES;
 pub use crate::domain::package::{safe_rel, safe_segment, AppInfo};
 pub use crate::domain::suite::FRAME_CSP;
 pub use crate::domain::export::{file_name as export_file_name, MIME as EXPORT_MIME};
+pub use crate::domain::jobs::JobKind;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -56,10 +57,42 @@ pub trait Builder: Send + Sync {
 pub trait Searches: Send + Sync {
     fn status(&self) -> Value;
     fn set_config(&self, body: &Value) -> Result<Value, String>;
-    fn search(&self, spl: &str, earliest: &str, latest: &str) -> Result<Value, String>;
+    /// `watch` says when to stop: the search job on Splunk is then cancelled too.
+    fn search(&self, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<Value, String>;
     /// Runs a search and loads its results into `table` of `package`'s database, in chunks:
-    /// {table, columns, fields, total, truncated, seconds, messages}.
-    fn search_into(&self, package: &str, table: &str, spl: &str, earliest: &str, latest: &str) -> Result<Value, String>;
+    /// {table, columns, fields, total, truncated, seconds, messages}. Reports rows loaded to `watch`.
+    fn search_into(&self, package: &str, table: &str, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<Value, String>;
+}
+
+/// What a long call sees of the job it runs in (ADR-2610072118): whether to stop, and where to
+/// say how far it has got.
+pub trait Watch: Send + Sync {
+    fn stopped(&self) -> bool;
+    /// Rows loaded so far.
+    fn progress(&self, rows: u64);
+}
+
+/// A call made in the foreground, by a request that waits for it: never stopped, nobody watching.
+pub struct Unwatched;
+
+impl Watch for Unwatched {
+    fn stopped(&self) -> bool {
+        false
+    }
+    fn progress(&self, _: u64) {}
+}
+
+/// Long calls as background jobs (ADR-2610072118). The web server checks permissions before
+/// `start`; a job is shown only to the package that started it, or to the admin (`package` None).
+pub trait Jobs: Send + Sync {
+    /// Starts `kind` with the request `body` on its own thread and answers {job: id} at once.
+    fn start(&self, kind: JobKind, package: &str, app: &str, body: &Value) -> Result<Value, String>;
+    /// {jobs: [...]}, newest first, without results.
+    fn list(&self, package: Option<&str>) -> Value;
+    /// One job, with its result once it is done.
+    fn get(&self, id: &str, package: Option<&str>) -> Result<Value, String>;
+    /// Stops a running job; a Splunk search is cancelled on the Splunk server too.
+    fn cancel(&self, id: &str, package: Option<&str>) -> Result<Value, String>;
 }
 
 /// The docs, the JSON Schemas and the component library, as pages.
@@ -135,5 +168,6 @@ pub struct Services {
     pub exports: Arc<dyn Exports>,
     pub builder: Arc<dyn Builder>,
     pub searches: Arc<dyn Searches>,
+    pub jobs: Arc<dyn Jobs>,
     pub pages: Arc<dyn Pages>,
 }
