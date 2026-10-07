@@ -123,15 +123,31 @@ async function answer(page, re, yes, what) {
   ok(await t.locator('#aiAsk').isHidden(), 'no Write with AI');
   ok(await lab.locator('iframe[title=diagnosis]').evaluate(el => el.offsetHeight) === 0, 'no diagnosis panel');
 
-  console.log('== with a key: Claude writes the search, and the diagnosis works');
-  r = await post('/api/ai/key', { key: 'org-key' });
-  ok(r.status === 400 && /anthropic-workspace-id/.test(r.body.error), 'a key without a workspace is refused, with the API\'s reason');
-  r = await post('/api/ai/key', { key: 'org-key', workspace: 'wrkspc_test' });
-  ok(r.status === 200 && r.body.ready && r.body.workspace === 'wrkspc_test', 'the same key with a workspace ID is accepted');
-  r = await post('/api/ai/key', { key: '', workspace: 'bad id!' });
-  ok(r.status === 400 && /workspace ID/.test(r.body.error), 'a malformed workspace ID is refused');
-  r = await post('/api/ai/key', { key: 'test-key', workspace: '' });
-  ok(r.status === 200 && r.body.ready && r.body.workspace === null, 'the key is tested and saved; an empty workspace removes it');
+  console.log('== with Claude set up (' + (process.env.PROVIDER || 'anthropic') + '): Claude writes the search, and the diagnosis works');
+  if (process.env.PROVIDER === 'bedrock') {
+    r = await post('/api/ai/provider', { provider: 'bedrock', region: 'us-east-1', auth: 'api-key', token: 'wrong-token' });
+    ok(r.status === 400 && /refused the sign-in|security token/.test(r.body.error), 'a wrong Bedrock key is refused and not saved: ' + r.body.error);
+    r = await post('/api/ai/provider', { provider: 'bedrock', region: 'us-east-1', auth: 'api-key' });
+    ok(r.status === 400 && /API key/.test(r.body.error), 'a Bedrock key is needed');
+    r = await post('/api/ai/provider', { provider: 'bedrock', region: 'Not A Region', auth: 'api-key', token: 'test-bedrock-token' });
+    ok(r.status === 400 && /region/.test(r.body.error), 'a malformed region is refused');
+    r = await post('/api/ai/provider', { provider: 'bedrock', region: 'us-east-1', auth: 'api-key', token: 'test-bedrock-token' });
+    ok(r.status === 200 && r.body.ready && r.body.provider === 'bedrock' && r.body.bedrock.settings.auth === 'api-key', 'the Bedrock key is tested and saved');
+    const st2 = await (await fetch(B + '/api/status')).json();
+    ok(!JSON.stringify(st2).includes('test-bedrock-token'), 'status never shows the Bedrock key');
+    r = await post('/api/ai/provider', { provider: 'bedrock', region: 'us-west-2', auth: 'api-key' });
+    ok(r.status === 200 && r.body.bedrock.settings.region === 'us-west-2', 'the region changes without typing the key again');
+    r = await post('/api/ai/provider', { provider: 'bedrock', region: 'us-east-1', auth: 'api-key' });
+  } else {
+    r = await post('/api/ai/key', { key: 'org-key' });
+    ok(r.status === 400 && /anthropic-workspace-id/.test(r.body.error), 'a key without a workspace is refused, with the API\'s reason');
+    r = await post('/api/ai/key', { key: 'org-key', workspace: 'wrkspc_test' });
+    ok(r.status === 200 && r.body.ready && r.body.workspace === 'wrkspc_test', 'the same key with a workspace ID is accepted');
+    r = await post('/api/ai/key', { key: '', workspace: 'bad id!' });
+    ok(r.status === 400 && /workspace ID/.test(r.body.error), 'a malformed workspace ID is refused');
+    r = await post('/api/ai/key', { key: 'test-key', workspace: '' });
+    ok(r.status === 200 && r.body.ready && r.body.workspace === null, 'the key is tested and saved; an empty workspace removes it');
+  }
   r = await post('/api/ai/sample', { package: 'splunk-table', app: 'table', prompt: 'hi' });
   ok(/^not_granted/.test(r.body.error), 'no AI before the user allows it');
   r = await post('/api/ai/sample', { package: 'usl-lab', app: 'chart', prompt: 'hi' });
@@ -149,6 +165,7 @@ async function answer(page, re, yes, what) {
   ok(await t.locator('#title').inputValue() === 'JMeter load test steps', 'and its name for the table');
   const prompts = await (await fetch(ANTHROPIC + '/prompts')).json();
   ok(prompts.length === 2 && prompts[0].model.includes('haiku'), 'two requests: a quick pick, then the search');
+  if (process.env.PROVIDER === 'bedrock') ok(prompts[0].model.startsWith('us.anthropic.') && (await (await fetch(process.env.BEDROCK + '/seen')).json()).includes('bearer'), 'the requests went through Bedrock with its model ids and the bearer key');
   ok(!JSON.stringify(prompts).includes('ann.lee@example.com') && JSON.stringify(prompts).includes('<email>'), 'email addresses never reach Claude');
   await inputs.locator('#tblName', { hasText: 'JMeter' }).waitFor({ timeout: 5000 }).catch(() => {});
   await useTable(inputs); await sleep(1500);

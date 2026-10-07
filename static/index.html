@@ -298,6 +298,12 @@
     <div class="card" id="aiCard">
       <h2>Make apps with Claude</h2>
       <p id="aiKeyState" class="muted"></p>
+      <div class="row" role="radiogroup" aria-label="Where Claude runs" style="margin-bottom:.6rem">
+        <span class="muted">Claude runs on</span>
+        <label><input type="radio" name="aiProvider" id="aiProvAnthropic" value="anthropic"> the Anthropic API</label>
+        <label><input type="radio" name="aiProvider" id="aiProvBedrock" value="bedrock"> Amazon Bedrock</label>
+      </div>
+      <div id="aiAnthropicBox">
       <div class="row" style="margin-bottom:.5rem">
         <input type="password" id="aiKey" style="flex:1;min-width:14rem" placeholder="Anthropic API key (sk-ant-…)" aria-label="Anthropic API key" autocomplete="off">
         <button id="aiKeySave" class="primary">Save key</button>
@@ -307,6 +313,29 @@
         <input type="text" id="aiWorkspace" style="flex:1;min-width:14rem" placeholder="Workspace ID (only if your key needs one)" aria-label="Anthropic workspace ID" autocomplete="off" spellcheck="false">
       </div>
       <p class="muted" style="font-size:.85rem">Get a key at console.anthropic.com → API keys. Wardian tests the key, then keeps it on this server only; it never comes back to the browser. Each app costs some API use, billed to that key. Apps with AI features (<code>claude:sample</code>) use the same key, after you allow them. Some keys belong to no one workspace; the API then asks for a workspace ID, which the Console shows under Settings → Workspaces.</p>
+      </div>
+      <div id="aiBedrockBox" class="hidden">
+        <div class="row" style="margin-bottom:.5rem">
+          <input type="text" id="bdRegion" style="width:11rem" placeholder="Region, e.g. us-east-1" aria-label="AWS region" autocomplete="off" spellcheck="false">
+          <select id="bdAuth" aria-label="How to sign in to AWS">
+            <option value="api-key">Bedrock API key</option>
+            <option value="access-keys">AWS access keys</option>
+          </select>
+        </div>
+        <div class="row" id="bdKeyRow" style="margin-bottom:.5rem">
+          <input type="password" id="bdToken" style="flex:1;min-width:14rem" placeholder="Bedrock API key" aria-label="Bedrock API key" autocomplete="off">
+        </div>
+        <div class="row hidden" id="bdAccessRow" style="margin-bottom:.5rem">
+          <input type="text" id="bdKeyId" style="flex:1;min-width:10rem" placeholder="Access key ID (AKIA…)" aria-label="AWS access key ID" autocomplete="off" spellcheck="false">
+          <input type="password" id="bdSecret" style="flex:1;min-width:10rem" placeholder="Secret access key" aria-label="AWS secret access key" autocomplete="off">
+          <input type="password" id="bdSession" style="flex:1;min-width:10rem" placeholder="Session token (optional)" aria-label="AWS session token" autocomplete="off">
+        </div>
+        <div class="row" style="margin-bottom:.5rem">
+          <button id="bdSave" class="primary">Test and use Bedrock</button>
+          <button id="bdForget" class="hidden">Forget Bedrock settings</button>
+        </div>
+        <p class="muted" style="font-size:.85rem">Claude through your AWS account, billed by AWS, in the region you choose. The model must be enabled for the account in that region (Bedrock console → Model access). Wardian tests the settings with one tiny request before it saves them, keeps them on this server only, and never sends a key or secret back to the browser. Leave a key field empty to keep the saved one.</p>
+      </div>
       <p id="aiKeyMsg"></p>
     </div>
 
@@ -449,10 +478,20 @@ function renderStatus() {
   $('aiCard').classList.toggle('hidden', !s.admin);
   $('aiBtn').classList.toggle('hidden', !s.admin);
   const ai = s.ai || {};
-  $('aiKeyState').textContent = ai.ready
-    ? `Ready. Model: ${ai.model}. The key comes from ${ai.key_from === 'environment' ? 'the ANTHROPIC_API_KEY variable' : 'these settings'}.`
-    : 'No API key yet. Claude needs one to build apps.';
-  if (ai.ready && ai.workspace) $('aiKeyState').textContent += ` Workspace: ${ai.workspace}.`;
+  const bd = ai.bedrock || {}, bds = bd.settings || null;
+  if (ai.provider === 'bedrock') {
+    $('aiKeyState').textContent = ai.ready
+      ? `Ready, on Amazon Bedrock in ${bds.region} (${bds.auth === 'api-key' ? 'Bedrock API key' : 'AWS access keys'}, from ${bds.from === 'environment' ? 'the AWS variables' : 'these settings'}). Models: ${bd.model} and ${bd.quick_model}.`
+      : 'Amazon Bedrock is chosen but not set up yet. Fill in the region and the sign-in below.';
+  } else {
+    $('aiKeyState').textContent = ai.ready
+      ? `Ready, on the Anthropic API. Model: ${ai.model}. The key comes from ${ai.key_from === 'environment' ? 'the ANTHROPIC_API_KEY variable' : 'these settings'}.`
+      : 'No API key yet. Claude needs one to build apps.';
+    if (ai.ready && ai.workspace) $('aiKeyState').textContent += ` Workspace: ${ai.workspace}.`;
+  }
+  if (!aiProviderShown) aiShowProvider(ai.provider === 'bedrock' ? 'bedrock' : 'anthropic');
+  if (bds && document.activeElement !== $('bdRegion') && !$('bdRegion').value) { $('bdRegion').value = bds.region; $('bdAuth').value = bds.auth; aiShowAuth(); }
+  $('bdForget').classList.toggle('hidden', !(bds && bds.from === 'settings'));
   if (document.activeElement !== $('aiWorkspace')) $('aiWorkspace').value = ai.workspace || '';
   $('aiKeyRemove').classList.toggle('hidden', ai.key_from !== 'settings');
   const sp = s.splunk || {};
@@ -544,7 +583,7 @@ const CAP_WORDS = {
   source: 'Reads text built into its own page',
   'claude:downloads': 'Offers files for you to save',
   splunk: 'Runs Splunk searches with this server\'s account, if you allow it',
-  'claude:sample': 'Asks Claude, billed to this server\'s Anthropic key, if you allow it',
+  'claude:sample': 'Asks Claude, billed to this server\'s Claude account (Anthropic or Amazon Bedrock), if you allow it',
 };
 
 // The "Sealed" label under an app's title. Closed, it says the app is sealed and how many
@@ -1193,11 +1232,11 @@ function openAi({ app = null, session = null, editing = null } = {}) {
   const head = el('div', { className: 'row apphead' }, el('h2', { textContent: title }),
     el('button', { textContent: 'New chat', onclick: () => { chat = null; saveChatState(); openAi({}); } }));
   const intro = el('p', { className: 'muted', textContent: editTarget
-    ? 'Say what to change. Each saved change keeps the old version in the trash, so you can go back.'
+    ? 'Say what to change. Every saved change is kept in the app\'s History, so you can go back.'
     : 'Say what the app should do, in your own words. Claude writes it, wardian checks it and tries it in this browser, and it appears in your app list.' });
   const parts = [head, intro];
   if (!(status.ai || {}).ready) {
-    parts.push(el('p', {}, 'First add an Anthropic API key. ',
+    parts.push(el('p', {}, 'First set up Claude: an Anthropic API key, or Amazon Bedrock. ',
       el('button', { className: 'link', textContent: 'Open Settings', onclick: () => $('settingsBtn').click() })));
   }
   if (!session && !editTarget) {
@@ -1467,6 +1506,54 @@ $('splunkRemove').onclick = async () => {
   catch (e) { splunkMsg(e.message, true); }
 };
 function aiKeyMsg(text, bad = false) { $('aiKeyMsg').textContent = text; $('aiKeyMsg').className = bad ? 'err' : 'muted'; }
+
+// Where Claude runs (ADR-2610071106): the Anthropic API or Amazon Bedrock.
+let aiProviderShown = null;
+function aiShowProvider(p) {
+  aiProviderShown = p;
+  $('aiProvAnthropic').checked = p === 'anthropic';
+  $('aiProvBedrock').checked = p === 'bedrock';
+  $('aiAnthropicBox').classList.toggle('hidden', p !== 'anthropic');
+  $('aiBedrockBox').classList.toggle('hidden', p !== 'bedrock');
+}
+function aiShowAuth() {
+  const keys = $('bdAuth').value === 'access-keys';
+  $('bdKeyRow').classList.toggle('hidden', keys);
+  $('bdAccessRow').classList.toggle('hidden', !keys);
+}
+$('bdAuth').onchange = aiShowAuth;
+$('aiProvAnthropic').onchange = async () => {
+  aiShowProvider('anthropic');
+  if ((status.ai || {}).provider !== 'bedrock') return;
+  try { status.ai = await api('/api/ai/provider', { provider: 'anthropic' }); renderStatus(); aiKeyMsg('Claude now runs on the Anthropic API.'); }
+  catch (e) { aiKeyMsg(e.message, true); }
+};
+$('aiProvBedrock').onchange = async () => {
+  aiShowProvider('bedrock');
+  const bd = ((status.ai || {}).bedrock || {}).settings;
+  if (!bd || (status.ai || {}).provider === 'bedrock') { aiKeyMsg(bd ? '' : 'Fill in the region and the sign-in, then press Test and use Bedrock.'); return; }
+  // Settings saved earlier: test them again and switch.
+  aiKeyMsg('Testing the saved Bedrock settings…');
+  try { status.ai = await api('/api/ai/provider', { provider: 'bedrock', region: bd.region, auth: bd.auth }); renderStatus(); aiKeyMsg('Claude now runs on Amazon Bedrock.'); }
+  catch (e) { aiKeyMsg(`Not switched: ${e.message}`, true); }
+};
+$('bdSave').onclick = async () => {
+  const body = { provider: 'bedrock', region: $('bdRegion').value.trim(), auth: $('bdAuth').value,
+    token: $('bdToken').value.trim(), access_key_id: $('bdKeyId').value.trim(),
+    secret_access_key: $('bdSecret').value.trim(), session_token: $('bdSession').value.trim() };
+  if (!body.region) return aiKeyMsg('Type the AWS region first, such as us-east-1.', true);
+  aiKeyMsg('Testing Bedrock with one tiny request…');
+  try {
+    status.ai = await api('/api/ai/provider', body);
+    for (const id of ['bdToken', 'bdKeyId', 'bdSecret', 'bdSession']) $(id).value = '';
+    renderStatus();
+    aiKeyMsg('Bedrock works. Close Settings and press Make an app.');
+  } catch (e) { aiKeyMsg(`Not saved: ${e.message}`, true); }
+};
+$('bdForget').onclick = async () => {
+  try { status.ai = await api('/api/ai/provider', { provider: 'bedrock', forget: true }); renderStatus(); aiKeyMsg('Bedrock settings removed.'); }
+  catch (e) { aiKeyMsg(e.message, true); }
+};
 $('aiKeySave').onclick = async () => {
   const key = $('aiKey').value.trim(), workspace = $('aiWorkspace').value.trim();
   const ai = status.ai || {};

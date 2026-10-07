@@ -13,5 +13,7 @@ webpki-roots = "0.26"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 jsonwebtoken = "9"
+# HMAC and SHA-256 for signing Amazon Bedrock requests (SigV4). Already in the build for TLS.
+ring = "0.17"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }

@@ -48,6 +48,7 @@ mod adapters {
     }
     pub mod secondary {
         pub mod anthropic_inference;
+        pub mod bedrock_inference;
         pub mod embedded_assets;
         pub mod google_drive;
         pub mod link_fetch;
@@ -57,9 +58,9 @@ mod adapters {
 }
 
 use adapters::primary::{cli, http};
-use adapters::secondary::{anthropic_inference, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest};
+use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest};
 use config::Settings;
-use ports::{assets::Assets, service::Services, storage::FileSystem};
+use ports::{assets::Assets, llm::BedrockAuth, service::Services, storage::FileSystem};
 use std::sync::Arc;
 use usecases::{
     catalog::{Hub, HubPorts},
@@ -68,7 +69,7 @@ use usecases::{
     history::History,
     scaffold::Scaffold,
     splunk::Splunk,
-    studio::Studio,
+    studio::{BedrockSettings, Providers, Studio},
     viewer_state::State,
 };
 
@@ -110,11 +111,29 @@ fn main() {
         cfg.local_root.clone(),
         cfg.refresh_every,
     ));
-    let llm = Arc::new(anthropic_inference::Anthropic::new(cfg.anthropic_base.as_deref().unwrap_or(anthropic_inference::DEFAULT_BASE), cfg.ai_model.clone()));
-    let studio = Studio::new(Arc::clone(&fs), llm, Arc::clone(&assets), Arc::clone(&hub), checker, &cfg.data_dir, cfg.anthropic_key.clone(), cfg.anthropic_workspace.clone());
+    let providers = Providers {
+        anthropic: Arc::new(anthropic_inference::Anthropic::new(cfg.anthropic_base.as_deref().unwrap_or(anthropic_inference::DEFAULT_BASE), cfg.ai_model.clone())),
+        bedrock: Arc::new(Bedrock::new(cfg.bedrock_base.clone(), cfg.bedrock_model.clone(), cfg.bedrock_quick_model.clone())),
+        anthropic_key: cfg.anthropic_key.clone(),
+        anthropic_workspace: cfg.anthropic_workspace.clone(),
+        provider: cfg.ai_provider.clone(),
+        bedrock_env: bedrock_from_env(&cfg),
+    };
+    let studio = Studio::new(Arc::clone(&fs), providers, Arc::clone(&assets), Arc::clone(&hub), checker, &cfg.data_dir);
     let splunk = Splunk::new(Arc::clone(&fs), Arc::new(SplunkRest), &cfg.data_dir, cfg.splunk.clone());
     hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone());
 
     let services = Services { history, state: Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir)), catalog: hub, builder: Arc::new(studio), searches: Arc::new(splunk), pages: Arc::new(Docs::new(assets)) };
     http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
+}
+
+/// Bedrock from the usual AWS variables: a region, and a Bedrock API key or access keys.
+fn bedrock_from_env(cfg: &Settings) -> Option<BedrockSettings> {
+    let region = cfg.aws_region.clone()?;
+    let auth = match (&cfg.bedrock_token, &cfg.aws_access_key_id, &cfg.aws_secret_access_key) {
+        (Some(t), _, _) => BedrockAuth::ApiKey(t.clone()),
+        (None, Some(id), Some(secret)) => BedrockAuth::AccessKeys { id: id.clone(), secret: secret.clone(), session: cfg.aws_session_token.clone().unwrap_or_default() },
+        _ => return None,
+    };
+    Some(BedrockSettings { region, auth })
 }

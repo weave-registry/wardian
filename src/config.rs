@@ -43,6 +43,17 @@ pub struct Settings {
     pub anthropic_workspace: Option<String>,
     pub anthropic_base: Option<String>,
     pub ai_model: Option<String>,
+    /// Amazon Bedrock (ADR-2610071106): WARDIAN_AI_PROVIDER, the region and sign-in from the usual
+    /// AWS variables, the models, and an address for tests.
+    pub ai_provider: Option<String>,
+    pub aws_region: Option<String>,
+    pub bedrock_token: Option<String>,
+    pub aws_access_key_id: Option<String>,
+    pub aws_secret_access_key: Option<String>,
+    pub aws_session_token: Option<String>,
+    pub bedrock_base: Option<String>,
+    pub bedrock_model: Option<String>,
+    pub bedrock_quick_model: Option<String>,
     /// The Splunk account used when Settings has none.
     pub splunk: Option<SplunkConfig>,
 }
@@ -68,6 +79,15 @@ impl Settings {
             anthropic_workspace: env("ANTHROPIC_WORKSPACE_ID"),
             anthropic_base: env("ANTHROPIC_BASE_URL"),
             ai_model: env("WARDIAN_AI_MODEL").or_else(|| env("RUSTLE_AI_MODEL")),
+            ai_provider: env("WARDIAN_AI_PROVIDER"),
+            aws_region: env("AWS_REGION").or_else(|| env("AWS_DEFAULT_REGION")),
+            bedrock_token: env("AWS_BEARER_TOKEN_BEDROCK"),
+            aws_access_key_id: env("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key: env("AWS_SECRET_ACCESS_KEY"),
+            aws_session_token: env("AWS_SESSION_TOKEN"),
+            bedrock_base: env("WARDIAN_BEDROCK_BASE_URL"),
+            bedrock_model: env("WARDIAN_BEDROCK_MODEL"),
+            bedrock_quick_model: env("WARDIAN_BEDROCK_QUICK_MODEL"),
             splunk: env("SPLUNK_URL").map(|url| SplunkConfig {
                 url,
                 token: env("SPLUNK_TOKEN").unwrap_or_default(),

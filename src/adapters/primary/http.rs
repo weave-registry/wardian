@@ -210,6 +210,7 @@ fn api_post(path: &str, body: Value, s: &Services) -> Result<Value, String> {
         }
         "/api/grants" => hub.set_grant(&body),
         "/api/ai/key" => studio.set_key(body["key"].as_str().unwrap_or(""), body["workspace"].as_str()),
+        "/api/ai/provider" => studio.set_provider(&body),
         "/api/ai/send" => studio.send(&body),
         "/api/ai/sample" => {
             // claude:sample for a suite app, billed to the saved Anthropic key. Same checks as splunk.

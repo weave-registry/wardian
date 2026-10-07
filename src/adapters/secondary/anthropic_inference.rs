@@ -20,18 +20,17 @@ impl Anthropic {
         Anthropic { base: base.trim_end_matches('/').to_string(), model: model.unwrap_or_else(|| DEFAULT_MODEL.into()) }
     }
 
-    fn request(&self, auth: &LlmAuth, method: &str, path: &str) -> ureq::Request {
+    fn request(&self, auth: &LlmAuth, method: &str, path: &str) -> Result<ureq::Request, LlmError> {
+        let LlmAuth::Anthropic { key, workspace } = auth else {
+            return Err(LlmError::Transport("these are not Anthropic API credentials".into()));
+        };
         let req = ureq::AgentBuilder::new()
             .timeout(Duration::from_secs(600))
             .build()
             .request(method, &format!("{}{path}", self.base))
-            .set("x-api-key", &auth.key)
+            .set("x-api-key", key)
             .set("anthropic-version", "2023-06-01");
-        if auth.workspace.is_empty() {
-            req
-        } else {
-            req.set("anthropic-workspace-id", &auth.workspace)
-        }
+        Ok(if workspace.is_empty() { req } else { req.set("anthropic-workspace-id", workspace) })
     }
 }
 
@@ -54,11 +53,11 @@ impl Llm for Anthropic {
     }
 
     fn messages(&self, auth: &LlmAuth, body: &Value) -> Result<Value, LlmError> {
-        let resp = self.request(auth, "POST", "/v1/messages").send_json(body.clone()).map_err(failure)?;
+        let resp = self.request(auth, "POST", "/v1/messages")?.send_json(body.clone()).map_err(failure)?;
         resp.into_json().map_err(|e| LlmError::Unreadable(e.to_string()))
     }
 
     fn test_key(&self, auth: &LlmAuth) -> Result<(), LlmError> {
-        self.request(auth, "GET", &format!("/v1/models/{}", self.model)).call().map(drop).map_err(failure)
+        self.request(auth, "GET", &format!("/v1/models/{}", self.model))?.call().map(drop).map_err(failure)
     }
 }

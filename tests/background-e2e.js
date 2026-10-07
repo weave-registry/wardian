@@ -14,8 +14,11 @@ async function until(fn, ms, what) {
 }
 
 (async () => {
-  const k = await post('/api/ai/key', { key: 'test-key' });
-  ok(k.ready, 'the key is saved');
+  // PROVIDER=bedrock runs the same build through the fake Bedrock (ADR-2610071106).
+  const k = process.env.PROVIDER === 'bedrock'
+    ? await post('/api/ai/provider', { provider: 'bedrock', region: 'us-east-1', auth: 'access-keys', access_key_id: 'AKIDTEST', secret_access_key: 'test-secret' })
+    : await post('/api/ai/key', { key: 'test-key' });
+  ok(k.ready && k.provider === (process.env.PROVIDER || 'anthropic'), 'Claude is set up: ' + (process.env.PROVIDER || 'anthropic'));
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const a = await context.newPage();
@@ -90,6 +93,10 @@ async function until(fn, ms, what) {
   ok(/boom: the first version is broken/.test(await (await fetch(B + '/apps/bg-test/apps/main/app.js')).text()), 'and the first app.js is back');
   ok(!nodefs.existsSync(SRC + '/bg-test') && nodefs.readdirSync(SRC).join() === 'adder', './apps is still untouched');
 
+  if (process.env.PROVIDER === 'bedrock') {
+    const seen = await (await fetch(process.env.BEDROCK + '/seen')).json();
+    ok(seen.length >= 6 && seen.every(x => x === 'sigv4'), 'every Bedrock request was signed with SigV4 and the signature checked: ' + seen.length + ' requests');
+  }
   ok(errors.length === 0, 'no page errors ' + JSON.stringify(errors));
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);

@@ -102,7 +102,7 @@ Capabilities:
 | `worker` | `ctx.spawn(code)`, a Web Worker inside the app's frame |
 | `source` | `ctx.source(id)`, the text of an inlined script, e.g. `"engine-src"` |
 | `claude:downloads` | `ctx.cap("downloads")` → `save({filename, data})` saves a file |
-| `claude:sample` | `ctx.cap("sample")` → `sample(prompt, opts)` and `sample.json(prompt, opts)`, with the Anthropic key from Settings, after the user allows it; `null` when no key is saved |
+| `claude:sample` | `ctx.cap("sample")` → `sample(prompt, opts)` and `sample.json(prompt, opts)`, through the Claude provider set up in Settings (Anthropic API or Amazon Bedrock), after the user allows it; `null` when none is set up |
 | `splunk` | `ctx.cap("splunk")` → `status()`, `search({search, earliest, latest})`; see [Splunk](#splunk) |
 
 Debug in the browser console on the suite page: `Kernel.apps()`, `Kernel.trace()`, `Kernel.faults()`.
@@ -200,6 +200,16 @@ app, wardian checks it, and the app appears in your list. To change an app later
 First add an Anthropic API key in **Settings → Make apps with Claude**. Wardian tests the key, then keeps it
 on the server. The key never goes back to the browser. Each app uses some API credit on that key.
 If your key is not scoped to one workspace, also give the workspace ID (Console → Settings → Workspaces).
+
+**Claude on Amazon Bedrock.** If you reach Claude through AWS, choose **Amazon Bedrock** in the same
+card (ADR-2610071106). Give the region and either a Bedrock API key or AWS access keys (with a session
+token for temporary credentials). Wardian tests them with one tiny request to the quick model before
+saving them to `data/bedrock.json`, private like the other keys, and never sends them back to the
+browser. The models must be enabled for your account in that region (Bedrock console → Model
+access); otherwise Wardian says so. By default it uses the US inference profiles of Claude Sonnet 4.5
+(builds apps) and Claude Haiku 4.5 (quick requests); set `WARDIAN_BEDROCK_MODEL` and
+`WARDIAN_BEDROCK_QUICK_MODEL` for another geography (`eu.`, `apac.`, `global.`) or a newer model.
+AWS profiles, SSO and instance roles are not read; give keys.
 
 You do not have to wait on the chat. Claude works on the server, so you can open other apps, or
 close the tab, while it builds. The **Make an app** button shows how it is going: *working*,
@@ -320,8 +330,14 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 | `SPLUNK_INSECURE_TLS` | off | `1` accepts any certificate, such as Splunk's self-signed default |
 | `SPLUNK_CA_FILE` | none | PEM file of extra certificate authorities to trust for Splunk |
 | `WARDIAN_AI_MODEL` | `claude-opus-5-5` | The Claude model that writes apps |
+| `WARDIAN_AI_PROVIDER` | `anthropic` | `bedrock` to use Amazon Bedrock, used only if none is chosen in Settings |
+| `AWS_REGION` | none | Bedrock region (also `AWS_DEFAULT_REGION`) |
+| `AWS_BEARER_TOKEN_BEDROCK` | none | Bedrock API key; or `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` |
+| `WARDIAN_BEDROCK_MODEL` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` | The Bedrock model that writes apps |
+| `WARDIAN_BEDROCK_QUICK_MODEL` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | The Bedrock model for quick requests |
 | `GDRIVE_API_BASE` | Google | For tests only |
 | `ANTHROPIC_BASE_URL` | Anthropic | For tests only |
+| `WARDIAN_BEDROCK_BASE_URL` | the region's endpoint | For tests only |
 
 ## License
 

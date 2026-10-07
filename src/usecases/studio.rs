@@ -18,7 +18,7 @@ use crate::domain::package::{random_u32, safe_rel, unix_now, SKIP_DIRS};
 use crate::domain::studio::{free_name, json_in, size_text, Session, EMPTY_WASM};
 use crate::ports::{
     assets::Assets,
-    llm::{Llm, LlmAuth, LlmError, Tier},
+    llm::{BedrockAuth, Llm, LlmAuth, LlmError, Tier},
     service::Builder,
     storage::FileSystem,
 };
@@ -51,7 +51,7 @@ You work on the files of ONE package through tools: list_files, read_file, write
 Hard limits:
 - You cannot compile Rust or WebAssembly, run npm, or write binary files. Write the app in plain JavaScript, HTML and CSS, with no build step.
 - Use no external URLs: no CDN scripts, no remote fonts or images, no fetch to other sites. Put everything in the package. Draw graphics with SVG or canvas.
-- `claude:sample` (AI inside the app) works in Wardian only when an Anthropic key is saved, and only after the user allows it. `ctx.cap('sample')` can resolve to null: build the app so it still works without AI.
+- `claude:sample` (AI inside the app) works in Wardian only when Claude is set up in Settings (Anthropic API or Amazon Bedrock), and only after the user allows it. `ctx.cap('sample')` can resolve to null: build the app so it still works without AI.
 
 Choose the kind:
 - **page** (most apps): app.json with "format": 1, "title", "description" and "page": "index.html", plus index.html and its .js/.css files. Do NOT write app.wasm: Wardian adds an empty one, which marks the folder as an app. The page runs sandboxed on an opaque origin: localStorage, sessionStorage, IndexedDB and cookies throw an error there. Do not use them. To keep data, offer download and upload of a file.
@@ -188,8 +188,8 @@ impl Api {
                     thread::sleep(Duration::from_secs(wait));
                     wait *= 2;
                 }
-                Err(LlmError::Status(429, _)) => return Err("rate_limited: the Anthropic API rate limit was reached".into()),
-                Err(LlmError::Status(401, _)) => return Err("not_granted: the Anthropic API key was refused; check Settings".into()),
+                Err(LlmError::Status(429, _)) => return Err("rate_limited: Claude's rate limit was reached".into()),
+                Err(LlmError::Status(401, _)) => return Err("not_granted: Claude refused the saved credentials; check Settings".into()),
                 Err(e) => return Err(format!("error: {}", api_error(e))),
             }
         };
@@ -205,9 +205,102 @@ impl Api {
     }
 }
 
+/// Where Claude is reached (ADR-2610071106).
+#[derive(Clone, Copy, PartialEq)]
+enum Provider {
+    Anthropic,
+    Bedrock,
+}
+
+/// Amazon Bedrock: the region and how to sign in.
+#[derive(Clone)]
+pub struct BedrockSettings {
+    pub region: String,
+    pub auth: BedrockAuth,
+}
+
+impl BedrockSettings {
+    fn auth_kind(&self) -> &'static str {
+        match self.auth {
+            BedrockAuth::ApiKey(_) => "api-key",
+            BedrockAuth::AccessKeys { .. } => "access-keys",
+        }
+    }
+
+    fn to_json(&self) -> Value {
+        match &self.auth {
+            BedrockAuth::ApiKey(t) => json!({ "region": self.region, "auth": "api-key", "token": t }),
+            BedrockAuth::AccessKeys { id, secret, session } => {
+                json!({ "region": self.region, "auth": "access-keys", "access_key_id": id, "secret_access_key": secret, "session_token": session })
+            }
+        }
+    }
+
+    /// From the settings page or bedrock.json. Fields left empty keep the values of `keep`, so the
+    /// browser never needs the saved secrets to change the region.
+    fn from_json(v: &Value, keep: Option<&BedrockSettings>) -> Result<BedrockSettings, String> {
+        let s = |k: &str| v[k].as_str().unwrap_or("").trim().to_string();
+        let region = s("region");
+        if region.is_empty() || region.len() > 40 || !region.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+            return Err("give the AWS region, such as us-east-1".into());
+        }
+        let field = |name: &str, kept: Option<&String>| -> Result<String, String> {
+            let typed = s(name);
+            let val = if typed.is_empty() { kept.cloned().unwrap_or_default() } else { typed };
+            if val.len() > 4096 || !val.chars().all(|c| c.is_ascii_graphic()) {
+                return Err(format!("{} does not look right", name.replace('_', " ")));
+            }
+            Ok(val)
+        };
+        let auth = match v["auth"].as_str().unwrap_or("api-key") {
+            "api-key" => {
+                let kept = keep.and_then(|k| if let BedrockAuth::ApiKey(t) = &k.auth { Some(t) } else { None });
+                let token = field("token", kept)?;
+                if token.is_empty() {
+                    return Err("paste the Bedrock API key".into());
+                }
+                BedrockAuth::ApiKey(token)
+            }
+            "access-keys" => {
+                let (kid, ksecret, ksession) = match keep.map(|k| &k.auth) {
+                    Some(BedrockAuth::AccessKeys { id, secret, session }) => (Some(id), Some(secret), Some(session)),
+                    _ => (None, None, None),
+                };
+                let id = field("access_key_id", kid)?;
+                let secret = field("secret_access_key", ksecret)?;
+                if id.is_empty() || secret.is_empty() {
+                    return Err("give the access key ID and the secret access key".into());
+                }
+                BedrockAuth::AccessKeys { id, secret, session: field("session_token", ksession)? }
+            }
+            other => return Err(format!("unknown sign-in \"{other}\": use api-key or access-keys")),
+        };
+        Ok(BedrockSettings { region, auth })
+    }
+}
+
+/// The two providers, and what the environment says about them, from the composition root.
+pub struct Providers {
+    pub anthropic: Arc<dyn Llm>,
+    pub bedrock: Arc<dyn Llm>,
+    /// ANTHROPIC_API_KEY and ANTHROPIC_WORKSPACE_ID, used when Settings has none.
+    pub anthropic_key: Option<String>,
+    pub anthropic_workspace: Option<String>,
+    /// WARDIAN_AI_PROVIDER, used when Settings has not chosen.
+    pub provider: Option<String>,
+    /// AWS_REGION with AWS_BEARER_TOKEN_BEDROCK or the AWS access keys, used when Settings has none.
+    pub bedrock_env: Option<BedrockSettings>,
+}
+
 pub struct Studio {
     fs: Arc<dyn FileSystem>,
     llm: Arc<dyn Llm>,
+    bedrock_llm: Arc<dyn Llm>,
+    provider_path: PathBuf,
+    provider: Mutex<Provider>,
+    bedrock_path: PathBuf,
+    bedrock: Mutex<Option<(BedrockSettings, &'static str)>>,
+    env_bedrock: Option<BedrockSettings>,
     assets: Arc<dyn Assets>,
     hub: Arc<Hub>,
     checker: Arc<Checker>,
@@ -229,17 +322,21 @@ struct Workshop<'a> {
 }
 
 impl Studio {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        fs: Arc<dyn FileSystem>,
-        llm: Arc<dyn Llm>,
-        assets: Arc<dyn Assets>,
-        hub: Arc<Hub>,
-        checker: Arc<Checker>,
-        data_dir: &Path,
-        env_key: Option<String>,
-        env_workspace: Option<String>,
-    ) -> Studio {
+    pub fn new(fs: Arc<dyn FileSystem>, providers: Providers, assets: Arc<dyn Assets>, hub: Arc<Hub>, checker: Arc<Checker>, data_dir: &Path) -> Studio {
+        let Providers { anthropic: llm, bedrock: bedrock_llm, anthropic_key: env_key, anthropic_workspace: env_workspace, provider: env_provider, bedrock_env: env_bedrock } = providers;
+        // Settings saved in the data folder win over the environment, as for the Anthropic key.
+        let provider_path = data_dir.join("ai-provider");
+        let chosen = fs.read(&provider_path).map(|b| String::from_utf8_lossy(&b).trim().to_string()).or(env_provider);
+        let provider = if chosen.as_deref() == Some("bedrock") { Provider::Bedrock } else { Provider::Anthropic };
+        let bedrock_path = data_dir.join("bedrock.json");
+        let saved_bedrock = fs
+            .read(&bedrock_path)
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|v| BedrockSettings::from_json(&v, None).ok());
+        let bedrock = match saved_bedrock {
+            Some(b) => Some((b, "settings")),
+            None => env_bedrock.clone().map(|b| (b, "environment")),
+        };
         let key_path = data_dir.join("anthropic-key");
         let saved = fs.read(&key_path).map(|b| String::from_utf8_lossy(&b).trim().to_string()).filter(|k| !k.is_empty());
         let key = match saved {
@@ -256,6 +353,12 @@ impl Studio {
         Studio {
             fs,
             llm,
+            bedrock_llm,
+            provider_path,
+            provider: Mutex::new(provider),
+            bedrock_path,
+            bedrock: Mutex::new(bedrock),
+            env_bedrock,
             assets,
             hub,
             checker,
@@ -268,21 +371,65 @@ impl Studio {
         }
     }
 
+    /// The chosen provider, with its credentials.
     fn api(&self) -> Result<Api, String> {
+        if *self.provider.lock().unwrap() == Provider::Bedrock {
+            let b = self.bedrock.lock().unwrap().as_ref().map(|(b, _)| b.clone());
+            let b = b.ok_or("Amazon Bedrock is not set up yet: Settings → Make apps with Claude")?;
+            return Ok(Api { llm: Arc::clone(&self.bedrock_llm), auth: LlmAuth::Bedrock { region: b.region, auth: b.auth }, assets: Arc::clone(&self.assets) });
+        }
         let key = self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone());
         let key = key.ok_or("no Anthropic API key yet: add one in Settings → Make apps with Claude")?;
-        Ok(self.api_with(LlmAuth { key, workspace: self.workspace.lock().unwrap().clone() }))
+        let auth = LlmAuth::Anthropic { key, workspace: self.workspace.lock().unwrap().clone() };
+        Ok(Api { llm: Arc::clone(&self.llm), auth, assets: Arc::clone(&self.assets) })
     }
 
-    fn api_with(&self, auth: LlmAuth) -> Api {
-        Api { llm: Arc::clone(&self.llm), auth, assets: Arc::clone(&self.assets) }
-    }
-
+    /// What Settings shows. Never a key, token or secret.
     pub fn status(&self) -> Value {
+        let provider = *self.provider.lock().unwrap();
         let key = self.key.lock().unwrap();
         let ws = self.workspace.lock().unwrap();
-        json!({ "ready": key.is_some(), "key_from": key.as_ref().map(|(_, from)| *from), "model": self.llm.model(Tier::Main),
-                "workspace": if ws.is_empty() { Value::Null } else { json!(*ws) } })
+        let bedrock = self.bedrock.lock().unwrap();
+        let bedrock_info = bedrock.as_ref().map(|(b, from)| json!({ "region": b.region, "auth": b.auth_kind(), "from": from }));
+        let (ready, model) = match provider {
+            Provider::Anthropic => (key.is_some(), self.llm.model(Tier::Main)),
+            Provider::Bedrock => (bedrock.is_some(), self.bedrock_llm.model(Tier::Main)),
+        };
+        json!({ "ready": ready, "provider": if provider == Provider::Bedrock { "bedrock" } else { "anthropic" }, "model": model,
+                "key_from": key.as_ref().map(|(_, from)| *from),
+                "workspace": if ws.is_empty() { Value::Null } else { json!(*ws) },
+                "anthropic": { "ready": key.is_some(), "model": self.llm.model(Tier::Main), "quick_model": self.llm.model(Tier::Quick) },
+                "bedrock": { "ready": bedrock.is_some(), "settings": bedrock_info, "model": self.bedrock_llm.model(Tier::Main), "quick_model": self.bedrock_llm.model(Tier::Quick) } })
+    }
+
+    /// Chooses the provider (ADR-2610071106). For Bedrock, tests the settings before saving them,
+    /// so a bad setting never replaces a good one. Fields left empty keep the saved values.
+    /// `{provider: "anthropic"}` switches back; `{provider: "bedrock", forget: true}` removes the
+    /// saved Bedrock settings.
+    pub fn set_provider(&self, body: &Value) -> Result<Value, String> {
+        match body["provider"].as_str() {
+            Some("anthropic") => {
+                self.fs.write_private(&self.provider_path, b"anthropic").map_err(|e| format!("saving the choice: {e}"))?;
+                *self.provider.lock().unwrap() = Provider::Anthropic;
+            }
+            Some("bedrock") if body["forget"].as_bool() == Some(true) => {
+                self.fs.remove_file(&self.bedrock_path);
+                *self.bedrock.lock().unwrap() = self.env_bedrock.clone().map(|b| (b, "environment"));
+            }
+            Some("bedrock") => {
+                let keep = self.bedrock.lock().unwrap().as_ref().map(|(b, _)| b.clone());
+                let settings = BedrockSettings::from_json(body, keep.as_ref())?;
+                let auth = LlmAuth::Bedrock { region: settings.region.clone(), auth: settings.auth.clone() };
+                self.bedrock_llm.test_key(&auth).map_err(api_error)?;
+                let bytes = serde_json::to_vec_pretty(&settings.to_json()).map_err(|e| e.to_string())?;
+                self.fs.write_private(&self.bedrock_path, &bytes).map_err(|e| format!("saving the Bedrock settings: {e}"))?;
+                self.fs.write_private(&self.provider_path, b"bedrock").map_err(|e| format!("saving the choice: {e}"))?;
+                *self.bedrock.lock().unwrap() = Some((settings, "settings"));
+                *self.provider.lock().unwrap() = Provider::Bedrock;
+            }
+            _ => return Err("provider must be \"anthropic\" or \"bedrock\"".into()),
+        }
+        Ok(self.status())
     }
 
     /// Answers one `claude:sample` request from an app. `body`: {prompt, json, tier}.
@@ -335,7 +482,7 @@ impl Studio {
             self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone()).ok_or("paste the API key too")?
         };
         let ws = workspace.clone().unwrap_or_else(|| self.workspace.lock().unwrap().clone());
-        self.llm.test_key(&LlmAuth { key: key.clone(), workspace: ws.clone() }).map_err(api_error)?;
+        self.llm.test_key(&LlmAuth::Anthropic { key: key.clone(), workspace: ws.clone() }).map_err(api_error)?;
         if typed {
             self.fs.write_private(&self.key_path, key.as_bytes()).map_err(|e| format!("saving the key: {e}"))?;
             *self.key.lock().unwrap() = Some((key, "settings"));
@@ -780,6 +927,9 @@ impl Builder for Studio {
     }
     fn set_key(&self, key: &str, workspace: Option<&str>) -> Result<Value, String> {
         Studio::set_key(self, key, workspace)
+    }
+    fn set_provider(&self, body: &Value) -> Result<Value, String> {
+        Studio::set_provider(self, body)
     }
     fn send(&self, body: &Value) -> Result<Value, String> {
         Studio::send(self, body)

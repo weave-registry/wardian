@@ -109,7 +109,7 @@ const WardianChannels = (() => {
   const USE_WORDS = { splunk: 'Splunk searches', ai: 'Claude AI requests' };
   const USE_HINT = {
     splunk: "Wardian runs them with this server's Splunk account, and the app sees the results.",
-    ai: "Wardian sends what the app writes to Claude, billed to this server's Anthropic key.",
+    ai: "Wardian sends what the app writes to Claude, billed to this server's Claude account (Anthropic or Amazon Bedrock).",
   };
 
   /** Shows the permission question in a bar at the top of `container`. The bar stays in view

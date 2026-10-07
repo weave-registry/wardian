@@ -1,4 +1,5 @@
-//! Claude, through the Anthropic API. The adapter knows the model names; callers ask for a tier.
+//! Claude, through the Anthropic API or Amazon Bedrock (ADR-2610071106). The adapters know the
+//! model names and the wire formats; callers send a Messages body and ask for a tier.
 
 use serde_json::Value;
 
@@ -10,11 +11,21 @@ pub enum Tier {
     Quick,
 }
 
-/// The key, and the workspace for keys that are not scoped to one.
+/// How Bedrock is signed in to.
 #[derive(Clone)]
-pub struct LlmAuth {
-    pub key: String,
-    pub workspace: String,
+pub enum BedrockAuth {
+    /// A Bedrock API key, sent as a bearer token.
+    ApiKey(String),
+    /// AWS access keys, signed with Signature Version 4; `session` is empty without a session token.
+    AccessKeys { id: String, secret: String, session: String },
+}
+
+/// The credentials of one provider.
+#[derive(Clone)]
+pub enum LlmAuth {
+    /// The key, and the workspace for keys that are not scoped to one.
+    Anthropic { key: String, workspace: String },
+    Bedrock { region: String, auth: BedrockAuth },
 }
 
 pub enum LlmError {
@@ -28,8 +39,8 @@ pub enum LlmError {
 
 pub trait Llm: Send + Sync {
     fn model(&self, tier: Tier) -> String;
-    /// One request to /v1/messages; `body` is complete, model included.
+    /// One Messages request; `body` is complete, model included. Each adapter maps it to its API.
     fn messages(&self, auth: &LlmAuth, body: &Value) -> Result<Value, LlmError>;
-    /// Asks for the main model's details: a cheap way to test a key.
+    /// A cheap request that proves the credentials work.
     fn test_key(&self, auth: &LlmAuth) -> Result<(), LlmError>;
 }

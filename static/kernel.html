@@ -139,8 +139,9 @@
           .catch(e => { throw new Error(String(e.message).replace(/^not_granted: you did not allow this app to use splunk$/, 'you did not allow this app to run Splunk searches')); });
       },
     },
-    // claude:sample: Claude, through the Anthropic key saved in Settings. Offered only when a key is
-    // saved; the user allows each package once (asked as "ai"), and the server checks that again.
+    // claude:sample: Claude, through the provider set up in Settings (Anthropic API or Amazon
+    // Bedrock). Offered only when one is ready; the user allows each package once (asked as "ai"),
+    // and the server checks that again.
     // Errors start with a code ("rate_limited: …") that the frame turns into e.code.
     sample: {
       async text(args, app){ return hostPost('/api/ai/sample', 'ai', app, {prompt: (args || {}).prompt, tier: (args || {}).tier, json: false}); },

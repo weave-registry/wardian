@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end test of the splunk and claude:sample capabilities: a fake Splunk, a fake Anthropic API,
 # Wardian, the Splunk table app and the USL lab in a real browser, including the permission questions.
+# PROVIDER=bedrock runs Claude through tests/fixtures/fake-bedrock.py instead (ADR-2610071106).
 # Needs: python3, Node with the playwright package (npm i -g playwright) and Google Chrome.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,9 +19,15 @@ PIDS+=($!)
 APORT=${ANTHROPIC_PORT:-18190}
 python3 tests/fixtures/fake-anthropic.py "$APORT" &
 PIDS+=($!)
+# PROVIDER=bedrock: the same answers through a fake Bedrock in front of the fake Anthropic API.
+BPORT=${BEDROCK_PORT:-18192}
+if [ "${PROVIDER:-anthropic}" = bedrock ]; then
+  python3 tests/fixtures/fake-bedrock.py "$BPORT" "http://127.0.0.1:$APORT" &
+  PIDS+=($!)
+fi
 PORT=${PORT:-8767}
-ANTHROPIC_BASE_URL="http://127.0.0.1:$APORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" ./target/release/wardian "$TMP/apps" >"$TMP/server.log" 2>&1 &
+WARDIAN_BEDROCK_BASE_URL="http://127.0.0.1:$BPORT" ANTHROPIC_BASE_URL="http://127.0.0.1:$APORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" ./target/release/wardian "$TMP/apps" >"$TMP/server.log" 2>&1 &
 PIDS+=($!)
 for _ in $(seq 50); do curl -sf "http://127.0.0.1:$PORT/api/status" >/dev/null && break; sleep 0.1; done
 
-BASE="http://127.0.0.1:$PORT" SPLUNK="http://127.0.0.1:$SPORT" ANTHROPIC="http://127.0.0.1:$APORT" NODE_PATH="${NODE_PATH:-$(npm root -g)}" node tests/splunk-e2e.js
+PROVIDER="${PROVIDER:-anthropic}" BEDROCK="http://127.0.0.1:$BPORT" BASE="http://127.0.0.1:$PORT" SPLUNK="http://127.0.0.1:$SPORT" ANTHROPIC="http://127.0.0.1:$APORT" NODE_PATH="${NODE_PATH:-$(npm root -g)}" node tests/splunk-e2e.js

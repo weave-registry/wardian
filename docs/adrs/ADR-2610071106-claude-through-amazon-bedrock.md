@@ -36,8 +36,9 @@ composition root and the settings decide where it goes.
    `Bedrock { region, auth }`, where `auth` is `ApiKey(token)` or `AccessKeys { id, secret, session }`.
    `Llm::messages` keeps taking a complete Messages body; each adapter maps it to its wire format.
 2. **Adapter.** `adapters/secondary/bedrock_inference.rs`: moves the model from the body to the URL,
-   adds `anthropic_version`, signs the request (bearer token, or SigV4 with the `hmac` and `sha2`
-   crates — no AWS SDK, so Wardian stays one small binary), and maps Bedrock's errors onto
+   adds `anthropic_version`, signs the request (bearer token, or SigV4 with `ring`'s HMAC-SHA256
+   and SHA-256, which Wardian already carries for TLS — no AWS SDK and no new crate, so Wardian stays
+   one small binary), and maps Bedrock's errors onto
    `LlmError` so the use case's retries and messages keep working (403 says the model has not been
    enabled for the account in that region). It owns the default Bedrock model ids for both tiers;
    `WARDIAN_BEDROCK_MODEL` and `WARDIAN_BEDROCK_QUICK_MODEL` override them.
@@ -84,3 +85,17 @@ and once against the fake Bedrock, and the SigV4 unit tests against AWS's signin
 - ADR-2610071055 (viewer state on the server): how settings and secrets are kept
 - Amazon Bedrock: InvokeModel, and Anthropic Claude Messages API on Bedrock
 - AWS Signature Version 4 signing process
+
+## Evidence
+
+`bash -c 'cargo test --release --offline 2>&1 | grep -E "bedrock_inference|test result: ok. [1-9]"; hexa analyze . --grade A 2>&1 | grep -E "Architecture grade|coverage"'` at ca4abb0 with uncommitted changes on 2026-10-07 16:24 UTC:
+
+```text
+test adapters::secondary::bedrock_inference::tests::dates_and_hosts ... ok
+test adapters::secondary::bedrock_inference::tests::model_ids_are_encoded_in_the_path_and_twice_in_the_signature ... ok
+test adapters::secondary::bedrock_inference::tests::signing_key_matches_aws_example ... ok
+test adapters::secondary::bedrock_inference::tests::signature_matches_aws_iam_example ... ok
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+  ⬡ Architecture grade: A+ — score 100/100
+    coverage 40/40 files in a layer
+```
