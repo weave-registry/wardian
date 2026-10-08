@@ -204,6 +204,12 @@ ask the server first before it sends those across sites, and Wardian never says 
 
 - Every secret is read and written through one port, `Secrets` (`src/ports/secrets.rs`,
   ADR-2610081500), never directly.
+- Every saved secret is sealed with AES-256-GCM under a master key kept outside the data folder:
+  in a key file in the user's folder, `~/.config/wardian/master.key`, or the place
+  `WARDIAN_MASTER_KEY` or `WARDIAN_MASTER_KEY_FILE` names (`src/adapters/secondary/sealed_secrets.rs`, ADR-2610081501). The
+  file's name is sealed in too, so a sealed secret copied over another does not open. A copy of the
+  data folder alone holds no readable secret; the test
+  `sealed_secrets_on_disk_hold_no_secret_and_need_their_master_key` checks every file.
 - Keys, passwords and tokens are saved in the data folder readable by their owner only (mode `600`):
   `anthropic-key`, `anthropic-workspace`, `bedrock.json`, `service-account.json`, `splunk.json`,
   `admin-token`. So are `config.json`, `grants.json`, `agent.json`, `usage.json`, `key-checks.json`,

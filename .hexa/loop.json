@@ -45,11 +45,18 @@
     },
     "888a9f57-6c94-47f3-9e58-c657d560d6ae": {
       "adr": "ADR-2610081500",
-      "gate": "env CARGO_TARGET_DIR=target/verify cargo test --release keys_ && env CARGO_TARGET_DIR=target/verify cargo test --release agent_ && env CARGO_TARGET_DIR=target/verify cargo test --release usage_ && hexa analyze . --grade A",
+      "gate": "env CARGO_TARGET_DIR=target/verify cargo test --release && hexa analyze . --grade A",
       "pid": 48741,
       "pid_start": null,
-      "stage": "build",
-      "updated": "2026-10-08T17:30:39.867746+00:00"
+      "running": {
+        "message": "still 1 bug to fix, one at a time, each under the gate",
+        "phase": "fix",
+        "started": "2026-10-08T19:21:41.387449+00:00",
+        "updated": "2026-10-08T19:24:12.947432+00:00",
+        "verb": "harden"
+      },
+      "stage": "harden",
+      "updated": "2026-10-08T19:24:12.948+00:00"
     }
   }
 }

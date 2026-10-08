@@ -366,20 +366,21 @@ mod tests {
         db.query("a", slow, &[]).unwrap();
         let alone = t.elapsed();
         assert!(alone > Duration::from_millis(100), "the slow statement is too quick to measure: {alone:?}");
-        let quick_while_slow = |package: &'static str| {
+        // Which finished first, the slow statement or a quick one sent while it runs. The order, not
+        // a duration, so a busy machine cannot change the answer.
+        let quick_finishes_first = |package: &'static str| {
             let busy = Arc::clone(&db);
-            let worker = std::thread::spawn(move || busy.query("a", slow, &[]).unwrap());
+            let worker = std::thread::spawn(move || {
+                busy.query("a", slow, &[]).unwrap();
+                Instant::now()
+            });
             std::thread::sleep(alone / 5);
-            let t = Instant::now();
             db.query(package, "SELECT 1", &[]).unwrap();
-            let waited = t.elapsed();
-            worker.join().unwrap();
-            waited
+            let quick_done = Instant::now();
+            quick_done < worker.join().unwrap()
         };
-        let same = quick_while_slow("a");
-        assert!(same > alone / 2, "a statement of the same package waits for the running one: {same:?} of {alone:?}");
-        let other = quick_while_slow("b");
-        assert!(other < alone / 4, "another package's statement does not wait: {other:?} of {alone:?}");
+        assert!(!quick_finishes_first("a"), "a statement of the same package waits for the running one");
+        assert!(quick_finishes_first("b"), "another package's statement does not wait");
         let _ = std::fs::remove_dir_all(dir);
     }
 

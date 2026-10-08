@@ -256,6 +256,11 @@ pub struct Settings {
     pub bedrock_quick_model: Option<String>,
     /// The Splunk account used when Settings has none.
     pub splunk: Option<SplunkConfig>,
+    /// Where the master key that seals secrets is kept (ADR-2610081501): WARDIAN_MASTER_KEY,
+    /// WARDIAN_MASTER_KEY_FILE, or else the key file in the user's folder.
+    pub master_key: Option<String>,
+    pub master_key_file: Option<PathBuf>,
+    pub user_key_file: Option<PathBuf>,
 }
 
 impl Settings {
@@ -298,6 +303,12 @@ impl Settings {
                 insecure_tls: env("SPLUNK_INSECURE_TLS").is_some_and(|v| v == "1" || v == "true"),
                 ca_file: env("SPLUNK_CA_FILE").unwrap_or_default(),
             }),
+            master_key: env("WARDIAN_MASTER_KEY"),
+            master_key_file: env("WARDIAN_MASTER_KEY_FILE").map(PathBuf::from),
+            user_key_file: env("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".config")))
+                .map(|d| d.join("wardian").join("master.key")),
         }
     }
 }

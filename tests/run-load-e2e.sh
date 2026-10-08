@@ -5,6 +5,7 @@
 # LOADS=n changes the number of browser loads; SKIP_BROWSER=1 or SKIP_RAW=1 runs one half.
 set -euo pipefail
 export WARDIAN_NO_OPEN=1   # never open a browser tab from a test (ADR-2610080930)
+export WARDIAN_MASTER_KEY=0202020202020202020202020202020202020202020202020202020202020202   # seal with a test key, never the user's key file (ADR-2610081501)
 cd "$(dirname "$0")/.."
 cargo build --release -q
 BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_DIR

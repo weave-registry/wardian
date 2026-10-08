@@ -648,11 +648,14 @@ impl crate::ports::service::Builder for NoBuilder {
     fn usage(&self) -> Value { Value::Null }
 }
 
-/// Secrets as the server keeps them, over the real disk, with their tests recorded in `dir`.
+/// Secrets as the server keeps them, sealed over the real disk, with their tests recorded in `dir`.
 fn key_stores(dir: &Path) -> (Arc<dyn crate::ports::secrets::Secrets>, Arc<crate::usecases::keys::KeyChecks>) {
-    use crate::adapters::secondary::plain_secrets::PlainSecrets;
-    (Arc::new(PlainSecrets::new(Arc::new(LocalDisk))), Arc::new(crate::usecases::keys::KeyChecks::new(Arc::new(LocalDisk), dir)))
+    use crate::adapters::secondary::sealed_secrets::SealedSecrets;
+    (Arc::new(SealedSecrets::with_key(Arc::new(LocalDisk), [3; 32])), Arc::new(crate::usecases::keys::KeyChecks::new(Arc::new(LocalDisk), dir)))
 }
+
+/// The master key every test server seals with, so no test touches the user's key file (ADR-2610081501).
+const TEST_MASTER_KEY: &str = "0101010101010101010101010101010101010101010101010101010101010101";
 
 fn job_runner(tag: &str, rows: usize) -> (crate::usecases::jobs::JobRunner, Arc<SlowSplunk>, std::path::PathBuf) {
     use crate::adapters::secondary::sqlite_store::SqliteStore;
@@ -1124,6 +1127,7 @@ impl TestServer {
             .env("WARDIAN_TEST_SERVER", apps)
             .env("DATA_DIR", data)
             .env("ADDR", addr)
+            .env("WARDIAN_MASTER_KEY", TEST_MASTER_KEY)
             .envs(env.iter().copied())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -2156,7 +2160,8 @@ fn keys_list_test_again_and_remove() {
     assert_eq!(entry(&list, "anthropic")["from"], "environment");
     assert_eq!(entry(&list, "anthropic")["removable"], false, "an environment key is not removable in Settings");
     assert_eq!(entry(&list, "drive")["set"], false);
-    assert_eq!(list["kept"]["sealed"], false);
+    assert_eq!(list["kept"]["sealed"], true);
+    assert_eq!(list["kept"]["master"], "WARDIAN_MASTER_KEY");
 
     let (st, _) = server.json("POST", "/api/ai/key", Some(json!({ "key": "sk-ant-typed-in-settings-0123" })), &[]);
     assert_eq!(st, 200);
@@ -2687,5 +2692,65 @@ fn examples_a_build_started_anywhere_serves_the_examples() {
     let log = server.stop();
     assert!(list.as_array().map(Vec::len).unwrap_or(0) >= 16, "the example apps are served: {list}\n{log}");
     assert!(log.contains("apps: added"), "{log}");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081501: every secret saved through Settings is sealed on disk: no file in the data
+/// folder holds one. With another master key, a saved admin token stops the start; without it, each
+/// sealed key shows as "cannot be read", and the right key opens them all again. A key saved
+/// plain by an older Wardian is sealed at start.
+#[test]
+fn sealed_secrets_on_disk_hold_no_secret_and_need_their_master_key() {
+    use serde_json::json;
+    let up = fake_upstream();
+    let base = tmp("sealed-disk");
+    let (data, apps) = (base.join("data"), base.join("apps"));
+    fs::create_dir_all(&apps).unwrap();
+    fs::create_dir_all(&data).unwrap();
+    // A key saved by an older Wardian, plain.
+    fs::write(data.join("splunk.json"), json!({"url": up, "token": "OLD-PLAIN-SPLUNK-SECRET"}).to_string()).unwrap();
+    let env = [("ANTHROPIC_BASE_URL", up.as_str()), ("WARDIAN_BEDROCK_BASE_URL", up.as_str())];
+    let server = TestServer::start(&apps, &data, &env);
+    let secrets = ["sk-ant-SEALED-ANTHROPIC-SECRET", "SEALED-BEDROCK-SECRET", "SEALED-ADMIN-TOKEN-SECRET-0123"];
+    assert_eq!(server.json("POST", "/api/ai/key", Some(json!({"key": secrets[0]})), &[]).0, 200);
+    assert_eq!(server.json("POST", "/api/ai/provider", Some(json!({"provider": "bedrock", "region": "us-east-1", "auth": "api-key", "token": secrets[1]})), &[]).0, 200);
+    assert_eq!(server.json("POST", "/api/keys/admin", Some(json!({"token": secrets[2]})), &[]).0, 200);
+    let with = [("X-Admin-Token", secrets[2])];
+    let (_, list) = server.json("GET", "/api/keys", None, &with);
+    assert_eq!(list["kept"]["sealed"], true, "{list}");
+    let splunk = list["keys"].as_array().unwrap().iter().find(|k| k["id"] == "splunk").unwrap().clone();
+    assert_eq!(splunk["from"], "settings", "the old plain key was read: {splunk}");
+    let log = server.stop();
+    assert!(log.contains("secrets: sealed with AES-256-GCM, under a master key kept in WARDIAN_MASTER_KEY"), "{log}");
+
+    for f in fs::read_dir(&data).unwrap().flatten().filter(|f| f.path().is_file()) {
+        let bytes = fs::read(f.path()).unwrap();
+        for s in secrets.iter().chain(&["OLD-PLAIN-SPLUNK-SECRET"]) {
+            assert!(!bytes.windows(s.len()).any(|w| w == s.as_bytes()), "{} holds {s}", f.path().display());
+        }
+    }
+    for f in ["anthropic-key", "bedrock.json", "admin-token", "splunk.json"] {
+        assert!(fs::read(data.join(f)).unwrap().starts_with(b"WARDIAN-SEALED-1\n"), "{f} is sealed");
+    }
+
+    let other = "0909090909090909090909090909090909090909090909090909090909090909";
+    let (server, _) = TestServer::spawn(&apps, &data, "127.0.0.1:0", &[("WARDIAN_MASTER_KEY", other)]);
+    let log = server.wait();
+    assert!(log.contains("the admin token in") && log.contains("cannot be read") && log.contains("another master key"), "a token that does not open stops the start:\n{log}");
+
+    fs::remove_file(data.join("admin-token")).unwrap();
+    let server = TestServer::start(&apps, &data, &[("WARDIAN_MASTER_KEY", other)]);
+    let (_, list) = server.json("GET", "/api/keys", None, &[]);
+    for id in ["anthropic", "bedrock", "splunk"] {
+        let k = list["keys"].as_array().unwrap().iter().find(|k| k["id"] == id).unwrap().clone();
+        assert!(k["error"].as_str().is_some_and(|e| e.contains("another master key")), "{id} cannot be read: {k}");
+    }
+    server.stop();
+
+    let server = TestServer::start(&apps, &data, &env);
+    let (_, list) = server.json("GET", "/api/keys", None, &[]);
+    let anthropic = list["keys"].as_array().unwrap().iter().find(|k| k["id"] == "anthropic").unwrap().clone();
+    assert!(anthropic["error"].is_null() && anthropic["from"] == "settings", "the right key opens them again: {anthropic}");
+    server.stop();
     let _ = fs::remove_dir_all(base);
 }

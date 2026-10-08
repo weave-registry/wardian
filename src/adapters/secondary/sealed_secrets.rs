@@ -12,15 +12,13 @@ use ring::{
 };
 use serde_json::{json, Value};
 use std::{
-    io::Write,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::Arc,
 };
 
 const HEADER: &[u8] = b"WARDIAN-SEALED-1\n";
 
-/// A place that can keep the master key.
+/// A place that can keep the master key: a variable or a key file.
 pub trait KeyPlace: Send + Sync {
     /// How Settings and the start lines name it.
     fn name(&self) -> String;
@@ -92,85 +90,6 @@ impl KeyPlace for KeyFile {
     }
     fn put(&self, key: &[u8; 32]) -> Result<(), String> {
         self.fs.write_private(&self.path, hex(key).as_bytes())
-    }
-}
-
-/// The macOS Keychain, through `/usr/bin/security`, as a generic password of `service`. The key
-/// goes to it on standard input.
-pub struct MacKeychain {
-    pub service: &'static str,
-}
-
-/// The Keychain item Wardian keeps its master key in.
-pub const KEYCHAIN_SERVICE: &str = "Wardian";
-const KEYCHAIN_ACCOUNT: &str = "master key";
-
-impl KeyPlace for MacKeychain {
-    fn name(&self) -> String {
-        "the macOS Keychain".into()
-    }
-    fn get(&self) -> Result<Option<[u8; 32]>, String> {
-        let out = Command::new("/usr/bin/security")
-            .args(["find-generic-password", "-s", self.service, "-a", KEYCHAIN_ACCOUNT, "-w"])
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|e| format!("cannot run security: {e}"))?;
-        match out.status.code() {
-            Some(0) => unhex(&String::from_utf8_lossy(&out.stdout)).map(Some).ok_or_else(|| "the Keychain item does not hold 64 hex digits".into()),
-            // errSecItemNotFound
-            Some(44) => Ok(None),
-            _ => Err(format!("the Keychain answered: {}", String::from_utf8_lossy(&out.stderr).trim())),
-        }
-    }
-    fn put(&self, key: &[u8; 32]) -> Result<(), String> {
-        // With -w last, security asks for the password twice on standard input.
-        let secret = hex(key);
-        run_with_input(
-            "/usr/bin/security",
-            &["add-generic-password", "-s", self.service, "-a", KEYCHAIN_ACCOUNT, "-l", "Wardian master key", "-w"],
-            &format!("{secret}\n{secret}\n"),
-        )
-    }
-}
-
-/// The Secret Service of a Linux desktop, through `secret-tool`. The key goes to it on standard input.
-pub struct SecretService;
-
-impl KeyPlace for SecretService {
-    fn name(&self) -> String {
-        "the Secret Service (secret-tool)".into()
-    }
-    fn get(&self) -> Result<Option<[u8; 32]>, String> {
-        let Ok(out) = Command::new("secret-tool").args(["lookup", "service", "wardian", "key", "master"]).stdin(Stdio::null()).output() else {
-            // No secret-tool: this place does not exist here.
-            return Ok(None);
-        };
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        match (out.status.success(), out.stdout.is_empty(), stderr.is_empty()) {
-            (true, false, _) => unhex(&String::from_utf8_lossy(&out.stdout)).map(Some).ok_or_else(|| "the Secret Service item does not hold 64 hex digits".into()),
-            (_, true, true) => Ok(None),
-            _ => Err(format!("the Secret Service answered: {stderr}")),
-        }
-    }
-    fn put(&self, key: &[u8; 32]) -> Result<(), String> {
-        run_with_input("secret-tool", &["store", "--label", "Wardian master key", "service", "wardian", "key", "master"], &hex(key))
-    }
-}
-
-fn run_with_input(program: &str, args: &[&str], input: &str) -> Result<(), String> {
-    let mut child = Command::new(program)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("cannot run {program}: {e}"))?;
-    child.stdin.take().ok_or("no standard input")?.write_all(input.as_bytes()).map_err(|e| e.to_string())?;
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(format!("{program} answered: {}", String::from_utf8_lossy(&out.stderr).trim()))
     }
 }
 
@@ -437,40 +356,6 @@ mod tests {
         s.write(&d.join("anthropic-key"), b"k").unwrap();
         assert_eq!(std::fs::read(d.join("anthropic-key")).unwrap(), b"k", "kept plain, as before");
         let _ = std::fs::remove_dir_all(d);
-    }
-
-    /// The real macOS Keychain, under a service name of its own: nothing, then a key put there,
-    /// then the same key read back. The item is removed after. A locked Keychain is reported, and
-    /// the test says it could not run.
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn sealed_master_key_round_trips_through_the_macos_keychain() {
-        let service: &'static str = Box::leak(format!("wardian-test-{}", std::process::id()).into_boxed_str());
-        let remove = || {
-            let _ = Command::new("/usr/bin/security").args(["delete-generic-password", "-s", service, "-a", KEYCHAIN_ACCOUNT]).output();
-        };
-        remove();
-        let k = MacKeychain { service };
-        match k.get() {
-            Ok(None) => {}
-            Err(e) => return eprintln!("SKIP: the Keychain cannot be asked here: {e}"),
-            Ok(Some(_)) => panic!("a fresh service name already holds a key"),
-        }
-        let put = k.put(&[5; 32]);
-        let got = k.get();
-        remove();
-        put.unwrap();
-        assert_eq!(got.unwrap(), Some([5; 32]));
-        assert_eq!(k.get().unwrap(), None, "removed after");
-    }
-
-    /// On Linux without `secret-tool` (CI), the Secret Service is a place that holds nothing.
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn sealed_secret_service_without_secret_tool_holds_nothing() {
-        if Command::new("secret-tool").arg("--version").output().is_err() {
-            assert_eq!(SecretService.get().unwrap(), None);
-        }
     }
 
     #[test]

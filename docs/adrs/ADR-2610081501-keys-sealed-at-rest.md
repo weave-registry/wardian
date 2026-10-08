@@ -16,9 +16,10 @@ Since ADR-2610081500 every secret is read and written through one port, `Secrets
 Bedrock's signing, and `ring` has AES-256-GCM and a secure random source.
 
 A key that seals the secrets must live somewhere other than the data folder, or sealing protects
-nothing. Each platform has a place for it: the macOS Keychain, the Secret Service on a Linux desktop
-(`secret-tool`), a file in the user's own folder, or, in Docker, a variable or a file on another
-volume. Docker runs Wardian as `nobody` on a read-only file system, with no keychain and no home.
+nothing. The operating system's credential stores are not used: an organization's security policy
+may forbid programs to touch them. A file in the user's own folder works on every platform; Docker
+runs Wardian as `nobody` on a read-only file system with no home, so there it is a file on another
+volume, or a variable.
 
 ## Decision
 
@@ -27,31 +28,22 @@ volume. Docker runs Wardian as `nobody` on a read-only file system, with no keyc
    random nonce, and the AES-256-GCM ciphertext with its tag. The file's name is the additional
    data, so a sealed file renamed or copied over another secret does not open. Files stay private
    (mode `600`), written through a temp file and a rename.
-2. **The master key.** 32 random bytes, one per user. Two variables choose its place outright:
-   - `WARDIAN_MASTER_KEY`: the key itself, 64 hex digits. It is read, never written.
-   - `WARDIAN_MASTER_KEY_FILE`: a file holding the 64 hex digits. Wardian makes it, private, when
-     it is missing.
+2. **The master key.** 32 random bytes, kept as 64 hex digits, in one place:
+   - `WARDIAN_MASTER_KEY`: the key itself. It is read, never written.
+   - `WARDIAN_MASTER_KEY_FILE`: a file holding the key.
+   - Otherwise the key file in the user's folder: `$XDG_CONFIG_HOME/wardian/master.key`, by default
+     `~/.config/wardian/master.key`.
 
-   Without them, Wardian looks in two places, in this order, and uses the first that has a key:
-   1. the key file in the user's folder, `$XDG_CONFIG_HOME/wardian/master.key`, by default
-      `~/.config/wardian/master.key`;
-   2. the OS keychain, unless `WARDIAN_KEYCHAIN=off`: the macOS Keychain through
-      `/usr/bin/security` (service `Wardian`, account `master key`), or the Secret Service through
-      `secret-tool` (attributes `service wardian`, `key master`). The key goes to the tool on its
-      standard input, never on its command line.
-
-   When neither has a key, Wardian makes one and keeps it in the keychain, or, when the keychain
-   cannot take it, in the key file. The file is looked at first, so a key made there once keeps
-   winning after the keychain works again. Wardian never makes a new key while a sealed secret
-   exists in the data folder: that secret was sealed with a key Wardian cannot find now, and a new
-   key would hide that. A keychain that answers with an error, rather than "not found", is
-   reported with that error.
+   A missing key file is made, private (mode `600`), on the first start. Wardian never makes a new
+   key while a sealed secret exists in the data folder: that secret was sealed with a key Wardian
+   cannot find now, and a new key would hide that. The operating system's credential stores are
+   not used.
 3. **Secrets written before.** A secret without the header is read as it is, then sealed in place.
    So an upgrade seals every secret the first time Wardian reads it, at start.
 4. **When it cannot be opened.** A sealed secret that does not open (another master key, a damaged
    file) reads as an error, and the key list shows it as *cannot be read* with the reason
    (ADR-2610081500). A saved admin token that cannot be opened stops Wardian at start.
-5. **When there is nowhere to keep a key.** If no place can keep a new key, Wardian
+5. **When there is nowhere to keep a key.** If the key file cannot be made, Wardian
    keeps the secrets as plain private files, as before. It says so at start and on the key list,
    and names `WARDIAN_MASTER_KEY_FILE` as the fix. It does not refuse to start, since that would
    lock out a Wardian that worked before.
@@ -69,15 +61,16 @@ hold no secret (`grants.json`, `state/`, the app databases), and a hardware key.
   each must be typed again. The apps and their data move as before.
 - A user with two data folders shares one master key; that is fine, as each secret is sealed on
   its own.
-- `TestServer` and every browser suite set `WARDIAN_MASTER_KEY`, so they never touch a keychain or
-  the user's folder. One unit test adds a Keychain item under its own service name, reads it, and
-  removes it, on macOS only.
+- The key file is as safe as the user's folder: anyone who can read both it and the data folder can
+  read the secrets. It protects a data folder copied, synced or sent on its own.
+- `TestServer` and every browser suite set `WARDIAN_MASTER_KEY`, so they never touch the user's
+  folder.
 
 ## Implementation
 
 - `adapters/secondary/sealed_secrets.rs`: the format, the master key's places, the migration;
   `plain_secrets.rs` is removed, and its token maker moves here.
-- `config.rs`: `WARDIAN_MASTER_KEY`, `WARDIAN_MASTER_KEY_FILE`, `WARDIAN_KEYCHAIN`.
+- `config.rs`: `WARDIAN_MASTER_KEY`, `WARDIAN_MASTER_KEY_FILE`, the user's key file.
 - `main.rs`: builds `SealedSecrets` and prints how secrets are kept.
 - `docker-compose.yml`: the `keys` volume.
 - `docs/site/keys.md`, `config.md`, `security.md`, `operate.md`.

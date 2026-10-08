@@ -47,6 +47,11 @@ ADMIN_TOKEN=<long random string> docker compose up -d --build
 Docker needs the token, because it listens on `0.0.0.0`, and its requests do not come from the same
 machine.
 
+The saved keys are sealed under a master key on a second volume, `keys`
+(`WARDIAN_MASTER_KEY_FILE=/keys/master.key`). Back up `keys` apart from `data`: either one alone
+holds no readable key, and `data` without `keys` loses its saved keys ([Keys and Claude
+settings](/docs/keys#sealed-at-rest)).
+
 ## Put it behind HTTPS
 
 Wardian speaks plain HTTP. To reach it across a network, put it behind a reverse proxy that ends

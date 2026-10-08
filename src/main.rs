@@ -70,7 +70,7 @@ mod adapters {
         pub mod google_drive;
         pub mod link_fetch;
         pub mod local_disk;
-        pub mod plain_secrets;
+        pub mod sealed_secrets;
         pub mod splunk_rest;
         pub mod sqlite_store;
         pub mod wardian_probe;
@@ -78,7 +78,7 @@ mod adapters {
 }
 
 use adapters::primary::{cli, http, stop_log::StopLog, terminal};
-use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, plain_secrets::PlainSecrets, splunk_rest::SplunkRest, sqlite_store::SqliteStore, wardian_probe};
+use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, sealed_secrets::SealedSecrets, splunk_rest::SplunkRest, sqlite_store::SqliteStore, wardian_probe};
 use config::Settings;
 use ports::{assets::Assets, db::Database, llm::BedrockAuth, secrets::Secrets, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
 use std::sync::Arc;
@@ -184,6 +184,28 @@ fn take_address(addr: &str, addr_set: bool, last_port: u16, root: &str) -> Addre
     }
 }
 
+/// Where secrets are kept (ADR-2610081501): sealed under a master key kept in a file outside the
+/// data folder. WARDIAN_MASTER_KEY gives the key itself, WARDIAN_MASTER_KEY_FILE names the file;
+/// otherwise it is `master.key` in the user's config folder. The file is made on the first start.
+fn secret_store(cfg: &Settings, fs: &Arc<dyn FileSystem>) -> SealedSecrets {
+    use adapters::secondary::sealed_secrets::{EnvKey, KeyFile, KeyPlace};
+    let open = |place: Option<&dyn KeyPlace>| match place {
+        Some(p) => SealedSecrets::open(Arc::clone(fs), &cfg.data_dir, &[p], &[p]),
+        None => SealedSecrets::open(Arc::clone(fs), &cfg.data_dir, &[], &[]),
+    };
+    if let Some(key) = &cfg.master_key {
+        let env = EnvKey(key.clone());
+        return SealedSecrets::open(Arc::clone(fs), &cfg.data_dir, &[&env], &[]);
+    }
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let file = match (&cfg.master_key_file, &cfg.user_key_file) {
+        (Some(path), _) => Some(KeyFile { fs: Arc::clone(fs), path: path.clone(), shown: format!("WARDIAN_MASTER_KEY_FILE ({})", path.display()) }),
+        (None, Some(path)) => Some(KeyFile { fs: Arc::clone(fs), path: path.clone(), shown: terminal::tilde(path, home.as_deref()) }),
+        (None, None) => None,
+    };
+    open(file.as_ref().map(|f| f as &dyn KeyPlace))
+}
+
 /// Builds the adapters and use cases for these settings and serves them; it does not return. The
 /// secrets test starts the same server in a child process.
 ///
@@ -198,7 +220,9 @@ fn serve(cfg: Settings, no_open: bool) {
     let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
     let assets: Arc<dyn Assets> = Arc::new(Embedded);
     let checker = Arc::new(Checker::new(Arc::clone(&fs)));
-    let secrets: Arc<dyn Secrets> = Arc::new(PlainSecrets::new(Arc::clone(&fs)));
+    let sealed = secret_store(&cfg, &fs);
+    let kept = format!("secrets: {}", sealed.describe()["note"].as_str().unwrap_or(""));
+    let secrets: Arc<dyn Secrets> = Arc::new(sealed);
     // The admin token: ADMIN_TOKEN, or the one saved in Settings (ADR-2610081500). One that is
     // saved but cannot be read stops Wardian, so it never starts unlocked by mistake.
     let admin = match AdminGate::load(Arc::clone(&secrets), &cfg.data_dir, cfg.admin_token.clone(), !config::is_loopback(&cfg.addr)) {
@@ -248,6 +272,7 @@ fn serve(cfg: Settings, no_open: bool) {
     // The detail lines: printed when the output is not a terminal, else kept in the log only.
     let detail = |line: &str| if tty { stops.note(line) } else { println!("{line}") };
     detail(&who);
+    detail(&kept);
     detail(&format!("data: {}", data_shown.display()));
     // A first start with an empty data folder shows the first-run setup once (ADR-2610072033).
     if let Err(e) = usecases::workspace::mark_first_run(&*fs, &cfg.data_dir) {

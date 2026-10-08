@@ -28,7 +28,9 @@ Git ignores `/data` in the repository.
 
 ## Files in the data folder
 
-Files marked *private* are written readable by their owner only (mode `600`).
+Files marked *private* are written readable by their owner only (mode `600`). Files marked
+*sealed* are also encrypted under a master key kept outside the data folder
+([Keys and Claude settings](/docs/keys#sealed-at-rest)).
 
 | File or folder | What it holds |
 |---|---|
@@ -36,16 +38,16 @@ Files marked *private* are written readable by their owner only (mode `600`).
 | `apps/.examples-seen` | The example apps the working folder has been given, so one you remove stays removed. |
 | `apps/.trash/` | Removed apps, until you empty it yourself. Hidden folders are never listed or served. |
 | `config.json` | The chosen app source: local, or a Google Drive folder and its name. *Private.* |
-| `service-account.json` | The uploaded Google service account key. *Private.* |
-| `anthropic-key` | The Anthropic API key. *Private.* |
+| `service-account.json` | The uploaded Google service account key. *Private, sealed.* |
+| `anthropic-key` | The Anthropic API key. *Private, sealed.* |
 | `anthropic-workspace` | The Anthropic workspace ID, if you gave one. *Private.* |
-| `bedrock.json` | The Amazon Bedrock region and keys. *Private.* |
+| `bedrock.json` | The Amazon Bedrock region and keys. *Private, sealed.* |
 | `ai-provider` | Which Claude provider Settings chose: `anthropic` or `bedrock`. *Private.* |
 | `agent.json` | Claude's models, the limits of **Make an app** and `claude:sample`, and the daily caps ([Keys and Claude settings](/docs/keys)). *Private.* |
 | `usage.json` | The tokens Claude used, by UTC day and by app, for the last 31 days. *Private.* |
 | `key-checks.json` | The last test of each key: when, and what the service said. No key. *Private.* |
-| `admin-token` | The admin token saved in **Settings → Keys**. *Private.* |
-| `splunk.json` | The Splunk address and account. *Private.* |
+| `admin-token` | The admin token saved in **Settings → Keys**. *Private, sealed.* |
+| `splunk.json` | The Splunk address and account. *Private, sealed.* |
 | `grants.json` | Your answers to permission questions: channels, Splunk, Claude, reading another app's tables. *Private.* |
 | `state/` | Arrange layouts (`layouts.json`), each app's saved data (`apps/<app>.json`) and the latest message on each channel (`channels.json`). *Private.* |
 | `db/<app>.sqlite` | Each app's own database, for the `db` capability. *Private.* |
@@ -82,6 +84,8 @@ the setup again and fills `apps/` from `./apps`.
 | `SPLUNK_TOKEN` | none | Splunk token. Or set `SPLUNK_USERNAME` and `SPLUNK_PASSWORD`. |
 | `SPLUNK_INSECURE_TLS` | off | `1` or `true` accepts any certificate, such as Splunk's self-signed default. |
 | `SPLUNK_CA_FILE` | none | A PEM file of extra certificate authorities to trust for Splunk. |
+| `WARDIAN_MASTER_KEY` | none | The master key that seals saved keys, as 64 hex digits. When set, no other place is used ([Keys and Claude settings](/docs/keys#sealed-at-rest)). |
+| `WARDIAN_MASTER_KEY_FILE` | `~/.config/wardian/master.key` | The file for the master key, outside the data folder. Made on the first start. |
 | `GDRIVE_API_BASE` | Google | For tests only. |
 | `ANTHROPIC_BASE_URL` | Anthropic | For tests only. |
 | `WARDIAN_BEDROCK_BASE_URL` | the region's endpoint | For tests only. |

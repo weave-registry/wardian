@@ -31,6 +31,30 @@ to the local apps folder.
 A secret that is saved but cannot be read shows *cannot be read*, with the reason. Wardian then acts
 as if it were not set: type it again, or remove it.
 
+## Sealed at rest
+
+Wardian seals every saved secret with AES-256-GCM, under a master key it keeps outside the data
+folder (ADR-2610081501). A copy of the data folder alone holds no readable key. The top of the key
+list says where the master key is.
+
+| Where the master key is | When |
+|---|---|
+| `WARDIAN_MASTER_KEY` | set to 64 hex digits |
+| the file `WARDIAN_MASTER_KEY_FILE` names | set; the file is made on the first start |
+| `~/.config/wardian/master.key` | otherwise (`$XDG_CONFIG_HOME` moves it); made on the first start |
+
+Wardian does not use the operating system's credential store. Back up the key file apart from the
+data folder: either one alone holds no readable key.
+
+A secret saved by an older Wardian is sealed the first time this one reads it, at start. A data
+folder moved to another machine, without its master key, keeps its apps and data, but each secret
+shows *cannot be read* until it is typed again. Wardian never makes a new master key while a sealed
+secret is in the data folder, so a lost key is reported instead of hidden.
+
+If the key file cannot be made, Wardian keeps secrets as plain files that only their owner can
+read, as before, and says so at start and on the key list. Set `WARDIAN_MASTER_KEY_FILE` to a file
+outside the data folder to fix it.
+
 ## The admin token
 
 With an admin token, every change to Settings needs it, from every address, this machine included.
@@ -90,7 +114,7 @@ The counts are kept in `usage.json` in the data folder.
 
 | File | What it holds | Holds a secret |
 |---|---|---|
-| `anthropic-key`, `bedrock.json`, `splunk.json`, `service-account.json`, `admin-token` | the secrets | yes |
+| `anthropic-key`, `bedrock.json`, `splunk.json`, `service-account.json`, `admin-token` | the secrets, sealed | yes |
 | `agent.json` | models, limits and caps | no |
 | `usage.json` | tokens by day and app, for 31 days | no |
 | `key-checks.json` | the last test of each secret | no |

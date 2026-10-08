@@ -12,6 +12,13 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- **Saved keys are sealed** (ADR-2610081501) with AES-256-GCM under a master key kept in a file
+  outside the data folder, `~/.config/wardian/master.key`, or where `WARDIAN_MASTER_KEY` or
+  `WARDIAN_MASTER_KEY_FILE` says. Keys saved before are sealed on the first start. Docker keeps the
+  key on a second volume, `keys`.
+
 ## [0.4.4] - 2026-10-08
 
 ### Added

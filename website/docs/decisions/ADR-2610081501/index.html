@@ -2,8 +2,8 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wardian documentation</title>
-<meta name="description" content="Wardian documentation: Wardian documentation">
+<title>ADR-2610081501: keys sealed at rest · Wardian docs</title>
+<meta name="description" content="Wardian documentation: ADR-2610081501: keys sealed at rest">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: light dark; --bg: #f6f5ef; --panel: #fbfaf6; --ink: #183e32; --text: #23302a; --muted: #5f6b62; --line: #d8ddd2; --code: #ecefe4; --accent: #2f6b50; --mark: #dce8a5; }
@@ -77,59 +77,104 @@
   <div class="links"><a href="/">Home</a><a href="https://github.com/weave-registry/wardian">GitHub</a></div>
 </header>
 <div class="wrap">
-<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/" aria-current="page">Wardian documentation</a><ul class="toc"><li><a href="#where-to-start">Where to start</a></li><li><a href="#three-kinds-of-app">Three kinds of app</a></li><li><a href="#what-an-app-may-use">What an app may use</a></li><li><a href="#why-it-is-built-this-way">Why it is built this way</a></li></ul></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
+<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions" aria-current="page">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
 <main id="content">
-<h1 id="wardian-documentation">Wardian documentation</h1>
-<p>Wardian keeps the small tools you make, often with AI, on a computer you control. It serves them
-to your browser from a local folder or from Google Drive. Each app runs <strong>sealed</strong> in its own
-browser frame: it cannot see Wardian's settings, your files or your other apps unless you allow it,
-and the browser blocks its requests to anywhere but its own package
-(<a href="/docs/security#three-routes-stay-open">three narrow routes stay open</a>, and a test keeps that list true).</p>
-<p>Think of a Wardian case, the sealed glass box that carried living plants across oceans in the
-1800s. Your apps are the plants. Wardian is the case. Each plant gets its own pane of glass, and
-the doors between them, and out to the world, open only where the case allows them.</p>
-<h2 id="where-to-start">Where to start<a class="anchor" href="#where-to-start" aria-label="Link to this section">#</a></h2>
-<table><thead><tr><th>You want to…</th><th>Read</th></tr></thead><tbody>
-<tr><td>install Wardian and open your first app</td><td><a href="/docs/install">Install and run</a>, then <a href="/docs/tour">Your first ten minutes</a></td></tr>
-<tr><td>understand what a package, a suite and a kernel are</td><td><a href="/docs/concepts">How Wardian works</a></td></tr>
-<tr><td>build an app yourself</td><td><a href="/docs/guide">Building Wardian apps</a></td></tr>
-<tr><td>have Claude build an app for you</td><td><a href="/docs/with-claude">Make apps with Claude</a></td></tr>
-<tr><td>see what is possible</td><td><a href="/docs/examples">Example apps</a>: sixteen working apps, from a unit converter to a risk simulator</td></tr>
-<tr><td>look up an exact rule</td><td><a href="/docs/spec">Package format</a>, <a href="/docs/ctx">The ctx API</a>, <a href="/docs/capabilities">Capabilities</a></td></tr>
-<tr><td>run Wardian for a team</td><td><a href="/docs/operate">Run Wardian for others</a> and <a href="/docs/security">Security model</a></td></tr>
-</tbody></table>
-<h2 id="three-kinds-of-app">Three kinds of app<a class="anchor" href="#three-kinds-of-app" aria-label="Link to this section">#</a></h2>
-<p>Every Wardian app is one folder, called a <strong>package</strong>. It comes in one of three kinds. Start with
-the simplest kind that fits, and move up when you need to.</p>
-<table><thead><tr><th>Kind</th><th>What it is</th><th>Good for</th><th>Example</th></tr></thead><tbody>
-<tr><td><strong>module</strong></td><td>A WebAssembly file and nothing else. Wardian draws the interface: one input per parameter and a Run button.</td><td>Calculators, converters, any function of numbers</td><td><a href="/docs/examples#unit-converter"><code>unit-converter</code></a></td></tr>
-<tr><td><strong>page</strong></td><td>A module (or plain JavaScript) with your own HTML page, in a sandboxed frame.</td><td>One tool with one job and a real interface</td><td><a href="/docs/examples#image-lab"><code>image-lab</code></a></td></tr>
-<tr><td><strong>suite</strong></td><td>Several small apps on one screen. Each runs in its own sealed frame and talks to the others only through the <strong>kernel</strong>.</td><td>Anything with parts: inputs, a computation, several views, an export</td><td><a href="/docs/examples#loan-planner"><code>loan-planner</code></a></td></tr>
-</tbody></table>
-<h2 id="what-an-app-may-use">What an app may use<a class="anchor" href="#what-an-app-may-use" aria-label="Link to this section">#</a></h2>
-<p>A suite app starts with nothing: no network, no files, no storage. It asks for each thing it needs by
-name, and Wardian grants only what the app declares. Some things also need your consent the first
-time.</p>
-<table><thead><tr><th>Capability</th><th>Gives the app</th><th>You are asked first?</th></tr></thead><tbody>
-<tr><td><code>storage</code></td><td>a small key–value store, kept by Wardian</td><td>no</td></tr>
-<tr><td><code>asset</code></td><td>read files from its own package, such as a <code>.wasm</code></td><td>no</td></tr>
-<tr><td><code>worker</code></td><td>a Web Worker, for heavy work off the screen</td><td>no</td></tr>
-<tr><td><code>claude:downloads</code></td><td>save a file to your computer</td><td>no</td></tr>
-<tr><td><code>db</code></td><td>its own SQLite database, for large tables</td><td>no; reading another app's tables: yes</td></tr>
-<tr><td><code>claude:sample</code></td><td>ask Claude a question, through the provider you set up</td><td>yes</td></tr>
-<tr><td><code>splunk</code></td><td>run a Splunk search with the server's account</td><td>yes</td></tr>
-<tr><td>channels</td><td>send or receive messages with other packages</td><td>yes</td></tr>
-</tbody></table>
-<p>The full list, with every method, is in <a href="/docs/capabilities">Capabilities</a>.</p>
-<h2 id="why-it-is-built-this-way">Why it is built this way<a class="anchor" href="#why-it-is-built-this-way" aria-label="Link to this section">#</a></h2>
-<p>Most small tools die in one of two places: a folder of HTML files nobody can find, or a hosted
-platform that wants an account, a subscription and your data. Wardian sits between the two. Your
-apps live on your disk, in plain folders you can read, change, copy and commit. And because each
-app is sealed, you can run one you did not write, including one an AI wrote a minute ago, without
-handing it the keys to everything else.</p>
+<h1 id="adr-2610081501-keys-sealed-at-rest">ADR-2610081501: Keys sealed at rest</h1>
+<p><strong>Status:</strong> Accepted
+<strong>Date:</strong> 2026-10-08
+<strong>Drivers:</strong> Wardian keeps its secrets as plain files that only their owner can read
+(ADR-2610081500). Anyone who gets a copy of the data folder gets every key: a backup, a synced
+folder, a Docker volume copied to another host, a folder zipped to send a bug report. The data
+folder is meant to be moved and copied (<a href="/docs/config">Settings and environment</a>), so its secrets
+should not be readable on their own.</p>
+<h2 id="context">Context<a class="anchor" href="#context" aria-label="Link to this section">#</a></h2>
+<p>Since ADR-2610081500 every secret is read and written through one port, <code>Secrets</code>, implemented by
+<code>adapters/secondary/plain_secrets.rs</code>. The secrets are <code>anthropic-key</code>, <code>bedrock.json</code>,
+<code>splunk.json</code>, <code>service-account.json</code> and <code>admin-token</code>. Wardian already carries <code>ring</code>, for TLS and
+Bedrock's signing, and <code>ring</code> has AES-256-GCM and a secure random source.</p>
+<p>A key that seals the secrets must live somewhere other than the data folder, or sealing protects
+nothing. The operating system's credential stores are not used: an organization's security policy
+may forbid programs to touch them. A file in the user's own folder works on every platform; Docker
+runs Wardian as <code>nobody</code> on a read-only file system with no home, so there it is a file on another
+volume, or a variable.</p>
+<h2 id="decision">Decision<a class="anchor" href="#decision" aria-label="Link to this section">#</a></h2>
+<ol>
+<li>
+<p><strong>Sealed files.</strong> A new adapter, <code>adapters/secondary/sealed_secrets.rs</code>, replaces
+<code>plain_secrets.rs</code> behind <code>Secrets</code>. Each secret is written as <code>WARDIAN-SEALED-1\n</code>, a 12-byte
+random nonce, and the AES-256-GCM ciphertext with its tag. The file's name is the additional
+data, so a sealed file renamed or copied over another secret does not open. Files stay private
+(mode <code>600</code>), written through a temp file and a rename.</p>
+</li>
+<li>
+<p><strong>The master key.</strong> 32 random bytes, kept as 64 hex digits, in one place:</p>
+<ul>
+<li><code>WARDIAN_MASTER_KEY</code>: the key itself. It is read, never written.</li>
+<li><code>WARDIAN_MASTER_KEY_FILE</code>: a file holding the key.</li>
+<li>Otherwise the key file in the user's folder: <code>$XDG_CONFIG_HOME/wardian/master.key</code>, by default
+<code>~/.config/wardian/master.key</code>.</li>
+</ul>
+<p>A missing key file is made, private (mode <code>600</code>), on the first start. Wardian never makes a new
+key while a sealed secret exists in the data folder: that secret was sealed with a key Wardian
+cannot find now, and a new key would hide that. The operating system's credential stores are
+not used.</p>
+</li>
+<li>
+<p><strong>Secrets written before.</strong> A secret without the header is read as it is, then sealed in place.
+So an upgrade seals every secret the first time Wardian reads it, at start.</p>
+</li>
+<li>
+<p><strong>When it cannot be opened.</strong> A sealed secret that does not open (another master key, a damaged
+file) reads as an error, and the key list shows it as <em>cannot be read</em> with the reason
+(ADR-2610081500). A saved admin token that cannot be opened stops Wardian at start.</p>
+</li>
+<li>
+<p><strong>When there is nowhere to keep a key.</strong> If the key file cannot be made, Wardian
+keeps the secrets as plain private files, as before. It says so at start and on the key list,
+and names <code>WARDIAN_MASTER_KEY_FILE</code> as the fix. It does not refuse to start, since that would
+lock out a Wardian that worked before.</p>
+</li>
+<li>
+<p><strong>Docker.</strong> <code>docker-compose.yml</code> mounts a second volume at <code>/keys</code> and sets
+<code>WARDIAN_MASTER_KEY_FILE=/keys/master.key</code>, so a copy of the data volume alone holds no
+readable secret.</p>
+</li>
+</ol>
+<p>Not in this decision: re-keying (sealing every secret with a new master key), sealing files that
+hold no secret (<code>grants.json</code>, <code>state/</code>, the app databases), and a hardware key.</p>
+<h2 id="consequences">Consequences<a class="anchor" href="#consequences" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>A copy of the data folder, without the master key, holds no readable secret.</li>
+<li>A data folder moved to another machine loses its secrets: the list says <em>cannot be read</em>, and
+each must be typed again. The apps and their data move as before.</li>
+<li>A user with two data folders shares one master key; that is fine, as each secret is sealed on
+its own.</li>
+<li>The key file is as safe as the user's folder: anyone who can read both it and the data folder can
+read the secrets. It protects a data folder copied, synced or sent on its own.</li>
+<li><code>TestServer</code> and every browser suite set <code>WARDIAN_MASTER_KEY</code>, so they never touch the user's
+folder.</li>
+</ul>
+<h2 id="implementation">Implementation<a class="anchor" href="#implementation" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><code>adapters/secondary/sealed_secrets.rs</code>: the format, the master key's places, the migration;
+<code>plain_secrets.rs</code> is removed, and its token maker moves here.</li>
+<li><code>config.rs</code>: <code>WARDIAN_MASTER_KEY</code>, <code>WARDIAN_MASTER_KEY_FILE</code>, the user's key file.</li>
+<li><code>main.rs</code>: builds <code>SealedSecrets</code> and prints how secrets are kept.</li>
+<li><code>docker-compose.yml</code>: the <code>keys</code> volume.</li>
+<li><code>docs/site/keys.md</code>, <code>config.md</code>, <code>security.md</code>, <code>operate.md</code>.</li>
+</ul>
+<h2 id="enforced-by-hexa-adr-gates-run-on-demand">Enforced-By: hexa adr gates (run on demand)<a class="anchor" href="#enforced-by-hexa-adr-gates-run-on-demand" aria-label="Link to this section">#</a></h2>
+<h2 id="gate">Gate<a class="anchor" href="#gate" aria-label="Link to this section">#</a></h2>
+<p><code>env CARGO_TARGET_DIR=target/verify cargo test --release sealed_</code></p>
+<p>Rerun by <code>hexa adr gates</code>. It builds into <code>target/verify</code>, never into the copy of Wardian a user runs.</p>
+<h2 id="references">References<a class="anchor" href="#references" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>ADR-2610081500 (keys and Claude settings in one place): the <code>Secrets</code> port and the key list</li>
+<li>ADR-2610071106 (Claude through Amazon Bedrock): <code>ring</code> already in the build</li>
+</ul>
 
-<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/site/index.md"><code>docs/site/index.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
-<div class="pager"><span></span><a class="next" href="/docs/install" rel="next"><small>Next</small>Install and run</a></div>
+<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/adrs/ADR-2610081501-keys-sealed-at-rest.md"><code>docs/adrs/ADR-2610081501-keys-sealed-at-rest.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
+<div class="pager"><a class="prev" href="/docs/decisions" rel="prev"><small>Back to</small>Decisions</a></div>
 </main>
 </div>
 <script>
