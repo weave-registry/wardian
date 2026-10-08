@@ -44,12 +44,12 @@
       "updated": "2026-10-07T20:39:13.806723+00:00"
     },
     "888a9f57-6c94-47f3-9e58-c657d560d6ae": {
-      "adr": "ADR-2610081041",
-      "gate": "env CARGO_TARGET_DIR=target/verify cargo build --release && env CARGO_TARGET_DIR=target/verify cargo test --release && hexa analyze . --grade A && env CARGO_TARGET_DIR=target/verify tests/run-all.sh",
+      "adr": "ADR-2610081500",
+      "gate": "env CARGO_TARGET_DIR=target/verify cargo test --release keys_ && env CARGO_TARGET_DIR=target/verify cargo test --release agent_ && env CARGO_TARGET_DIR=target/verify cargo test --release usage_ && hexa analyze . --grade A",
       "pid": 48741,
       "pid_start": null,
       "stage": "build",
-      "updated": "2026-10-08T14:49:00.963756+00:00"
+      "updated": "2026-10-08T17:30:39.867746+00:00"
     }
   }
 }

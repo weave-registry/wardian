@@ -104,10 +104,10 @@ impl Llm for Bedrock {
         self.invoke(auth, &model, &body)
     }
 
-    /// One tiny request to the quick model: it proves the region, the sign-in and the model access.
-    fn test_key(&self, auth: &LlmAuth) -> Result<(), LlmError> {
+    /// One tiny request to `model`: it proves the region, the sign-in and the model access.
+    fn test_key(&self, auth: &LlmAuth, model: &str) -> Result<(), LlmError> {
         let body = json!({ "anthropic_version": ANTHROPIC_VERSION, "max_tokens": 1, "messages": [{ "role": "user", "content": "Hi" }] });
-        self.invoke(auth, &self.quick, &body).map(drop)
+        self.invoke(auth, model, &body).map(drop)
     }
 }
 
@@ -276,7 +276,7 @@ mod tests {
             _ => panic!("expected a 403"),
         }
         let (base, _) = fake_bedrock(403, "UnrecognizedClientException", "The security token included in the request is invalid.");
-        match Bedrock::new(Some(base), None, None).test_key(&api_key()) {
+        match Bedrock::new(Some(base), None, None).test_key(&api_key(), QUICK_MODEL) {
             Err(LlmError::Status(403, msg)) => assert!(msg.starts_with("AWS refused the sign-in"), "{msg}"),
             _ => panic!("expected a 403"),
         }
@@ -294,7 +294,7 @@ mod tests {
         let b = Bedrock::new(Some(base), Some("eu.anthropic.main-v1:0".into()), Some("eu.anthropic.quick-v1:0".into()));
         assert_eq!((b.model(Tier::Main), b.model(Tier::Quick)), ("eu.anthropic.main-v1:0".to_string(), "eu.anthropic.quick-v1:0".to_string()));
         let _ = b.messages(&api_key(), &json!({ "max_tokens": 1, "messages": [] }));
-        let _ = b.test_key(&api_key());
+        let _ = b.test_key(&api_key(), &b.model(Tier::Quick));
         assert_eq!(*paths.lock().unwrap(), ["/model/eu.anthropic.main-v1%3A0/invoke", "/model/eu.anthropic.quick-v1%3A0/invoke"]);
     }
 

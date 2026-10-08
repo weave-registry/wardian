@@ -538,7 +538,8 @@ fn splunk_results_load_into_a_table_in_chunks_and_page() {
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&dir));
     let fake = Arc::new(FakeSplunk { rows: 120_000, asked: std::sync::Mutex::new(Vec::new()) });
     let cfg = crate::ports::splunk::SplunkConfig { url: "https://splunk.test:8089".into(), token: "t".into(), ..Default::default() };
-    let splunk = Splunk::new(Arc::new(LocalDisk), Arc::new(Arc::clone(&fake)), Arc::clone(&db), &dir, Some(cfg));
+    let (secrets, checks) = key_stores(&dir);
+    let splunk = Splunk::new(secrets, checks, Arc::new(Arc::clone(&fake)), Arc::clone(&db), &dir, Some(cfg));
     let out = splunk.search_into("splunk-table", "search", "index=x", "-24h", "", &crate::ports::service::Unwatched).unwrap();
     assert_eq!(out["total"], 120_000);
     assert_eq!(out["columns"], json!(["n", "host"]), "internal fields stay out");
@@ -610,6 +611,15 @@ impl crate::ports::service::Builder for NoBuilder {
     fn tested(&self, _: &str, _: &Value) -> Result<Value, String> { Err("no".into()) }
     fn sessions(&self) -> Value { Value::Null }
     fn events(&self, _: &str, _: usize) -> Result<Value, String> { Err("no".into()) }
+    fn agent(&self) -> Value { Value::Null }
+    fn set_agent(&self, _: &Value) -> Result<Value, String> { Err("no".into()) }
+    fn usage(&self) -> Value { Value::Null }
+}
+
+/// Secrets as the server keeps them, over the real disk, with their tests recorded in `dir`.
+fn key_stores(dir: &Path) -> (Arc<dyn crate::ports::secrets::Secrets>, Arc<crate::usecases::keys::KeyChecks>) {
+    use crate::adapters::secondary::plain_secrets::PlainSecrets;
+    (Arc::new(PlainSecrets::new(Arc::new(LocalDisk))), Arc::new(crate::usecases::keys::KeyChecks::new(Arc::new(LocalDisk), dir)))
 }
 
 fn job_runner(tag: &str, rows: usize) -> (crate::usecases::jobs::JobRunner, Arc<SlowSplunk>, std::path::PathBuf) {
@@ -620,7 +630,8 @@ fn job_runner(tag: &str, rows: usize) -> (crate::usecases::jobs::JobRunner, Arc<
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&dir));
     let fake = Arc::new(SlowSplunk { rows, done: Default::default(), cancelled: Default::default() });
     let cfg = crate::ports::splunk::SplunkConfig { url: "https://splunk.test:8089".into(), token: "t".into(), ..Default::default() };
-    let splunk = Splunk::new(Arc::new(LocalDisk), Arc::new(Arc::clone(&fake)), db, &dir, Some(cfg));
+    let (secrets, checks) = key_stores(&dir);
+    let splunk = Splunk::new(secrets, checks, Arc::new(Arc::clone(&fake)), db, &dir, Some(cfg));
     (JobRunner::new(Arc::new(splunk), Arc::new(NoBuilder)), fake, dir)
 }
 
@@ -1281,10 +1292,16 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
     post("/api/state/apps/loan-planner", json!({"app": "inputs", "key": "state", "value": {"principal": 320000}}));
 
     // Everything that shows settings or status, with and without the token.
-    for path in ["/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/trash", "/api/ai/sessions", "/api/history/loan-planner", "/api/state/apps/loan-planner", "/api/state/layout/loan-planner", "/api/apps/loan-planner/export?data=1&preview=1"] {
+    for path in ["/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/trash", "/api/ai/sessions", "/api/history/loan-planner", "/api/state/apps/loan-planner", "/api/state/layout/loan-planner", "/api/apps/loan-planner/export?data=1&preview=1", "/api/keys", "/api/agent", "/api/usage"] {
         ask("GET", path, None, true);
     }
-    for path in ["/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/ai/sessions", "/api/drive/browse"] {
+    // The key list's own answers (ADR-2610081500): each test, with the refusals that name a key.
+    for id in ["anthropic", "bedrock", "splunk", "drive", "admin", "nothing"] {
+        post(&format!("/api/keys/{id}/test"), json!({}));
+    }
+    post("/api/agent", json!({ "models": { "bedrock": { "main": "us.anthropic.chosen-v1:0" } }, "caps": { "loan-planner": 1000 } }));
+    post("/api/keys/admin", json!({ "token": "short" }));
+    for path in ["/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/ai/sessions", "/api/drive/browse", "/api/keys", "/api/agent", "/api/usage"] {
         ask("GET", path, None, false);
     }
     let status: serde_json::Value = serde_json::from_slice(&ask("GET", "/api/status", None, true)).unwrap();
@@ -1304,7 +1321,7 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
     ask("POST", "/api/import/preview", Some(("application/zip", export)), true);
 
     let log = server.stop();
-    assert!(log.contains("admin: whoever sends ADMIN_TOKEN") && log.contains("export: loan-planner with its data"), "the server's log was read:\n{log}");
+    assert!(log.contains("admin: whoever sends the admin token") && log.contains("export: loan-planner with its data"), "the server's log was read:\n{log}");
 
     let mut searched = answers.into_inner().unwrap();
     searched.extend(inside);
@@ -1382,9 +1399,10 @@ fn hub_with_drive(apps: &Path, data: &Path, drive: Arc<dyn crate::ports::drive::
     use crate::adapters::secondary::link_fetch::LinkFetcher;
     use crate::usecases::{catalog::{Hub, HubPorts}, history::History};
     let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
-    let ports = HubPorts { fs: Arc::clone(&fs), drive, web: Arc::new(LinkFetcher::new(false)), assets: Arc::new(Embedded) };
+    let (secrets, checks) = key_stores(data);
+    let ports = HubPorts { fs: Arc::clone(&fs), drive, web: Arc::new(LinkFetcher::new(false)), assets: Arc::new(Embedded), secrets };
     let history = Arc::new(History::new(fs, data, apps));
-    Hub::new(ports, history, data.to_path_buf(), apps.to_path_buf(), std::time::Duration::from_secs(60))
+    Hub::new(ports, checks, history, data.to_path_buf(), apps.to_path_buf(), std::time::Duration::from_secs(60))
 }
 
 /// A Google that accepts any service account key, and has nothing in Drive.
@@ -1871,5 +1889,317 @@ fn claim_check_exits_0_or_1_and_warnings_do_not_fail() {
     assert_eq!(exit(&[&warned]), 0);
     assert_eq!(exit(&[&broken]), 1);
     assert_eq!(exit(&[&warned, &broken]), 1, "one failing package fails the check");
+    let _ = fs::remove_dir_all(base);
+}
+
+// ---------- Keys, Claude's settings and usage (ADR-2610081500) ----------
+
+/// A Claude that answers every request with 100 tokens in and 50 out, and keeps what it was asked.
+#[derive(Default)]
+struct FakeClaude {
+    bodies: std::sync::Mutex<Vec<Value>>,
+    tested: std::sync::Mutex<Vec<String>>,
+    refuse: std::sync::atomic::AtomicBool,
+}
+
+impl crate::ports::llm::Llm for FakeClaude {
+    fn model(&self, tier: crate::ports::llm::Tier) -> String {
+        match tier {
+            crate::ports::llm::Tier::Main => "fake-main".into(),
+            crate::ports::llm::Tier::Quick => "fake-quick".into(),
+        }
+    }
+    fn messages(&self, _: &crate::ports::llm::LlmAuth, body: &Value) -> Result<Value, crate::ports::llm::LlmError> {
+        self.bodies.lock().unwrap().push(body.clone());
+        if self.refuse.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(crate::ports::llm::LlmError::Status(401, "invalid x-api-key".into()));
+        }
+        Ok(serde_json::json!({ "content": [{ "type": "text", "text": "hello" }], "stop_reason": "end_turn",
+                               "usage": { "input_tokens": 100, "output_tokens": 50 } }))
+    }
+    fn test_key(&self, auth: &crate::ports::llm::LlmAuth, model: &str) -> Result<(), crate::ports::llm::LlmError> {
+        self.tested.lock().unwrap().push(model.into());
+        if model == "nope" {
+            return Err(crate::ports::llm::LlmError::Status(404, format!("model: {model}")));
+        }
+        match auth {
+            crate::ports::llm::LlmAuth::Anthropic { key, .. } if key.starts_with("bad") => Err(crate::ports::llm::LlmError::Status(401, "invalid x-api-key".into())),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// The studio as the server builds it, over a fake Claude for both providers.
+fn studio_on(fake: &Arc<FakeClaude>, base: &Path) -> (crate::usecases::studio::Studio, Arc<crate::usecases::keys::KeyChecks>, std::path::PathBuf) {
+    use crate::usecases::{studio::{Providers, Stores, Studio}, usage::Meter};
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    fs::create_dir_all(&apps).unwrap();
+    fs::create_dir_all(&data).unwrap();
+    let (secrets, checks) = key_stores(&data);
+    let disk: Arc<dyn FileSystem> = Arc::new(LocalDisk);
+    let stores = Stores { fs: Arc::clone(&disk), secrets, checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&disk), &data)) };
+    let providers = Providers { anthropic: fake.clone(), bedrock: fake.clone(), anthropic_key: None, anthropic_workspace: None, provider: None, bedrock_env: None };
+    let studio = Studio::new(stores, providers, Arc::new(Embedded), Arc::new(hub(&apps, &data)), Arc::new(Checker::new(disk)), &data);
+    (studio, checks, data)
+}
+
+const GOOD_KEY: &str = "sk-ant-test-0123456789-abcd";
+
+/// ADR-2610081500 #5 and #6: each app's `claude:sample` tokens are counted, by day and by app,
+/// and past its cap the app gets `over_budget` without a request being sent. Another app is not
+/// stopped, and the counts survive a restart.
+#[test]
+fn usage_sample_is_counted_per_app_and_stopped_at_its_cap() {
+    use serde_json::json;
+    let base = tmp("usage-cap");
+    let fake = Arc::new(FakeClaude::default());
+    let (studio, _, data) = studio_on(&fake, &base);
+    studio.set_key(GOOD_KEY, None).unwrap();
+    studio.set_agent(&json!({ "caps": { "notes": 300 } })).unwrap();
+    let ask = |package: &str| studio.sample(&json!({ "package": package, "prompt": "hi" }));
+    assert_eq!(ask("notes").unwrap()["text"], "hello");
+    assert!(ask("notes").is_ok(), "150 of 300 used");
+    let sent = fake.bodies.lock().unwrap().len();
+    let refused = ask("notes").unwrap_err();
+    assert!(refused.starts_with("over_budget: ") && refused.contains("300"), "{refused}");
+    assert_eq!(fake.bodies.lock().unwrap().len(), sent, "no request is sent past the cap");
+    assert!(ask("other").is_ok(), "another app has its own cap");
+    let usage = studio.usage();
+    assert_eq!(usage["totals"]["notes"]["total"], 300, "{usage}");
+    assert_eq!(usage["totals"]["notes"]["requests"], 2);
+    assert_eq!(usage["caps"]["notes"], 300);
+    assert_eq!(usage["caps"]["other"], 200_000, "the default cap");
+    let again = crate::usecases::usage::Meter::new(Arc::new(LocalDisk), &data);
+    assert_eq!(again.used_today("notes"), 300, "usage.json keeps the count");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081500 #6: Make an app stops a turn at its daily cap with a message, before it asks Claude.
+#[test]
+fn usage_make_an_app_stops_at_its_cap() {
+    use crate::domain::agent::BUILDER;
+    use serde_json::json;
+    let base = tmp("usage-build");
+    let fake = Arc::new(FakeClaude::default());
+    let (studio, _, data) = studio_on(&fake, &base);
+    studio.set_key(GOOD_KEY, None).unwrap();
+    studio.set_agent(&json!({ "build_daily_tokens": 100 })).unwrap();
+    crate::usecases::usage::Meter::new(Arc::new(LocalDisk), &data).record(BUILDER, &json!({ "usage": { "input_tokens": 100 } }));
+    // A fresh studio reads the count the meter above saved.
+    let (studio, _, _) = studio_on(&fake, &base);
+    studio.set_key(GOOD_KEY, None).unwrap();
+    let id = studio.send(&json!({ "message": "a habit tracker" })).unwrap()["session"].as_str().unwrap().to_string();
+    let t = std::time::Instant::now();
+    let events = loop {
+        let e = studio.events(&id, 0).unwrap();
+        if e["busy"] == false || t.elapsed() > std::time::Duration::from_secs(20) {
+            break e;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let last = events["events"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["kind"], "error", "{events}");
+    assert!(last["text"].as_str().unwrap().contains("Make an app used its 100 tokens for today"), "{last}");
+    assert!(fake.bodies.lock().unwrap().is_empty(), "Claude was never asked");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081500 #4: a model chosen in Settings is tested before it is saved; a model that fails
+/// is not saved; the saved one is the one each request names; the limits reach the requests; and a
+/// model for a provider with no credentials is saved untested, and the answer says so.
+#[test]
+fn agent_models_are_tested_before_they_are_saved_and_reach_the_requests() {
+    use serde_json::json;
+    let base = tmp("agent-models");
+    let fake = Arc::new(FakeClaude::default());
+    let (studio, _, data) = studio_on(&fake, &base);
+    studio.set_key(GOOD_KEY, None).unwrap();
+    assert_eq!(*fake.tested.lock().unwrap(), ["fake-main"], "a key is tested with the main model");
+
+    let refused = studio.set_agent(&json!({ "models": { "anthropic": { "main": "nope" } } })).unwrap_err();
+    assert!(refused.contains("nope") && refused.contains("404"), "{refused}");
+    assert_eq!(studio.agent()["models"]["anthropic"]["main"], "fake-main", "a model that fails is not saved");
+
+    let out = studio.set_agent(&json!({ "models": { "anthropic": { "main": "claude-chosen", "quick": "claude-small" } }, "sample_max_tokens": 300 })).unwrap();
+    assert_eq!(out["untested"], json!([]));
+    assert_eq!(fake.tested.lock().unwrap()[2..], ["claude-chosen", "claude-small"]);
+    studio.sample(&json!({ "package": "a", "prompt": "hi" })).unwrap();
+    studio.sample(&json!({ "package": "a", "prompt": "hi", "tier": "quick" })).unwrap();
+    let bodies = fake.bodies.lock().unwrap().clone();
+    assert_eq!((bodies[0]["model"].as_str(), bodies[0]["max_tokens"].as_u64()), (Some("claude-chosen"), Some(300)));
+    assert_eq!(bodies[1]["model"], "claude-small");
+
+    let out = studio.set_agent(&json!({ "models": { "bedrock": { "main": "us.anthropic.x-v1:0" } } })).unwrap();
+    assert_eq!(out["untested"], json!(["us.anthropic.x-v1:0"]), "Bedrock has no credentials to test with");
+
+    let saved: Value = serde_json::from_slice(&fs::read(data.join("agent.json")).unwrap()).unwrap();
+    assert_eq!(saved["models"]["anthropic"]["main"], "claude-chosen");
+    assert!(studio.set_agent(&json!({ "max_steps": 1 })).is_err(), "out of bounds");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081500 #2: a key Claude refuses while an app uses it is recorded, so the key list says
+/// so before anyone opens a log.
+#[test]
+fn keys_a_key_refused_while_an_app_runs_is_recorded() {
+    use crate::usecases::keys::KeyOwner;
+    use serde_json::json;
+    let base = tmp("keys-refused");
+    let fake = Arc::new(FakeClaude::default());
+    let (studio, checks, _) = studio_on(&fake, &base);
+    studio.set_key(GOOD_KEY, None).unwrap();
+    assert_eq!(checks.last("anthropic")["ok"], true);
+    fake.refuse.store(true, std::sync::atomic::Ordering::Relaxed);
+    let e = studio.sample(&json!({ "package": "notes", "prompt": "hi" })).unwrap_err();
+    assert!(e.starts_with("not_granted: "), "{e}");
+    let check = checks.last("anthropic");
+    assert_eq!(check["ok"], false);
+    assert!(check["said"].as_str().unwrap().contains("refused while notes used it (HTTP 401)"), "{check}");
+    let entry = &studio.entries()[0];
+    assert_eq!((entry.id, entry.from), ("anthropic", Some("settings")));
+    assert!(entry.detail.contains("key ending abcd") && !entry.detail.contains(GOOD_KEY), "{}", entry.detail);
+    assert_eq!(studio.retest("anthropic"), Some(Ok(())), "test again: the fake's test_key still accepts the key");
+    assert_eq!(checks.last("anthropic")["ok"], true);
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081500 #2: every secret is on the list with where it came from; "test again" tests
+/// the saved values and records the answer; removing a saved secret falls back to the
+/// environment's; the Drive key, which could not be removed before, can be.
+#[test]
+fn keys_list_test_again_and_remove() {
+    use serde_json::json;
+    let up = fake_upstream();
+    let base = tmp("keys-list");
+    let (data, apps) = (base.join("data"), base.join("apps"));
+    fs::create_dir_all(&apps).unwrap();
+    let env = [("ANTHROPIC_API_KEY", "sk-ant-from-the-environment-wxyz"), ("ANTHROPIC_BASE_URL", up.as_str()), ("GDRIVE_API_BASE", up.as_str())];
+    let server = TestServer::start(&apps, &data, &env);
+    let keys = |s: &TestServer| s.json("GET", "/api/keys", None, &[]).1;
+    let entry = |v: &Value, id: &str| v["keys"].as_array().unwrap().iter().find(|k| k["id"] == id).cloned().unwrap();
+
+    let list = keys(&server);
+    let ids: Vec<&str> = list["keys"].as_array().unwrap().iter().map(|k| k["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["anthropic", "bedrock", "splunk", "drive", "admin"]);
+    assert_eq!(entry(&list, "anthropic")["from"], "environment");
+    assert_eq!(entry(&list, "anthropic")["removable"], false, "an environment key is not removable in Settings");
+    assert_eq!(entry(&list, "drive")["set"], false);
+    assert_eq!(list["kept"]["sealed"], false);
+
+    let (st, _) = server.json("POST", "/api/ai/key", Some(json!({ "key": "sk-ant-typed-in-settings-0123" })), &[]);
+    assert_eq!(st, 200);
+    let list = keys(&server);
+    let anthropic = entry(&list, "anthropic");
+    assert_eq!((anthropic["from"].as_str(), anthropic["check"]["ok"].as_bool()), (Some("settings"), Some(true)), "{anthropic}");
+    assert!(anthropic["detail"].as_str().unwrap().contains("key ending 0123"), "{anthropic}");
+
+    let (st, tested) = server.json("POST", "/api/keys/anthropic/test", Some(json!({})), &[]);
+    assert_eq!((st, tested["tested"]["ok"].as_bool()), (200, Some(true)), "{tested}");
+    let (st, none) = server.json("POST", "/api/keys/splunk/test", Some(json!({})), &[]);
+    assert_eq!((st, none["tested"]["ok"].as_bool()), (200, Some(false)), "a failed test is an answer: {none}");
+    assert_eq!(none["tested"]["said"], "no Splunk account is set");
+    let (st, _) = server.json("POST", "/api/keys/admin/test", Some(json!({})), &[]);
+    assert_eq!(st, 400);
+    let (st, _) = server.json("POST", "/api/keys/nothing/remove", Some(json!({})), &[]);
+    assert_eq!(st, 400);
+
+    let (st, after) = server.json("POST", "/api/keys/anthropic/remove", Some(json!({})), &[]);
+    assert_eq!(st, 200);
+    assert_eq!(entry(&after, "anthropic")["from"], "environment", "the environment's key applies again");
+    assert!(entry(&after, "anthropic")["check"].is_null(), "the removed key's test is forgotten");
+    assert!(!data.join("anthropic-key").exists());
+
+    let sa = json!({ "type": "service_account", "client_email": "w@example.iam.gserviceaccount.com", "token_uri": format!("{up}/token"),
+                     "private_key": "-----BEGIN PRIVATE KEY-----\nMII\n-----END PRIVATE KEY-----\n" });
+    let (st, body) = server.json("POST", "/api/drive/key", Some(sa), &[]);
+    if st == 200 {
+        assert_eq!(entry(&keys(&server), "drive")["from"], "settings");
+        let (st, after) = server.json("POST", "/api/keys/drive/remove", Some(json!({})), &[]);
+        assert_eq!((st, entry(&after, "drive")["set"].as_bool()), (200, Some(false)), "{after}");
+        assert!(!data.join("service-account.json").exists());
+    } else {
+        // The stand-in key is not a real RSA key; the Drive owner's removal is tested below.
+        assert!(body["error"].is_string(), "{body}");
+    }
+    assert_eq!(server.json("GET", "/api/keys", None, &[("Host", "evil.com")]).0, 403, "only an admin sees the list");
+    server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081500 #2: the Drive key, saved through Settings, can be removed, and its tests recorded.
+#[test]
+fn keys_the_drive_key_can_be_removed() {
+    use crate::usecases::keys::KeyOwner;
+    let base = tmp("keys-drive");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    fs::create_dir_all(&apps).unwrap();
+    let hub = hub_with_drive(&apps, &data, Arc::new(AnyDriveKey));
+    hub.start(None, None);
+    assert_eq!(hub.entries()[0].from, None);
+    hub.set_key("{}").unwrap();
+    assert_eq!(hub.entries()[0].from, Some("settings"));
+    assert!(hub.entries()[0].detail.contains("w@example.iam.gserviceaccount.com"));
+    assert_eq!(hub.retest("drive"), Some(Ok(())));
+    assert_eq!(hub.forget("drive"), Some(Ok(())));
+    assert_eq!(hub.entries()[0].from, None);
+    assert!(!data.join("service-account.json").exists());
+    assert!(hub.retest("drive").unwrap().is_err(), "nothing left to test");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081500 #3: an admin token set in Settings locks every admin request at once and after a
+/// restart; a short one is refused; ADMIN_TOKEN wins over it; removing it unlocks this machine
+/// again; and while Wardian listens on a non-loopback address it cannot be removed.
+#[test]
+fn keys_admin_token_set_in_settings() {
+    use serde_json::json;
+    let base = tmp("keys-admin");
+    let (data, apps) = (base.join("data"), base.join("apps"));
+    fs::create_dir_all(&apps).unwrap();
+    let server = TestServer::start(&apps, &data, &[]);
+    assert_eq!(server.json("POST", "/api/keys/admin", Some(json!({ "token": "too-short" })), &[]).0, 400);
+    assert_eq!(server.json("POST", "/api/keys/admin", Some(json!({ "token": "has spaces in it, twenty-four+" })), &[]).0, 400);
+    let (st, set) = server.json("POST", "/api/keys/admin", Some(json!({ "generate": true })), &[]);
+    assert_eq!((st, set["generated"].as_bool()), (200, Some(true)), "{set}");
+    let token = set["token"].as_str().unwrap().to_string();
+    assert_eq!(token.len(), 64);
+    let with = [("X-Admin-Token", token.as_str())];
+    assert_eq!(server.json("GET", "/api/keys", None, &[]).0, 403, "this machine is no longer an admin without the token");
+    assert_eq!(server.json("POST", "/api/grants", Some(json!({})), &[]).0, 403);
+    let (st, list) = server.json("GET", "/api/keys", None, &with);
+    assert_eq!(st, 200);
+    let admin = list["keys"].as_array().unwrap().iter().find(|k| k["id"] == "admin").unwrap().clone();
+    assert_eq!((admin["from"].as_str(), admin["removable"].as_bool()), (Some("settings"), Some(true)));
+    assert!(!list.to_string().contains(&token), "the list never shows the token");
+    let log = server.stop();
+    assert!(!log.contains(&token), "the token is not printed");
+
+    let server = TestServer::start(&apps, &data, &[]);
+    assert_eq!(server.json("GET", "/api/keys", None, &[]).0, 403, "still locked after a restart");
+    assert_eq!(server.json("GET", "/api/keys", None, &with).0, 200);
+    let (st, _) = server.json("POST", "/api/keys/admin/remove", Some(json!({})), &with);
+    assert_eq!(st, 200);
+    assert_eq!(server.json("GET", "/api/keys", None, &[]).0, 200, "this machine is an admin again");
+    assert_eq!(server.json("POST", "/api/keys/admin", Some(json!({ "token": token })), &[]).0, 200, "a typed token is saved");
+    server.stop();
+
+    let env_token = "from-the-environment-0123456789";
+    let server = TestServer::start(&apps, &data, &[("ADMIN_TOKEN", env_token)]);
+    assert_eq!(server.json("GET", "/api/keys", None, &with).0, 403, "ADMIN_TOKEN wins over the saved token");
+    let (st, refused) = server.json("POST", "/api/keys/admin", Some(json!({ "generate": true })), &[("X-Admin-Token", env_token)]);
+    assert_eq!(st, 400);
+    assert!(refused["error"].as_str().unwrap().contains("environment"), "{refused}");
+    server.stop();
+
+    // A saved token lets Wardian listen where other machines can reach it, and is kept there.
+    let (mut server, port) = TestServer::spawn(&apps, &data, "0.0.0.0:0", &[]);
+    match port.recv_timeout(std::time::Duration::from_secs(60)) {
+        Ok(addr) => server.addr = addr.replace("0.0.0.0", "127.0.0.1"),
+        Err(_) => panic!("Wardian did not start on 0.0.0.0 with a saved token:\n{}", server.stop()),
+    }
+    let (st, kept) = server.json("POST", "/api/keys/admin/remove", Some(json!({})), &with);
+    assert_eq!(st, 400, "{kept}");
+    assert!(kept["error"].as_str().unwrap().contains("other machines can reach"), "{kept}");
+    server.stop();
     let _ = fs::remove_dir_all(base);
 }

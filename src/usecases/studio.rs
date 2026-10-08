@@ -13,12 +13,16 @@
 
 use super::catalog::Hub;
 use super::check::Checker;
+use super::keys::{KeyChecks, KeyEntry, KeyOwner};
+use super::usage::Meter;
+use crate::domain::agent::{AgentSettings, BUILDER, LIMITS};
 use crate::domain::components::{files_for, page_tags, wire_suite, GUIDE};
 use crate::domain::package::{random_u32, safe_rel, unix_now, SKIP_DIRS};
 use crate::domain::studio::{free_name, json_in, size_text, Session, EMPTY_WASM};
 use crate::ports::{
     assets::Assets,
     llm::{BedrockAuth, Llm, LlmAuth, LlmError, Tier},
+    secrets::Secrets,
     service::Builder,
     storage::FileSystem,
 };
@@ -34,13 +38,11 @@ use std::{
     time::Duration,
 };
 
-/// Model requests in one turn of the chat, before Wardian stops it.
-const MAX_STEPS: usize = 40;
-const MAX_TOKENS: u32 = 16_000;
+// The steps, tokens and chats of Make an app, and the tokens of a `claude:sample` reply, are
+// settings (ADR-2610081500, `domain::agent`).
 const MAX_MESSAGE_CHARS: usize = 20_000;
 const MAX_FILE_CHARS: usize = 512 * 1024;
 const MAX_FILES: usize = 300;
-const MAX_SESSIONS: usize = 20;
 /// The most an app may send in one `claude:sample` prompt.
 const MAX_SAMPLE_CHARS: usize = 60_000;
 
@@ -133,6 +135,19 @@ struct Api {
     llm: Arc<dyn Llm>,
     auth: LlmAuth,
     assets: Arc<dyn Assets>,
+    /// The models for each tier, chosen in Settings or the adapter's defaults.
+    model: String,
+    quick_model: String,
+    /// Model requests in one turn of the chat, and tokens in one reply.
+    max_steps: usize,
+    max_tokens: u64,
+    /// Who pays (a package, or `BUILDER`), the meter it is counted on, and its daily cap.
+    payer: String,
+    meter: Arc<Meter>,
+    cap: Option<u64>,
+    /// Where a refused key is recorded, under the provider's id.
+    checks: Arc<KeyChecks>,
+    provider_id: &'static str,
 }
 
 impl Api {
@@ -146,15 +161,18 @@ impl Api {
             }
         }
         let body = json!({
-            "model": self.llm.model(Tier::Main),
-            "max_tokens": MAX_TOKENS,
+            "model": self.model,
+            "max_tokens": self.max_tokens,
             "system": system(&*self.assets),
             "tools": tools(),
             "messages": messages,
         });
+        if let Some(cap) = self.cap.filter(|&c| self.meter.used_today(&self.payer) >= c) {
+            return Err(format!("Make an app used its {cap} tokens for today. An admin can raise the cap in Settings → Claude."));
+        }
         let mut wait = 2;
         loop {
-            match self.llm.messages(&self.auth, &body) {
+            match self.call(&body) {
                 Ok(v) => return Ok(v),
                 Err(LlmError::Status(code, _)) if matches!(code, 429 | 500 | 502 | 503 | 529) && wait <= 16 => {
                     for _ in 0..wait * 10 {
@@ -173,8 +191,12 @@ impl Api {
     /// One question from an app (`claude:sample`), no tools. Errors start with a
     /// code the app can act on ("rate_limited: …"), the same codes the Claude
     /// viewer uses.
-    fn sample(&self, prompt: &str, quick: bool, max_tokens: u32) -> Result<Value, String> {
-        let model = self.llm.model(if quick { Tier::Quick } else { Tier::Main });
+    fn sample(&self, prompt: &str, quick: bool) -> Result<Value, String> {
+        if let Some(cap) = self.cap.filter(|&c| self.meter.used_today(&self.payer) >= c) {
+            return Err(format!("over_budget: this app used its {cap} tokens of Claude for today; an admin can raise its cap in Settings → Claude"));
+        }
+        let model = if quick { self.quick_model.clone() } else { self.model.clone() };
+        let max_tokens = self.max_tokens;
         let body = json!({
             "model": model,
             "max_tokens": max_tokens,
@@ -182,7 +204,7 @@ impl Api {
         });
         let mut wait = 2;
         let resp: Value = loop {
-            match self.llm.messages(&self.auth, &body) {
+            match self.call(&body) {
                 Ok(r) => break r,
                 Err(LlmError::Status(code, _)) if matches!(code, 500 | 502 | 503 | 529) && wait <= 8 => {
                     thread::sleep(Duration::from_secs(wait));
@@ -203,6 +225,20 @@ impl Api {
         }
         Ok(json!({ "text": text, "truncated": stop == "max_tokens", "model": model }))
     }
+
+    /// One request: its tokens go on the meter, and a refused key is recorded for Settings.
+    fn call(&self, body: &Value) -> Result<Value, LlmError> {
+        let out = self.llm.messages(&self.auth, body);
+        match &out {
+            Ok(reply) => self.meter.record(&self.payer, reply),
+            Err(LlmError::Status(code @ (401 | 403), msg)) => {
+                let said = format!("refused while {} used it (HTTP {code}) {msg}", self.payer);
+                self.checks.record::<()>(self.provider_id, &Err(said.trim().to_string()));
+            }
+            Err(_) => {}
+        }
+        out
+    }
 }
 
 /// Where Claude is reached (ADR-2610071106).
@@ -210,6 +246,16 @@ impl Api {
 enum Provider {
     Anthropic,
     Bedrock,
+}
+
+impl Provider {
+    /// Its name in `agent.json` and its key's id on the key list.
+    fn id(self) -> &'static str {
+        match self {
+            Provider::Anthropic => "anthropic",
+            Provider::Bedrock => "bedrock",
+        }
+    }
 }
 
 /// Amazon Bedrock: the region and how to sign in.
@@ -292,8 +338,23 @@ pub struct Providers {
     pub bedrock_env: Option<BedrockSettings>,
 }
 
+/// Where the studio keeps what it holds (ADR-2610081500).
+pub struct Stores {
+    pub fs: Arc<dyn FileSystem>,
+    pub secrets: Arc<dyn Secrets>,
+    pub checks: Arc<KeyChecks>,
+    pub meter: Arc<Meter>,
+}
+
 pub struct Studio {
     fs: Arc<dyn FileSystem>,
+    secrets: Arc<dyn Secrets>,
+    checks: Arc<KeyChecks>,
+    meter: Arc<Meter>,
+    agent_path: PathBuf,
+    agent: Mutex<AgentSettings>,
+    /// Saved secrets that are there but cannot be read, by key id.
+    unreadable: Mutex<BTreeMap<&'static str, String>>,
     llm: Arc<dyn Llm>,
     bedrock_llm: Arc<dyn Llm>,
     provider_path: PathBuf,
@@ -322,15 +383,32 @@ struct Workshop<'a> {
 }
 
 impl Studio {
-    pub fn new(fs: Arc<dyn FileSystem>, providers: Providers, assets: Arc<dyn Assets>, hub: Arc<Hub>, checker: Arc<Checker>, data_dir: &Path) -> Studio {
+    pub fn new(stores: Stores, providers: Providers, assets: Arc<dyn Assets>, hub: Arc<Hub>, checker: Arc<Checker>, data_dir: &Path) -> Studio {
+        let Stores { fs, secrets, checks, meter } = stores;
+        let mut unreadable = BTreeMap::new();
+        let mut secret = |id: &'static str, path: &Path| match secrets.read(path) {
+            Ok(b) => b,
+            Err(e) => {
+                unreadable.insert(id, e);
+                None
+            }
+        };
+        let agent_path = data_dir.join("agent.json");
+        let agent = match fs.read(&agent_path).map(|b| serde_json::from_slice::<Value>(&b).map_err(|e| e.to_string()).and_then(|v| AgentSettings::from_saved(&v))) {
+            Some(Ok(a)) => a,
+            Some(Err(e)) => {
+                eprintln!("claude: {} is not valid, so the defaults apply: {e}", agent_path.display());
+                AgentSettings::default()
+            }
+            None => AgentSettings::default(),
+        };
         let Providers { anthropic: llm, bedrock: bedrock_llm, anthropic_key: env_key, anthropic_workspace: env_workspace, provider: env_provider, bedrock_env: env_bedrock } = providers;
         // Settings saved in the data folder win over the environment, as for the Anthropic key.
         let provider_path = data_dir.join("ai-provider");
         let chosen = fs.read(&provider_path).map(|b| String::from_utf8_lossy(&b).trim().to_string()).or(env_provider);
         let provider = if chosen.as_deref() == Some("bedrock") { Provider::Bedrock } else { Provider::Anthropic };
         let bedrock_path = data_dir.join("bedrock.json");
-        let saved_bedrock = fs
-            .read(&bedrock_path)
+        let saved_bedrock = secret("bedrock", &bedrock_path)
             .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
             .and_then(|v| BedrockSettings::from_json(&v, None).ok());
         let bedrock = match saved_bedrock {
@@ -338,7 +416,7 @@ impl Studio {
             None => env_bedrock.clone().map(|b| (b, "environment")),
         };
         let key_path = data_dir.join("anthropic-key");
-        let saved = fs.read(&key_path).map(|b| String::from_utf8_lossy(&b).trim().to_string()).filter(|k| !k.is_empty());
+        let saved = secret("anthropic", &key_path).map(|b| String::from_utf8_lossy(&b).trim().to_string()).filter(|k| !k.is_empty());
         let key = match saved {
             Some(k) => Some((k, "settings")),
             None => env_key.clone().map(|k| (k, "environment")),
@@ -352,6 +430,12 @@ impl Studio {
             .unwrap_or_default();
         Studio {
             fs,
+            secrets,
+            checks,
+            meter,
+            agent_path,
+            agent: Mutex::new(agent),
+            unreadable: Mutex::new(unreadable),
             llm,
             bedrock_llm,
             provider_path,
@@ -371,17 +455,136 @@ impl Studio {
         }
     }
 
-    /// The chosen provider, with its credentials.
-    fn api(&self) -> Result<Api, String> {
-        if *self.provider.lock().unwrap() == Provider::Bedrock {
+    /// The chosen provider, with its credentials, models and limits, for `payer`: a package, or
+    /// `BUILDER` for Make an app.
+    fn api(&self, payer: &str) -> Result<Api, String> {
+        let provider = *self.provider.lock().unwrap();
+        let (llm, auth) = if provider == Provider::Bedrock {
             let b = self.bedrock.lock().unwrap().as_ref().map(|(b, _)| b.clone());
             let b = b.ok_or("Amazon Bedrock is not set up yet: Settings → Make apps with Claude")?;
-            return Ok(Api { llm: Arc::clone(&self.bedrock_llm), auth: LlmAuth::Bedrock { region: b.region, auth: b.auth }, assets: Arc::clone(&self.assets) });
+            (Arc::clone(&self.bedrock_llm), LlmAuth::Bedrock { region: b.region, auth: b.auth })
+        } else {
+            let key = self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone());
+            let key = key.ok_or("no Anthropic API key yet: add one in Settings → Make apps with Claude")?;
+            (Arc::clone(&self.llm), LlmAuth::Anthropic { key, workspace: self.workspace.lock().unwrap().clone() })
+        };
+        let agent = self.agent.lock().unwrap();
+        let building = payer == BUILDER;
+        let id = provider.id();
+        Ok(Api {
+            model: agent.model(id, false).map(String::from).unwrap_or_else(|| llm.model(Tier::Main)),
+            quick_model: agent.model(id, true).map(String::from).unwrap_or_else(|| llm.model(Tier::Quick)),
+            max_steps: agent.limit("max_steps") as usize,
+            max_tokens: agent.limit(if building { "max_tokens" } else { "sample_max_tokens" }),
+            cap: if building { agent.build_cap() } else { agent.sample_cap(payer) },
+            payer: payer.to_string(),
+            meter: Arc::clone(&self.meter),
+            checks: Arc::clone(&self.checks),
+            provider_id: id,
+            llm,
+            auth,
+            assets: Arc::clone(&self.assets),
+        })
+    }
+
+    /// The model a provider uses for a tier: the one chosen in Settings, or the adapter's default.
+    fn model_of(&self, provider: Provider, tier: Tier) -> String {
+        let llm = if provider == Provider::Bedrock { &self.bedrock_llm } else { &self.llm };
+        let chosen = self.agent.lock().unwrap().model(provider.id(), matches!(tier, Tier::Quick)).map(String::from);
+        chosen.unwrap_or_else(|| llm.model(tier))
+    }
+
+    /// Tests an Anthropic key with the main model, and records the result.
+    fn test_anthropic(&self, key: &str, workspace: &str) -> Result<(), String> {
+        let auth = LlmAuth::Anthropic { key: key.into(), workspace: workspace.into() };
+        let out = self.llm.test_key(&auth, &self.model_of(Provider::Anthropic, Tier::Main)).map_err(api_error);
+        self.checks.record("anthropic", &out);
+        out
+    }
+
+    /// Tests Bedrock settings with one tiny request to the quick model, and records the result.
+    fn test_bedrock(&self, b: &BedrockSettings) -> Result<(), String> {
+        let auth = LlmAuth::Bedrock { region: b.region.clone(), auth: b.auth.clone() };
+        let out = self.bedrock_llm.test_key(&auth, &self.model_of(Provider::Bedrock, Tier::Quick)).map_err(api_error);
+        self.checks.record("bedrock", &out);
+        out
+    }
+
+    fn forget_anthropic(&self) {
+        self.secrets.remove(&self.key_path);
+        self.unreadable.lock().unwrap().remove("anthropic");
+        *self.key.lock().unwrap() = self.env_key.clone().map(|k| (k, "environment"));
+    }
+
+    fn forget_bedrock(&self) {
+        self.secrets.remove(&self.bedrock_path);
+        self.unreadable.lock().unwrap().remove("bedrock");
+        *self.bedrock.lock().unwrap() = self.env_bedrock.clone().map(|b| (b, "environment"));
+    }
+
+    /// Claude's settings (ADR-2610081500): the saved ones, every limit's bounds, and the models
+    /// each provider uses now.
+    pub fn agent(&self) -> Value {
+        let settings = self.agent.lock().unwrap().to_json();
+        let limits: Vec<Value> = LIMITS.iter().map(|l| json!({ "name": l.name, "default": l.default, "min": l.min, "max": l.max })).collect();
+        let in_use = |p: Provider| json!({ "main": self.model_of(p, Tier::Main), "quick": self.model_of(p, Tier::Quick),
+                                            "default_main": self.llm_of(p).model(Tier::Main), "default_quick": self.llm_of(p).model(Tier::Quick) });
+        json!({ "settings": settings, "limits": limits,
+                "models": { "anthropic": in_use(Provider::Anthropic), "bedrock": in_use(Provider::Bedrock) } })
+    }
+
+    /// Applies a patch of Claude's settings. A model that changes is tested first, with the
+    /// provider's saved credentials, so a typo never replaces a working model; without
+    /// credentials it cannot be tested, and the answer says so.
+    pub fn set_agent(&self, patch: &Value) -> Result<Value, String> {
+        let current = self.agent.lock().unwrap().clone();
+        let next = current.apply(patch)?;
+        let mut untested = Vec::new();
+        for provider in [Provider::Anthropic, Provider::Bedrock] {
+            for quick in [false, true] {
+                let Some(model) = next.model(provider.id(), quick).filter(|m| current.model(provider.id(), quick) != Some(m)) else { continue };
+                match self.credentials(provider) {
+                    Some(auth) => self.llm_of(provider).test_key(&auth, model).map_err(|e| format!("{model}: {}", api_error(e)))?,
+                    None => untested.push(model.to_string()),
+                }
+            }
         }
-        let key = self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone());
-        let key = key.ok_or("no Anthropic API key yet: add one in Settings → Make apps with Claude")?;
-        let auth = LlmAuth::Anthropic { key, workspace: self.workspace.lock().unwrap().clone() };
-        Ok(Api { llm: Arc::clone(&self.llm), auth, assets: Arc::clone(&self.assets) })
+        let bytes = serde_json::to_vec_pretty(&next.to_json()).map_err(|e| e.to_string())?;
+        self.fs.write_private(&self.agent_path, &bytes).map_err(|e| format!("saving Claude's settings: {e}"))?;
+        *self.agent.lock().unwrap() = next;
+        let mut out = self.agent();
+        out["untested"] = json!(untested);
+        Ok(out)
+    }
+
+    /// The tokens used, by day and payer, with today's cap of each payer.
+    pub fn usage(&self) -> Value {
+        let mut out = self.meter.report();
+        let agent = self.agent.lock().unwrap();
+        let payers: Vec<String> = out["totals"].as_object().map(|t| t.keys().cloned().collect()).unwrap_or_default();
+        let caps: serde_json::Map<String, Value> = payers
+            .iter()
+            .map(|p| (p.clone(), json!(if p == BUILDER { agent.build_cap() } else { agent.sample_cap(p) })))
+            .collect();
+        out["caps"] = Value::Object(caps);
+        out["sample_daily_tokens"] = json!(agent.limit("sample_daily_tokens"));
+        out["build_daily_tokens"] = json!(agent.limit("build_daily_tokens"));
+        out
+    }
+
+    fn llm_of(&self, provider: Provider) -> &Arc<dyn Llm> {
+        if provider == Provider::Bedrock { &self.bedrock_llm } else { &self.llm }
+    }
+
+    /// A provider's saved credentials, if it has any.
+    fn credentials(&self, provider: Provider) -> Option<LlmAuth> {
+        match provider {
+            Provider::Anthropic => {
+                let key = self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone())?;
+                Some(LlmAuth::Anthropic { key, workspace: self.workspace.lock().unwrap().clone() })
+            }
+            Provider::Bedrock => self.bedrock.lock().unwrap().as_ref().map(|(b, _)| LlmAuth::Bedrock { region: b.region.clone(), auth: b.auth.clone() }),
+        }
     }
 
     /// What Settings shows. Never a key, token or secret.
@@ -391,15 +594,16 @@ impl Studio {
         let ws = self.workspace.lock().unwrap();
         let bedrock = self.bedrock.lock().unwrap();
         let bedrock_info = bedrock.as_ref().map(|(b, from)| json!({ "region": b.region, "auth": b.auth_kind(), "from": from }));
-        let (ready, model) = match provider {
-            Provider::Anthropic => (key.is_some(), self.llm.model(Tier::Main)),
-            Provider::Bedrock => (bedrock.is_some(), self.bedrock_llm.model(Tier::Main)),
+        let ready = match provider {
+            Provider::Anthropic => key.is_some(),
+            Provider::Bedrock => bedrock.is_some(),
         };
+        let model = self.model_of(provider, Tier::Main);
         json!({ "ready": ready, "provider": if provider == Provider::Bedrock { "bedrock" } else { "anthropic" }, "model": model,
                 "key_from": key.as_ref().map(|(_, from)| *from),
                 "workspace": if ws.is_empty() { Value::Null } else { json!(*ws) },
-                "anthropic": { "ready": key.is_some(), "model": self.llm.model(Tier::Main), "quick_model": self.llm.model(Tier::Quick) },
-                "bedrock": { "ready": bedrock.is_some(), "settings": bedrock_info, "model": self.bedrock_llm.model(Tier::Main), "quick_model": self.bedrock_llm.model(Tier::Quick) } })
+                "anthropic": { "ready": key.is_some(), "model": self.model_of(Provider::Anthropic, Tier::Main), "quick_model": self.model_of(Provider::Anthropic, Tier::Quick) },
+                "bedrock": { "ready": bedrock.is_some(), "settings": bedrock_info, "model": self.model_of(Provider::Bedrock, Tier::Main), "quick_model": self.model_of(Provider::Bedrock, Tier::Quick) } })
     }
 
     /// Chooses the provider (ADR-2610071106). For Bedrock, tests the settings before saving them,
@@ -412,17 +616,14 @@ impl Studio {
                 self.fs.write_private(&self.provider_path, b"anthropic").map_err(|e| format!("saving the choice: {e}"))?;
                 *self.provider.lock().unwrap() = Provider::Anthropic;
             }
-            Some("bedrock") if body["forget"].as_bool() == Some(true) => {
-                self.fs.remove_file(&self.bedrock_path);
-                *self.bedrock.lock().unwrap() = self.env_bedrock.clone().map(|b| (b, "environment"));
-            }
+            Some("bedrock") if body["forget"].as_bool() == Some(true) => self.forget_bedrock(),
             Some("bedrock") => {
                 let keep = self.bedrock.lock().unwrap().as_ref().map(|(b, _)| b.clone());
                 let settings = BedrockSettings::from_json(body, keep.as_ref())?;
-                let auth = LlmAuth::Bedrock { region: settings.region.clone(), auth: settings.auth.clone() };
-                self.bedrock_llm.test_key(&auth).map_err(api_error)?;
+                self.test_bedrock(&settings)?;
                 let bytes = serde_json::to_vec_pretty(&settings.to_json()).map_err(|e| e.to_string())?;
-                self.fs.write_private(&self.bedrock_path, &bytes).map_err(|e| format!("saving the Bedrock settings: {e}"))?;
+                self.secrets.write(&self.bedrock_path, &bytes).map_err(|e| format!("saving the Bedrock settings: {e}"))?;
+                self.unreadable.lock().unwrap().remove("bedrock");
                 self.fs.write_private(&self.provider_path, b"bedrock").map_err(|e| format!("saving the choice: {e}"))?;
                 *self.bedrock.lock().unwrap() = Some((settings, "settings"));
                 *self.provider.lock().unwrap() = Provider::Bedrock;
@@ -434,7 +635,8 @@ impl Studio {
 
     /// Answers one `claude:sample` request from an app. `body`: {prompt, json, tier}.
     pub fn sample(&self, body: &Value) -> Result<Value, String> {
-        let api = self.api().map_err(|e| format!("not_granted: {e}"))?;
+        let package = body["package"].as_str().unwrap_or("");
+        let api = self.api(package).map_err(|e| format!("not_granted: {e}"))?;
         let prompt = body["prompt"].as_str().unwrap_or("").trim();
         if prompt.is_empty() {
             return Err("error: the prompt is empty".into());
@@ -445,11 +647,11 @@ impl Studio {
         let quick = body["tier"].as_str() == Some("quick");
         if body["json"].as_bool().unwrap_or(false) {
             let ask = format!("{prompt}\n\nAnswer with the JSON only, no other words.");
-            let out = api.sample(&ask, quick, 2_000)?;
+            let out = api.sample(&ask, quick)?;
             let value = json_in(out["text"].as_str().unwrap_or("")).ok_or("invalid_json: the answer was not JSON")?;
             Ok(json!({ "value": value }))
         } else {
-            api.sample(prompt, quick, 4_000)
+            api.sample(prompt, quick)
         }
     }
 
@@ -468,8 +670,7 @@ impl Studio {
             w => w.map(String::from),
         };
         if key.is_empty() && workspace.is_none() {
-            self.fs.remove_file(&self.key_path);
-            *self.key.lock().unwrap() = self.env_key.clone().map(|k| (k, "environment"));
+            self.forget_anthropic();
             return Ok(self.status());
         }
         let typed = !key.is_empty();
@@ -482,10 +683,11 @@ impl Studio {
             self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone()).ok_or("paste the API key too")?
         };
         let ws = workspace.clone().unwrap_or_else(|| self.workspace.lock().unwrap().clone());
-        self.llm.test_key(&LlmAuth::Anthropic { key: key.clone(), workspace: ws.clone() }).map_err(api_error)?;
+        self.test_anthropic(&key, &ws)?;
         if typed {
-            self.fs.write_private(&self.key_path, key.as_bytes()).map_err(|e| format!("saving the key: {e}"))?;
+            self.secrets.write(&self.key_path, key.as_bytes()).map_err(|e| format!("saving the key: {e}"))?;
             *self.key.lock().unwrap() = Some((key, "settings"));
+            self.unreadable.lock().unwrap().remove("anthropic");
         }
         if workspace.is_some() {
             if ws.is_empty() {
@@ -501,7 +703,7 @@ impl Studio {
     /// Adds the user's message to a chat (a new one when `session` is
     /// missing) and starts Claude's turn in the background.
     pub fn send(&self, body: &Value) -> Result<Value, String> {
-        let api = self.api()?;
+        let api = self.api(BUILDER)?;
         if !self.hub.serving_local() {
             return Err("AI apps are saved in the local apps folder. Switch the source to Local first.".into());
         }
@@ -577,7 +779,7 @@ impl Studio {
 
     fn remember(&self, id: &str, s: Arc<Mutex<Session>>) {
         let mut all = self.sessions.lock().unwrap();
-        if all.len() >= MAX_SESSIONS {
+        if all.len() >= self.agent.lock().unwrap().limit("max_sessions") as usize {
             let oldest = all
                 .iter()
                 .filter(|(_, s)| s.try_lock().is_ok_and(|s| !s.busy))
@@ -845,7 +1047,7 @@ fn run_turn(shop: &Workshop, session: &Mutex<Session>, cancel: &AtomicBool) -> R
     let mut saved_since_change = true;
     let mut nudged = false;
     let result = (|| {
-        for _ in 0..MAX_STEPS {
+        for _ in 0..shop.api.max_steps {
             if cancel.load(Ordering::Relaxed) {
                 return Err("stopped".to_string());
             }
@@ -904,7 +1106,7 @@ fn run_turn(shop: &Workshop, session: &Mutex<Session>, cancel: &AtomicBool) -> R
             }
             messages.push(json!({ "role": "user", "content": results }));
         }
-        Err(format!("Claude used all {MAX_STEPS} steps for this message. Send another message to continue."))
+        Err(format!("Claude used all {} steps for this message. Send another message to continue.", shop.api.max_steps))
     })();
     // Keep the conversation only up to a complete exchange, so the next
     // message always follows a valid history.
@@ -952,4 +1154,83 @@ impl Builder for Studio {
     fn events(&self, session: &str, since: usize) -> Result<Value, String> {
         Studio::events(self, session, since)
     }
+    fn agent(&self) -> Value {
+        Studio::agent(self)
+    }
+    fn set_agent(&self, patch: &Value) -> Result<Value, String> {
+        Studio::set_agent(self, patch)
+    }
+    fn usage(&self) -> Value {
+        Studio::usage(self)
+    }
+}
+
+impl KeyOwner for Studio {
+    fn entries(&self) -> Vec<KeyEntry> {
+        let unreadable = self.unreadable.lock().unwrap();
+        let key = self.key.lock().unwrap();
+        let ws = self.workspace.lock().unwrap();
+        let anthropic = KeyEntry {
+            id: "anthropic",
+            name: "Anthropic API key",
+            from: key.as_ref().map(|(_, from)| *from),
+            detail: match &*key {
+                Some((k, _)) if ws.is_empty() => format!("{}, model {}", key_hint(k), self.model_of(Provider::Anthropic, Tier::Main)),
+                Some((k, _)) => format!("{}, workspace {ws}, model {}", key_hint(k), self.model_of(Provider::Anthropic, Tier::Main)),
+                None => "not set".into(),
+            },
+            error: unreadable.get("anthropic").cloned(),
+        };
+        let bedrock = self.bedrock.lock().unwrap();
+        let bedrock = KeyEntry {
+            id: "bedrock",
+            name: "Amazon Bedrock",
+            from: bedrock.as_ref().map(|(_, from)| *from),
+            detail: match &*bedrock {
+                Some((b, _)) => format!("region {}, {}, model {}", b.region, if b.auth_kind() == "api-key" { "API key" } else { "access keys" }, self.model_of(Provider::Bedrock, Tier::Main)),
+                None => "not set".into(),
+            },
+            error: unreadable.get("bedrock").cloned(),
+        };
+        vec![anthropic, bedrock]
+    }
+
+    fn retest(&self, id: &str) -> Option<Result<(), String>> {
+        match id {
+            "anthropic" => Some((|| {
+                let key = self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone()).ok_or("no Anthropic API key is set")?;
+                let ws = self.workspace.lock().unwrap().clone();
+                self.test_anthropic(&key, &ws)
+            })()),
+            "bedrock" => Some((|| {
+                let b = self.bedrock.lock().unwrap().as_ref().map(|(b, _)| b.clone()).ok_or("Amazon Bedrock is not set up")?;
+                self.test_bedrock(&b)
+            })()),
+            _ => None,
+        }
+    }
+
+    fn forget(&self, id: &str) -> Option<Result<(), String>> {
+        match id {
+            "anthropic" => {
+                self.forget_anthropic();
+                Some(Ok(()))
+            }
+            "bedrock" => {
+                self.forget_bedrock();
+                Some(Ok(()))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The last four characters of a key, which is how the consoles name keys too. A short key is
+/// not named at all.
+fn key_hint(k: &str) -> String {
+    let chars: Vec<char> = k.chars().collect();
+    if chars.len() < 20 {
+        return "a key".into();
+    }
+    format!("key ending {}", chars[chars.len() - 4..].iter().collect::<String>())
 }

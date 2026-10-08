@@ -5,12 +5,13 @@
 //! Settings (or from SPLUNK_* variables). The account's Splunk role decides
 //! what an app can read, so give Wardian a read-only role.
 
+use super::keys::{KeyChecks, KeyEntry, KeyOwner};
 use crate::domain::splunk::{fields_of, normalize_search, rows_of, table, SplunkConfig, MAX_SEARCH_TIME};
 use crate::ports::{
     db::{column_names, column_types, valid_ident, Database, MAX_LOADED_ROWS},
+    secrets::Secrets,
     service::{Searches, Watch},
     splunk::{SplunkApi, SplunkError, SplunkSession},
-    storage::FileSystem,
 };
 use serde_json::{json, Value};
 use std::{
@@ -21,9 +22,12 @@ use std::{
 };
 
 pub struct Splunk {
-    fs: Arc<dyn FileSystem>,
+    secrets: Arc<dyn Secrets>,
+    checks: Arc<KeyChecks>,
     api: Arc<dyn SplunkApi>,
     path: PathBuf,
+    /// Why the saved account could not be read, if it could not (ADR-2610081500).
+    unreadable: Mutex<Option<String>>,
     /// The account from the environment, used when Settings has none.
     env_cfg: Option<SplunkConfig>,
     cfg: Mutex<Option<(SplunkConfig, &'static str)>>,
@@ -47,14 +51,17 @@ fn cut_off(url: &str, reason: &str) -> String {
 }
 
 impl Splunk {
-    pub fn new(fs: Arc<dyn FileSystem>, api: Arc<dyn SplunkApi>, db: Arc<dyn Database>, data_dir: &Path, env_cfg: Option<SplunkConfig>) -> Splunk {
+    pub fn new(secrets: Arc<dyn Secrets>, checks: Arc<KeyChecks>, api: Arc<dyn SplunkApi>, db: Arc<dyn Database>, data_dir: &Path, env_cfg: Option<SplunkConfig>) -> Splunk {
         let path = data_dir.join("splunk.json");
-        let saved = fs.read(&path).and_then(|b| serde_json::from_slice::<SplunkConfig>(&b).ok());
+        let (saved, unreadable) = match secrets.read(&path) {
+            Ok(b) => (b.and_then(|b| serde_json::from_slice::<SplunkConfig>(&b).ok()), None),
+            Err(e) => (None, Some(e)),
+        };
         let cfg = match saved {
             Some(c) => Some((c, "settings")),
             None => env_cfg.clone().map(|c| (c, "environment")),
         };
-        Splunk { fs, api, path, env_cfg, cfg: Mutex::new(cfg), db }
+        Splunk { secrets, checks, api, path, unreadable: Mutex::new(unreadable), env_cfg, cfg: Mutex::new(cfg), db }
     }
 
     /// What Settings shows. Never the token or the password.
@@ -73,8 +80,7 @@ impl Splunk {
     pub fn set_config(&self, body: &Value) -> Result<Value, String> {
         let url = body["url"].as_str().unwrap_or("").trim();
         if url.is_empty() {
-            self.fs.remove_file(&self.path);
-            *self.cfg.lock().unwrap() = self.env_cfg.clone().map(|c| (c, "environment"));
+            self.forget_saved();
             return Ok(self.status());
         }
         let s = |k: &str| body[k].as_str().unwrap_or("").to_string();
@@ -87,13 +93,23 @@ impl Splunk {
             ca_file: s("ca_file"),
         };
         cfg.check()?;
-        let info = self.server_info(&cfg)?;
+        let info = self.server_info(&cfg);
+        self.checks.record("splunk", &info);
+        let info = info?;
         let bytes = serde_json::to_vec_pretty(&cfg).map_err(|e| e.to_string())?;
-        self.fs.write_private(&self.path, &bytes).map_err(|e| format!("saving the Splunk settings: {e}"))?;
+        self.secrets.write(&self.path, &bytes).map_err(|e| format!("saving the Splunk settings: {e}"))?;
         *self.cfg.lock().unwrap() = Some((cfg, "settings"));
+        *self.unreadable.lock().unwrap() = None;
         let mut st = self.status();
         st["server"] = info;
         Ok(st)
+    }
+
+    /// Removes the saved account; the environment's, if any, then applies.
+    fn forget_saved(&self) {
+        self.secrets.remove(&self.path);
+        *self.unreadable.lock().unwrap() = None;
+        *self.cfg.lock().unwrap() = self.env_cfg.clone().map(|c| (c, "environment"));
     }
 
     /// Tests the account and names the server. server/info answers anyone on
@@ -230,6 +246,35 @@ impl Splunk {
 /// Stops a job; its reply does not matter.
 fn cancel(session: &dyn SplunkSession, job: &str) {
     let _ = session.post(&format!("{job}/control"), &[("action", "cancel")]);
+}
+
+impl KeyOwner for Splunk {
+    fn entries(&self) -> Vec<KeyEntry> {
+        let cfg = self.cfg.lock().unwrap();
+        let detail = match &*cfg {
+            Some((c, _)) if c.token.is_empty() => format!("user {} at {}", c.username, c.url),
+            Some((c, _)) => format!("token for {}", c.url),
+            None => "not set".into(),
+        };
+        let error = self.unreadable.lock().unwrap().clone();
+        vec![KeyEntry { id: "splunk", name: "Splunk account", from: cfg.as_ref().map(|(_, from)| *from), detail, error }]
+    }
+
+    fn retest(&self, id: &str) -> Option<Result<(), String>> {
+        (id == "splunk").then(|| {
+            let cfg = self.cfg.lock().unwrap().as_ref().map(|(c, _)| c.clone()).ok_or("no Splunk account is set")?;
+            let out = self.server_info(&cfg).map(drop);
+            self.checks.record("splunk", &out);
+            out
+        })
+    }
+
+    fn forget(&self, id: &str) -> Option<Result<(), String>> {
+        (id == "splunk").then(|| {
+            self.forget_saved();
+            Ok(())
+        })
+    }
 }
 
 impl Searches for Splunk {

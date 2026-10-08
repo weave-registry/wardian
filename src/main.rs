@@ -8,6 +8,7 @@ mod config;
 mod tests;
 
 mod domain {
+    pub mod agent;
     pub mod check;
     pub mod components;
     pub mod db;
@@ -20,6 +21,7 @@ mod domain {
     pub mod splunk;
     pub mod studio;
     pub mod suite;
+    pub mod usage;
     pub mod viewer_state;
 }
 mod ports {
@@ -28,6 +30,7 @@ mod ports {
     pub mod db;
     pub mod drive;
     pub mod llm;
+    pub mod secrets;
     pub mod service;
     pub mod splunk;
     pub mod storage;
@@ -43,10 +46,12 @@ mod usecases {
     pub mod history;
     pub mod import;
     pub mod jobs;
+    pub mod keys;
     pub mod scaffold;
     pub mod skills;
     pub mod splunk;
     pub mod studio;
+    pub mod usage;
     pub mod viewer_state;
     pub mod workspace;
 }
@@ -65,6 +70,7 @@ mod adapters {
         pub mod google_drive;
         pub mod link_fetch;
         pub mod local_disk;
+        pub mod plain_secrets;
         pub mod splunk_rest;
         pub mod sqlite_store;
         pub mod wardian_probe;
@@ -72,9 +78,9 @@ mod adapters {
 }
 
 use adapters::primary::{cli, http, stop_log::StopLog, terminal};
-use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest, sqlite_store::SqliteStore, wardian_probe};
+use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, plain_secrets::PlainSecrets, splunk_rest::SplunkRest, sqlite_store::SqliteStore, wardian_probe};
 use config::Settings;
-use ports::{assets::Assets, db::Database, llm::BedrockAuth, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
+use ports::{assets::Assets, db::Database, llm::BedrockAuth, secrets::Secrets, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
 use std::sync::Arc;
 use usecases::{
     catalog::{Hub, HubPorts},
@@ -85,8 +91,10 @@ use usecases::{
     history::History,
     scaffold::Scaffold,
     jobs::JobRunner,
+    keys::{AdminGate, KeyChecks, KeyOwner, Keyring},
     splunk::Splunk,
-    studio::{BedrockSettings, Providers, Studio},
+    studio::{BedrockSettings, Providers, Stores, Studio},
+    usage::Meter,
     viewer_state::State,
 };
 
@@ -185,8 +193,19 @@ fn serve(cfg: Settings, no_open: bool) {
     let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
     let assets: Arc<dyn Assets> = Arc::new(Embedded);
     let checker = Arc::new(Checker::new(Arc::clone(&fs)));
-    // Before anything else: an address other machines can reach needs ADMIN_TOKEN (ADR-2610072033).
-    let who = match config::admins(&cfg.addr, cfg.admin_token.is_some()) {
+    let secrets: Arc<dyn Secrets> = Arc::new(PlainSecrets::new(Arc::clone(&fs)));
+    // The admin token: ADMIN_TOKEN, or the one saved in Settings (ADR-2610081500). One that is
+    // saved but cannot be read stops Wardian, so it never starts unlocked by mistake.
+    let admin = match AdminGate::load(Arc::clone(&secrets), &cfg.data_dir, cfg.admin_token.clone(), !config::is_loopback(&cfg.addr)) {
+        Ok(gate) => Arc::new(gate),
+        Err(why) => {
+            eprintln!("{why}");
+            std::process::exit(2);
+        }
+    };
+    let token_set = admin.token().is_some();
+    // Before anything else: an address other machines can reach needs an admin token (ADR-2610072033).
+    let who = match config::admins(&cfg.addr, token_set) {
         Ok(who) => who,
         Err(why) => {
             eprintln!("{why}");
@@ -267,13 +286,16 @@ fn serve(cfg: Settings, no_open: bool) {
         eprintln!("apps: could not make {}: {e}", cfg.local_root.display());
     }
     let history = Arc::new(History::new(Arc::clone(&fs), &cfg.data_dir, &cfg.local_root));
+    let checks = Arc::new(KeyChecks::new(Arc::clone(&fs), &cfg.data_dir));
     let hub = Arc::new(Hub::new(
         HubPorts {
             fs: Arc::clone(&fs),
             drive: Arc::new(GoogleDrive::new(&cfg.drive_api)),
             web: Arc::new(LinkFetcher::new(cfg.import_allow_lan)),
             assets: Arc::clone(&assets),
+            secrets: Arc::clone(&secrets),
         },
+        Arc::clone(&checks),
         Arc::clone(&history),
         cfg.data_dir.clone(),
         cfg.local_root.clone(),
@@ -287,17 +309,20 @@ fn serve(cfg: Settings, no_open: bool) {
         provider: cfg.ai_provider.clone(),
         bedrock_env: bedrock_from_env(&cfg),
     };
-    let studio = Studio::new(Arc::clone(&fs), providers, Arc::clone(&assets), Arc::clone(&hub), Arc::clone(&checker), &cfg.data_dir);
+    let stores = Stores { fs: Arc::clone(&fs), secrets: Arc::clone(&secrets), checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&fs), &cfg.data_dir)) };
+    let studio = Arc::new(Studio::new(stores, providers, Arc::clone(&assets), Arc::clone(&hub), Arc::clone(&checker), &cfg.data_dir));
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&cfg.data_dir));
-    let splunk = Splunk::new(Arc::clone(&fs), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone());
+    let splunk = Arc::new(Splunk::new(Arc::clone(&secrets), Arc::clone(&checks), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone()));
     detail(&hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone()));
 
     let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir));
     let exports = Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), Arc::clone(&db), Arc::clone(&state), Arc::clone(&history), &cfg.local_root, &cfg.data_dir));
-    let (builder, searches): (Arc<dyn Builder>, Arc<dyn Searches>) = (Arc::new(studio), Arc::new(splunk));
+    let owners: Vec<Arc<dyn KeyOwner>> = vec![studio.clone(), splunk.clone(), hub.clone()];
+    let keys = Arc::new(Keyring::new(owners, admin, checks, secrets));
+    let (builder, searches): (Arc<dyn Builder>, Arc<dyn Searches>) = (studio, splunk);
     let jobs = Arc::new(JobRunner::new(Arc::clone(&searches), Arc::clone(&builder)));
     detail(JobRunner::NOTE);
-    let services = Services { exports, tables: Arc::new(Db::new(db)), history, state, catalog: hub, builder, searches, jobs, pages: Arc::new(Docs::new(assets)) };
+    let services = Services { exports, tables: Arc::new(Db::new(db)), history, state, catalog: hub, builder, searches, jobs, pages: Arc::new(Docs::new(assets)), keys };
     // The address actually taken: with port 0 the system picks a free port.
     let url = format!("http://{bound}");
     detail(&format!("listening on {url}"));
@@ -310,7 +335,7 @@ fn serve(cfg: Settings, no_open: bool) {
             busy_port,
             apps: &terminal::tilde(&apps_shown, home.as_deref()),
             added,
-            admin: config::admins_in_short(cfg.admin_token.is_some()),
+            admin: config::admins_in_short(token_set),
             log: &terminal::tilde(&data_shown.join("wardian.log"), home.as_deref()),
             note: git_note,
         };
@@ -320,7 +345,7 @@ fn serve(cfg: Settings, no_open: bool) {
             terminal::open_browser(&url);
         }
     }
-    let why = http::serve(listener, cfg.admin_token.clone(), services);
+    let why = http::serve(listener, services);
     stops.record(&format!("stopped: {why}"));
     std::process::exit(1);
 }

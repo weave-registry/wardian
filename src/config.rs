@@ -99,7 +99,7 @@ fn program_dir(fs: &dyn FileSystem) -> Option<PathBuf> {
 /// listens on a loopback address, so any other address without a token is refused, not warned about.
 pub fn admins(addr: &str, token_set: bool) -> Result<String, String> {
     if token_set {
-        return Ok("admin: whoever sends ADMIN_TOKEN (Settings asks for it); without it, settings are locked from every address, this machine included".into());
+        return Ok("admin: whoever sends the admin token (ADMIN_TOKEN, or the one saved in Settings → Keys; Settings asks for it); without it, settings are locked from every address, this machine included".into());
     }
     if is_loopback(addr) {
         return Ok(format!("admin: every program and browser on this machine (no ADMIN_TOKEN is set, and {addr} is reachable only from here)"));
@@ -115,7 +115,7 @@ pub fn admins(addr: &str, token_set: bool) -> Result<String, String> {
 /// Only a loopback address starts without a token, so "this computer only" is exact.
 pub fn admins_in_short(token_set: bool) -> &'static str {
     if token_set {
-        "whoever sends ADMIN_TOKEN"
+        "whoever sends the admin token"
     } else {
         "this computer only"
     }
@@ -184,7 +184,7 @@ pub fn cannot_listen(addr: &str, error: Option<&str>, tried_up_to: Option<u16>) 
 }
 
 /// Whether ADDR names a loopback address: 127.0.0.0/8, ::1 or localhost.
-fn is_loopback(addr: &str) -> bool {
+pub fn is_loopback(addr: &str) -> bool {
     let host = match addr.strip_prefix('[') {
         Some(rest) => match rest.split_once(']') {
             Some((host, _)) => host,
@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn with_a_token_any_address_starts() {
         for addr in ["0.0.0.0:8000", "127.0.0.1:0", "[::]:80"] {
-            assert!(admins(addr, true).unwrap().contains("whoever sends ADMIN_TOKEN"));
+            assert!(admins(addr, true).unwrap().contains("whoever sends the admin token"));
         }
     }
 }

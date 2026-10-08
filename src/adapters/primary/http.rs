@@ -22,12 +22,16 @@ impl Listener {
     }
 }
 
-/// Answers every connection on `listener` in its own thread. `admin_token` (ADMIN_TOKEN) lets
-/// other machines change settings; without it, only a browser on this machine may. Returns why
-/// it stopped: the system stopped accepting connections.
-pub fn serve(listener: Listener, admin_token: Option<String>, services: Services) -> String {
+/// Answers every connection on `listener` in its own thread. The admin token (ADMIN_TOKEN, or the
+/// one saved in Settings, read from `services.keys` on each request) lets other machines change
+/// settings; without it, only a browser on this machine may. Returns why it stopped: the system
+/// stopped accepting connections.
+pub fn serve(listener: Listener, services: Services) -> String {
     let addr = listener.local_addr().map(|a| a.to_string()).unwrap_or_default();
-    let e = listener.0.run(Arc::new(move |req: &mut Request<'_>| handle(req, &services, admin_token.as_deref())));
+    let e = listener.0.run(Arc::new(move |req: &mut Request<'_>| {
+        let token = services.keys.admin_token();
+        handle(req, &services, token.as_deref())
+    }));
     format!("stopped accepting connections on {addr}: {e}")
 }
 
@@ -271,7 +275,17 @@ fn jobs_route(method: &Method, rest: &[&str], package: Option<&str>, s: &Service
 
 fn api_post(path: &str, body: Value, s: &Services) -> Result<Value, String> {
     let (hub, studio, splunk) = (&s.catalog, &s.builder, &s.searches);
+    // The key list (ADR-2610081500): /api/keys/<id>/test and /api/keys/<id>/remove.
+    if let Some(rest) = path.strip_prefix("/api/keys/") {
+        return match rest.split_once('/') {
+            Some((id, "test")) => s.keys.test(id),
+            Some((id, "remove")) => s.keys.remove(id),
+            None if rest == "admin" => s.keys.set_admin_token(&body),
+            _ => Err("not found".into()),
+        };
+    }
     match path {
+        "/api/agent" => studio.set_agent(&body),
         "/api/splunk/config" => splunk.set_config(&body),
         "/api/splunk/search" => {
             // The kernel asks for an app of a suite. Check here too, not only in the
@@ -541,6 +555,12 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
             json_resp(200, s)
         }
         (Method::Get, ["api", "trash"]) if admin => json_resp(200, hub.trash()),
+        // Every secret, Claude's settings and the tokens used (ADR-2610081500). Admin only: they
+        // name accounts, models and apps, never a secret.
+        (Method::Get, ["api", "keys"]) if admin => json_resp(200, s.keys.list()),
+        (Method::Get, ["api", "agent"]) if admin => json_resp(200, studio.agent()),
+        (Method::Get, ["api", "usage"]) if admin => json_resp(200, studio.usage()),
+        (Method::Get, ["api", "keys" | "agent" | "usage"]) => json_resp(403, json!({ "error": "settings are locked" })),
         (Method::Get, ["api", "ai", "sessions"]) if admin => json_resp(200, studio.sessions()),
         (Method::Get, ["api", "ai", "events"]) if admin => {
             let since = query(&url, "since").and_then(|n| n.parse().ok()).unwrap_or(0);

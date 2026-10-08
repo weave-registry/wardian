@@ -41,6 +41,6 @@ pub trait Llm: Send + Sync {
     fn model(&self, tier: Tier) -> String;
     /// One Messages request; `body` is complete, model included. Each adapter maps it to its API.
     fn messages(&self, auth: &LlmAuth, body: &Value) -> Result<Value, LlmError>;
-    /// A cheap request that proves the credentials work.
-    fn test_key(&self, auth: &LlmAuth) -> Result<(), LlmError>;
+    /// A cheap request that proves the credentials work, and that they may use `model`.
+    fn test_key(&self, auth: &LlmAuth, model: &str) -> Result<(), LlmError>;
 }

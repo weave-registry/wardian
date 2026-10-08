@@ -5,6 +5,7 @@
 
 use super::history::History;
 use super::import::import_zip;
+use super::keys::{KeyChecks, KeyEntry, KeyOwner};
 use super::workspace::FIRST_RUN_MARKER;
 use crate::domain::grants::{self, Answer};
 use crate::domain::import_plan::{app_name_from, MAX_ZIP_BYTES};
@@ -13,6 +14,7 @@ use crate::domain::suite;
 use crate::ports::{
     assets::Assets,
     drive::{DriveClient, DriveConnector, DriveFolder},
+    secrets::Secrets,
     service::Catalog,
     storage::FileSystem,
     web::Downloader,
@@ -39,6 +41,13 @@ pub struct Hub {
     local_root: PathBuf,
     refresh_every: Duration,
     client: Mutex<Option<Arc<dyn DriveClient>>>,
+    /// The Drive key: kept through `Secrets` (ADR-2610081500), where it came from, and the file
+    /// GDRIVE_SA_KEY names, used when Settings has none.
+    secrets: Arc<dyn Secrets>,
+    checks: Arc<KeyChecks>,
+    key_from: Mutex<Option<&'static str>>,
+    key_unreadable: Mutex<Option<String>>,
+    env_key: Mutex<Option<PathBuf>>,
     serving: RwLock<Arc<Serving>>,
     /// Serializes changes to grants.json.
     grants_lock: Mutex<()>,
@@ -52,10 +61,11 @@ pub struct HubPorts {
     pub drive: Arc<dyn DriveConnector>,
     pub web: Arc<dyn Downloader>,
     pub assets: Arc<dyn Assets>,
+    pub secrets: Arc<dyn Secrets>,
 }
 
 impl Hub {
-    pub fn new(ports: HubPorts, history: Arc<History>, data_dir: PathBuf, local_root: PathBuf, refresh_every: Duration) -> Hub {
+    pub fn new(ports: HubPorts, checks: Arc<KeyChecks>, history: Arc<History>, data_dir: PathBuf, local_root: PathBuf, refresh_every: Duration) -> Hub {
         Hub {
             fs: ports.fs,
             drive: ports.drive,
@@ -65,6 +75,11 @@ impl Hub {
             local_root,
             refresh_every,
             client: Mutex::new(None),
+            secrets: ports.secrets,
+            checks,
+            key_from: Mutex::new(None),
+            key_unreadable: Mutex::new(None),
+            env_key: Mutex::new(None),
             serving: RwLock::new(Arc::new(Serving::Local)),
             grants_lock: Mutex::new(()),
             history,
@@ -88,14 +103,8 @@ impl Hub {
     /// a folder in `env_folder` wins over the saved folder. Returns the line that says where apps
     /// come from, for the composition root to show or log (ADR-2610080930).
     pub fn start(&self, env_key: Option<String>, env_folder: Option<String>) -> String {
-        let key = [Some(self.key_path()), env_key.map(PathBuf::from)].into_iter().flatten().find(|p| self.fs.is_file(p));
-        if let Some(path) = key {
-            let raw = self.fs.read(&path).map(|b| String::from_utf8_lossy(&b).into_owned()).ok_or_else(|| "cannot read it".to_string());
-            match raw.and_then(|raw| self.drive.client(&raw)) {
-                Ok(c) => *self.client.lock().unwrap() = Some(c),
-                Err(e) => eprintln!("drive: key {}: {e}", path.display()),
-            }
-        }
+        *self.env_key.lock().unwrap() = env_key.map(PathBuf::from);
+        self.load_drive_key();
 
         let cfg: SourceChoice = self.fs.read(&self.config_path()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         let (folder, name) = match env_folder {
@@ -222,14 +231,43 @@ impl Hub {
 
     // ---------- Google Drive ----------
 
+    /// Loads the Drive key: the one saved in Settings, else the file GDRIVE_SA_KEY names.
+    fn load_drive_key(&self) {
+        let saved = match self.secrets.read(&self.key_path()) {
+            Ok(saved) => saved.map(|b| (b, "settings")),
+            Err(e) => {
+                eprintln!("drive: the saved key cannot be read: {e}");
+                *self.key_unreadable.lock().unwrap() = Some(e);
+                None
+            }
+        };
+        let env = || self.env_key.lock().unwrap().clone().and_then(|p| self.fs.read(&p).map(|b| (b, "environment")));
+        let (client, from) = match saved.or_else(env) {
+            Some((raw, from)) => match self.drive.client(&String::from_utf8_lossy(&raw)) {
+                Ok(c) => (Some(c), Some(from)),
+                Err(e) => {
+                    eprintln!("drive: key from {from}: {e}");
+                    (None, None)
+                }
+            },
+            None => (None, None),
+        };
+        *self.client.lock().unwrap() = client;
+        *self.key_from.lock().unwrap() = from;
+    }
+
     /// Checks a key against Google before saving it, so a bad key never
     /// replaces a good one. Returns the address to share folders with.
     pub fn set_key(&self, raw: &str) -> Result<String, String> {
         let client = self.drive.client(raw)?;
-        client.check()?;
-        self.fs.write_private(&self.key_path(), raw.as_bytes()).map_err(|e| format!("saving key: {e}"))?;
+        let checked = client.check();
+        self.checks.record("drive", &checked);
+        checked?;
+        self.secrets.write(&self.key_path(), raw.as_bytes()).map_err(|e| format!("saving key: {e}"))?;
         let email = client.client_email();
         *self.client.lock().unwrap() = Some(client);
+        *self.key_from.lock().unwrap() = Some("settings");
+        *self.key_unreadable.lock().unwrap() = None;
         Ok(email)
     }
 
@@ -438,6 +476,39 @@ impl Hub {
             return Err(format!("you have not allowed {package} to use {grant}"));
         }
         Ok(())
+    }
+}
+
+impl KeyOwner for Hub {
+    fn entries(&self) -> Vec<KeyEntry> {
+        let from = *self.key_from.lock().unwrap();
+        let detail = match &*self.client.lock().unwrap() {
+            Some(c) => format!("service account {}", c.client_email()),
+            None => "not set".into(),
+        };
+        let error = self.key_unreadable.lock().unwrap().clone();
+        vec![KeyEntry { id: "drive", name: "Google Drive service account", from, detail, error }]
+    }
+
+    fn retest(&self, id: &str) -> Option<Result<(), String>> {
+        (id == "drive").then(|| {
+            let out = self.client().and_then(|c| c.check());
+            self.checks.record("drive", &out);
+            out
+        })
+    }
+
+    /// Removes the saved key. While Drive is the app source, Wardian serves the local apps after.
+    fn forget(&self, id: &str) -> Option<Result<(), String>> {
+        (id == "drive").then(|| {
+            self.secrets.remove(&self.key_path());
+            *self.key_unreadable.lock().unwrap() = None;
+            if matches!(&*self.serving(), Serving::Drive(_)) {
+                self.use_local()?;
+            }
+            self.load_drive_key();
+            Ok(())
+        })
     }
 }
 

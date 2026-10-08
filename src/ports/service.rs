@@ -51,6 +51,26 @@ pub trait Builder: Send + Sync {
     fn tested(&self, session: &str, body: &Value) -> Result<Value, String>;
     fn sessions(&self) -> Value;
     fn events(&self, session: &str, since: usize) -> Result<Value, String>;
+    /// Claude's settings (ADR-2610081500): {settings, limits, defaults}.
+    fn agent(&self) -> Value;
+    /// Applies a patch of settings; a changed model is tested first.
+    fn set_agent(&self, patch: &Value) -> Result<Value, String>;
+    /// The tokens used, by day and payer, with the caps.
+    fn usage(&self) -> Value;
+}
+
+/// Every secret Wardian holds, on one list (ADR-2610081500). Never the secrets themselves.
+pub trait Keys: Send + Sync {
+    /// {keys: [{id, name, set, from, detail, error, check, removable, testable}], kept}.
+    fn list(&self) -> Value;
+    /// Tests a saved secret again; the list, with {tested: {id, ok, said}}.
+    fn test(&self, id: &str) -> Result<Value, String>;
+    /// Removes a secret saved in Settings; the environment's, if any, then applies.
+    fn remove(&self, id: &str) -> Result<Value, String>;
+    /// `{token}` or `{generate: true}`: saves the admin token, and answers it once.
+    fn set_admin_token(&self, body: &Value) -> Result<Value, String>;
+    /// The token every admin request must send, if one is set.
+    fn admin_token(&self) -> Option<String>;
 }
 
 /// Splunk searches for apps, and the Splunk account in Settings.
@@ -176,4 +196,5 @@ pub struct Services {
     pub searches: Arc<dyn Searches>,
     pub jobs: Arc<dyn Jobs>,
     pub pages: Arc<dyn Pages>,
+    pub keys: Arc<dyn Keys>,
 }

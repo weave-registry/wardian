@@ -1,5 +1,6 @@
 //! The Claude port over the Anthropic Messages API. This is the one place that names models:
-//! WARDIAN_AI_MODEL (or RUSTLE_AI_MODEL) chooses the main one.
+//! WARDIAN_AI_MODEL (or RUSTLE_AI_MODEL) chooses the main one, and Settings can choose others
+//! (ADR-2610081500), which the use case then names in each request.
 
 use crate::ports::llm::{Llm, LlmAuth, LlmError, Tier};
 use serde_json::Value;
@@ -57,7 +58,8 @@ impl Llm for Anthropic {
         resp.into_json().map_err(|e| LlmError::Unreadable(e.to_string()))
     }
 
-    fn test_key(&self, auth: &LlmAuth) -> Result<(), LlmError> {
-        self.request(auth, "GET", &format!("/v1/models/{}", self.model))?.call().map(drop).map_err(failure)
+    /// Looks the model up: a refused key answers 401, and a model the key cannot use 404.
+    fn test_key(&self, auth: &LlmAuth, model: &str) -> Result<(), LlmError> {
+        self.request(auth, "GET", &format!("/v1/models/{model}"))?.call().map(drop).map_err(failure)
     }
 }
