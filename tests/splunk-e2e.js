@@ -192,6 +192,21 @@ async function answer(page, re, yes, what) {
   await rw.locator('#out th', { hasText: 'ms' }).dispatchEvent('click');
   await rw.locator('#out tbody tr:first-child td:nth-child(4)', { hasText: /^909$/ }).waitFor({ timeout: 5000 }).catch(() => {});
   ok(await rw.locator('#out tbody tr:first-child td:nth-child(4)').textContent() === '909', 'sorting all 50,000 rows by ms, largest first, is done by the database');
+  // Save as web page (ADR-2610080905): the rows part puts every row in the file, up to 10,000.
+  // Opened the way a user opens it, from Wardian's page, where the button is.
+  const host = await context.newPage();
+  await host.goto(B + '/');
+  await host.locator('#apps li button', { hasText: /Splunk table/i }).first().click();
+  await host.locator('#saveWebBtn').waitFor({ timeout: 10000 });
+  await sleep(4000);                                  // every part starts and shows the table
+  await host.click('#saveWebBtn');
+  const [dl] = await Promise.all([host.waitForEvent('download', { timeout: 60000 }), host.click('#saveWebGo')]);
+  const webFile = require('path').join(require('os').tmpdir(), 'splunk-web-' + process.pid + '.html');
+  await dl.saveAs(webFile);
+  const web = require('fs').readFileSync(webFile, 'utf8'); require('fs').unlinkSync(webFile);
+  const webRows = (web.match(/<tr[ >]/g) || []).length - 1;
+  await host.close();
+  ok(webRows === 10000 && /10,000/.test(web) && !/<script/i.test(web), 'Save as web page holds 10,000 of the 50,000 rows, says so, and has no script', '(' + webRows + ' rows)');
   let expected = 0;
   for (let i = 0; i < 50000; i++) if (i % 10 === 0 && i % 7 === 3) expected++;
   await rw.locator('#find').fill('status=500 web-3');
