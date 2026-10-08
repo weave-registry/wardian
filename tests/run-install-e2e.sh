@@ -105,4 +105,53 @@ cmp -s "$TMP/before" "$H/.local/bin/wardian" || fail "a refused install changed 
 [ "$(ls "$H/.local/lib/wardian/example-apps" | wc -l)" -eq "$EXAMPLES" ] || fail "a refused install changed the example apps"
 ok "a tampered tarball is refused; nothing is installed and an earlier install is left as it was"
 
+# A Wardian service (ADR-2610081800): installing over it restarts it, at login as before, with its
+# data folder and address. launchctl and systemctl are stubs on PATH that log their arguments and
+# do what the service manager would: run the program on bootstrap or restart, end it on bootout or
+# stop. The real launchd and systemd are never touched.
+STUBS="$TMP/stubs"
+SVC_DATA="$TMP/svc data"   # a space, as in "Application Support"
+SPORT=$(free_port)
+mkdir -p "$STUBS" "$SVC_DATA"
+cat >"$STUBS/manager" <<'STUB'
+#!/bin/sh
+echo "$(basename "$0") $*" >>"$STUB_LOG"
+running() { [ -f "$STUB_PID" ] && kill -0 "$(cat "$STUB_PID")" 2>/dev/null; }
+case "$*" in
+  bootstrap* | "--user restart"* | "--user start"*)
+    running && kill "$(cat "$STUB_PID")"
+    "$STUB_BIN" >>"$STUB_OUT" 2>&1 </dev/null &
+    echo $! >"$STUB_PID" ;;
+  bootout* | "--user stop"*) running && kill "$(cat "$STUB_PID")"; rm -f "$STUB_PID" ;;
+  print* | "--user is-active"*) running ;;
+  "--user is-enabled"*) [ -f "$STUB_ENABLED" ] ;;
+esac
+STUB
+chmod 755 "$STUBS/manager"
+ln -s manager "$STUBS/launchctl"
+ln -s manager "$STUBS/systemctl"
+STUB_ENV=(STUB_LOG="$TMP/manager.log" STUB_PID="$TMP/svc.pid" STUB_OUT="$TMP/svc.log" STUB_ENABLED="$TMP/enabled" STUB_BIN="$H/.local/bin/wardian" PATH="$STUBS:/usr/bin:/bin:/usr/sbin:/sbin")
+trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; wait "$p" 2>/dev/null || true; done; [ -f "$TMP/svc.pid" ] && kill "$(cat "$TMP/svc.pid")" 2>/dev/null; rm -rf "$TMP"' EXIT
+case "$(uname -s)" in
+  Darwin)
+    SVC_FILE="$H/Library/LaunchAgents/studio.wardian.plist"
+    mkdir -p "$(dirname "$SVC_FILE")"
+    printf '<plist version="1.0"><dict>\n  <key>EnvironmentVariables</key>\n  <dict>\n    <key>DATA_DIR</key><string>%s</string>\n    <key>ADDR</key><string>127.0.0.1:%s</string>\n  </dict>\n  <key>RunAtLoad</key><true/>\n</dict></plist>\n' "$SVC_DATA" "$SPORT" >"$SVC_FILE"
+    WANT_CALLS="launchctl bootstrap gui/$(id -u) $SVC_FILE" ;;
+  *)
+    SVC_FILE="$H/.config/systemd/user/wardian.service"
+    mkdir -p "$(dirname "$SVC_FILE")"
+    printf '[Service]\nEnvironment="DATA_DIR=%s"\nEnvironment="ADDR=127.0.0.1:%s"\n' "$SVC_DATA" "$SPORT" >"$SVC_FILE"
+    touch "$TMP/enabled"
+    WANT_CALLS="systemctl --user restart wardian.service" ;;
+esac
+(cd "$TMP/elsewhere" && "${USER_ENV[@]}" "${STUB_ENV[@]}" WARDIAN_DOWNLOAD="$URL" sh "$DIST/install.sh") >"$TMP/install-svc.log" 2>&1 || fail "installing over a service failed"
+grep -qF "✓ Restarted the Wardian service (wardian stop, then wardian start --at-login) so it runs the new version" "$TMP/install-svc.log" || fail "install.sh should say it restarted the service: $(cat "$TMP/install-svc.log")"
+grep -qF "$WANT_CALLS" "$TMP/manager.log" || fail "the service should have been started again ($WANT_CALLS): $(cat "$TMP/manager.log")"
+grep -qF "<key>DATA_DIR</key><string>$SVC_DATA</string>" "$SVC_FILE" 2>/dev/null || grep -qF "Environment=\"DATA_DIR=$SVC_DATA\"" "$SVC_FILE" || fail "the service file should keep the data folder: $(cat "$SVC_FILE")"
+STATUS=$(curl -sf "http://127.0.0.1:$SPORT/api/status") || fail "the restarted service does not answer on $SPORT"
+printf '%s' "$STATUS" | grep -qF "\"version\":\"$VERSION\"" || fail "the restarted service should be $VERSION: $STATUS"
+printf '%s' "$STATUS" | grep -qF "$SVC_DATA/apps" || fail "the restarted service should serve $SVC_DATA/apps: $STATUS"
+ok "installing over a Wardian service restarted it at login, with its data folder and address ($(tr '\n' ';' <"$TMP/manager.log"))"
+
 echo "install e2e: all passed"

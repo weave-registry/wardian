@@ -1954,11 +1954,12 @@ fn claim_check_exits_0_or_1_and_warnings_do_not_fail() {
     fs::write(broken.join("app.wasm"), b"not wasm").unwrap();
     let docs = Docs::new(Arc::new(Embedded));
     let no_exports = || -> Arc<dyn crate::ports::service::Exports> { unreachable!("check does not export") };
+    let no_service = || -> Box<dyn crate::ports::service_manager::Background> { unreachable!() };
     let exit = |paths: &[&Path]| {
         let mut args = vec!["check".to_string()];
         args.extend(paths.iter().map(|p| p.display().to_string()));
         let no_key = || -> Box<dyn crate::ports::secrets::MasterKey> { unreachable!("check does not touch the key") };
-        match run(&args, &scaffold(), &docs, &base, &no_exports, &no_key) {
+        match run(&args, &scaffold(), &docs, &base, &no_exports, &no_key, &no_service) {
             Command::Exit(code) => code,
             Command::Serve { .. } => panic!("check does not serve"),
         }
@@ -2771,6 +2772,7 @@ fn key_commands_back_up_and_restore_the_master_key() {
     SealedSecrets::with_key(Arc::clone(&disk), [6; 32]).write(&data.join("anthropic-key"), b"k").unwrap();
     let docs = Docs::new(Arc::new(Embedded));
     let no_exports = || -> Arc<dyn crate::ports::service::Exports> { unreachable!() };
+    let no_service = || -> Box<dyn crate::ports::service_manager::Background> { unreachable!() };
     let key = |name: &'static str| {
         let (disk, base, data) = (Arc::clone(&disk), base.clone(), data.clone());
         move || -> Box<dyn crate::ports::secrets::MasterKey> {
@@ -2778,7 +2780,7 @@ fn key_commands_back_up_and_restore_the_master_key() {
             Box::new(KeyBackup { fs: Arc::clone(&disk), data_dir: data.clone(), place: Some(place) })
         }
     };
-    let exit = |args: &[&str], name: &'static str| match run(&args.iter().map(|a| a.to_string()).collect::<Vec<_>>(), &scaffold(), &docs, &base, &no_exports, &key(name)) {
+    let exit = |args: &[&str], name: &'static str| match run(&args.iter().map(|a| a.to_string()).collect::<Vec<_>>(), &scaffold(), &docs, &base, &no_exports, &key(name), &no_service) {
         Command::Exit(code) => code,
         Command::Serve { .. } => panic!("key does not serve"),
     };
@@ -2802,4 +2804,400 @@ fn key_commands_back_up_and_restore_the_master_key() {
     assert_eq!(exit(&["key", "import"], "master.key"), 2);
     assert_eq!(exit(&["key", "--bogus"], "master.key"), 2);
     let _ = fs::remove_dir_all(base);
+}
+
+// ---------- wardian start, stop, status (ADR-2610081800) ----------
+
+/// The service manager and processes, simulated: launchd or systemd load and unload one job, a
+/// spawn makes a live process, and whatever is set to answer once the service runs answers then.
+mod service_fake {
+    use crate::ports::service_manager::{Answer, Ran, System};
+    use std::collections::{HashMap, HashSet};
+    use std::path::Path;
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    #[derive(Default)]
+    pub struct World {
+        pub calls: Vec<String>,
+        pub answers: HashMap<String, Answer>,
+        /// The launchd job is loaded, or the systemd unit active.
+        pub loaded: bool,
+        pub enabled: bool,
+        /// `systemctl --user` works.
+        pub systemd: bool,
+        /// Live Wardian processes, and live processes that are something else.
+        pub pids: HashSet<u32>,
+        pub others: HashSet<u32>,
+        /// What answers once the service runs; None: it never answers.
+        pub starts_at: Option<(String, Answer)>,
+        pub sleeps: u32,
+    }
+
+    impl World {
+        fn go(&mut self) {
+            if let Some((at, a)) = self.starts_at.clone() {
+                self.answers.insert(at, a);
+            }
+        }
+        fn halt(&mut self) {
+            if let Some((at, _)) = &self.starts_at {
+                self.answers.remove(at);
+            }
+        }
+    }
+
+    pub struct Fake(pub Mutex<World>);
+
+    impl Fake {
+        pub fn calls(&self) -> Vec<String> {
+            self.0.lock().unwrap().calls.clone()
+        }
+    }
+
+    impl System for Fake {
+        fn run(&self, program: &str, args: &[&str]) -> Option<Ran> {
+            let mut w = self.0.lock().unwrap();
+            w.calls.push(format!("{program} {}", args.join(" ")));
+            let ok = |b: bool| Some(Ran { code: if b { 0 } else { 1 }, out: String::new() });
+            match (program, args) {
+                ("id", ["-u"]) => Some(Ran { code: 0, out: "501\n".into() }),
+                ("launchctl", ["print", _]) => ok(w.loaded),
+                ("launchctl", ["bootstrap", _, _]) => {
+                    w.loaded = true;
+                    w.go();
+                    ok(true)
+                }
+                ("launchctl", ["bootout", _]) => {
+                    w.loaded = false;
+                    w.halt();
+                    ok(true)
+                }
+                ("systemctl", ["--user", "show-environment"]) => ok(w.systemd),
+                ("systemctl", ["--user", "is-active", ..]) => ok(w.loaded),
+                ("systemctl", ["--user", "is-enabled", ..]) => ok(w.enabled),
+                ("systemctl", ["--user", "restart", _]) => {
+                    w.loaded = true;
+                    w.go();
+                    ok(true)
+                }
+                ("systemctl", ["--user", "stop", _]) => {
+                    w.loaded = false;
+                    w.halt();
+                    ok(true)
+                }
+                ("systemctl", ["--user", "enable", ..]) => {
+                    w.enabled = true;
+                    ok(true)
+                }
+                ("systemctl", ["--user", "disable", ..]) => {
+                    w.enabled = false;
+                    ok(true)
+                }
+                ("systemctl", _) => ok(true),
+                ("ps", ["-p", pid, "-o", "comm="]) => {
+                    let pid: u32 = pid.parse().ok()?;
+                    if w.pids.contains(&pid) {
+                        Some(Ran { code: 0, out: "/opt/bin/wardian\n".into() })
+                    } else if w.others.contains(&pid) {
+                        Some(Ran { code: 0, out: "/usr/bin/vim\n".into() })
+                    } else {
+                        ok(false)
+                    }
+                }
+                ("kill", [_, pid]) => {
+                    let pid: u32 = pid.parse().ok()?;
+                    let had = w.pids.remove(&pid) || w.others.remove(&pid);
+                    w.halt();
+                    ok(had)
+                }
+                _ => None,
+            }
+        }
+        fn spawn(&self, program: &Path, env: &[(String, String)], dir: &Path, log: &Path) -> Result<u32, String> {
+            let mut w = self.0.lock().unwrap();
+            let vars: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            w.calls.push(format!("spawn {} [{}] in {} > {}", program.display(), vars.join(" "), dir.display(), log.display()));
+            w.pids.insert(4242);
+            w.go();
+            Ok(4242)
+        }
+        fn wardian_at(&self, addr: &str) -> Option<Answer> {
+            self.0.lock().unwrap().answers.get(addr).cloned()
+        }
+        fn sleep(&self, _: Duration) {
+            self.0.lock().unwrap().sleeps += 1;
+        }
+    }
+}
+
+mod service_flows {
+    use super::service_fake::{Fake, World};
+    use super::tmp;
+    use crate::adapters::secondary::local_disk::LocalDisk;
+    use crate::ports::service_manager::{Answer, Background, How, Stopped};
+    use crate::usecases::background::{Service, Setup};
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+
+    const VERSION: &str = "9.9.9";
+
+    struct Rig {
+        fake: Arc<Fake>,
+        svc: Service,
+        base: PathBuf,
+        home: PathBuf,
+        data: PathBuf,
+    }
+
+    impl Drop for Rig {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn ours(data: &Path) -> Answer {
+        Answer { version: Some(VERSION.into()), local_root: data.join("apps").display().to_string() }
+    }
+
+    fn setup(os: &'static str, home: &Path, data: &Path) -> Setup {
+        Setup {
+            os,
+            home: home.to_path_buf(),
+            config_home: home.join(".config"),
+            label: "studio.wardian".into(),
+            program: PathBuf::from("/opt/my bin/wardian"),
+            data_dir: data.to_path_buf(),
+            data_dir_as_found: data.to_path_buf(),
+            addr: "127.0.0.1:8000".into(),
+            addr_set: false,
+            last_port: 8002,
+            version: VERSION.into(),
+            env: vec![("HOME".into(), home.display().to_string())],
+        }
+    }
+
+    /// A service on `os`, its data folder under a folder with a space in its name, the usual port
+    /// 8000 (ADDR not set, so up to 8002), nothing running.
+    fn rig(tag: &str, os: &'static str, world: impl FnOnce(&mut World, &Path)) -> Rig {
+        let base = tmp(&format!("service-{tag}"));
+        let home = base.join("home");
+        let data = home.join("Library").join("Application Support").join("Wardian");
+        let mut w = World { starts_at: Some(("127.0.0.1:8000".into(), ours(&data))), ..World::default() };
+        world(&mut w, &data);
+        let fake = Arc::new(Fake(Mutex::new(w)));
+        let svc = Service::new(fake.clone(), Arc::new(LocalDisk), setup(os, &home, &data));
+        Rig { fake, svc, base, home, data }
+    }
+
+    impl Rig {
+        fn agent(&self) -> PathBuf {
+            self.home.join("Library/LaunchAgents/studio.wardian.plist")
+        }
+        fn now_only(&self) -> PathBuf {
+            self.home.join(".config/wardian/studio.wardian.plist")
+        }
+    }
+
+    #[test]
+    fn service_launchd_start_waits_for_wardian_then_stop_unloads_it() {
+        let r = rig("launchd", "macos", |_, _| {});
+        let s = r.svc.start(false).expect("start");
+        assert_eq!((s.how, s.already, s.at_login, s.url.as_str()), (How::Launchd, false, false, "http://127.0.0.1:8000"));
+        // Not at login: the file is kept outside LaunchAgents, which launchd loads at login.
+        assert_eq!(s.file.as_deref(), Some(r.now_only().as_path()));
+        assert!(!r.agent().exists());
+        let text = std::fs::read_to_string(r.now_only()).unwrap();
+        assert!(text.contains(&format!("<key>DATA_DIR</key><string>{}</string>", r.data.display())), "{text}");
+        assert!(text.contains("<string>/opt/my bin/wardian</string>"), "{text}");
+        assert!(text.contains(&format!("<key>StandardOutPath</key><string>{}</string>", r.data.join("wardian.log").display())), "{text}");
+        assert!(r.fake.calls().contains(&format!("launchctl bootstrap gui/501 {}", r.now_only().display())), "{:?}", r.fake.calls());
+
+        let st = r.svc.status();
+        assert!(st.running());
+        assert_eq!((st.how, st.at_login, st.version.as_deref()), (Some(How::Launchd), false, Some(VERSION)));
+
+        // --at-login on the running service: set, without starting it again.
+        let again = r.svc.start(true).expect("start --at-login");
+        assert!(again.already && again.at_login && again.how == How::Launchd, "{again:?}");
+        assert!(r.agent().exists() && !r.now_only().exists());
+        assert!(std::fs::read_to_string(r.agent()).unwrap().contains("<key>RunAtLoad</key><true/>"));
+        assert_eq!(r.fake.calls().iter().filter(|c| c.starts_with("launchctl bootstrap")).count(), 1);
+
+        match r.svc.stop().expect("stop") {
+            Stopped::Stopped(How::Launchd, removed) => assert_eq!(removed, vec![r.agent()]),
+            other => panic!("{other:?}"),
+        }
+        assert!(r.fake.calls().contains(&"launchctl bootout gui/501/studio.wardian".to_string()));
+        assert!(!r.agent().exists());
+        let st = r.svc.status();
+        assert!(!st.running() && st.how.is_none() && !st.at_login);
+    }
+
+    #[test]
+    fn service_start_without_the_flag_keeps_start_at_login() {
+        let r = rig("keep", "macos", |_, _| {});
+        std::fs::create_dir_all(r.agent().parent().unwrap()).unwrap();
+        std::fs::write(r.agent(), "old").unwrap();
+        let s = r.svc.start(false).unwrap();
+        assert!(s.at_login);
+        assert!(std::fs::read_to_string(r.agent()).unwrap().contains("<key>RunAtLoad</key><true/>"));
+    }
+
+    #[test]
+    fn service_start_opens_the_same_wardian_already_running() {
+        let r = rig("same", "macos", |w, data| {
+            w.answers.insert("127.0.0.1:8000".into(), ours(data));
+        });
+        let s = r.svc.start(false).unwrap();
+        assert!(s.already, "{s:?}");
+        // Not a service: a Wardian started in a terminal.
+        assert_eq!(s.how, How::Terminal);
+        assert!(!r.fake.calls().iter().any(|c| c.starts_with("launchctl bootstrap")), "{:?}", r.fake.calls());
+        assert!(!r.now_only().exists() && !r.agent().exists());
+        // stop leaves it alone and says where it is.
+        match r.svc.stop().unwrap() {
+            Stopped::NotRunning { removed, terminal } => {
+                assert!(removed.is_empty());
+                assert_eq!(terminal.as_deref(), Some("http://127.0.0.1:8000"));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(!r.fake.calls().iter().any(|c| c.contains("bootout")));
+    }
+
+    #[test]
+    fn service_start_names_another_wardian_and_finds_its_own_on_the_next_port() {
+        let r = rig("other", "macos", |w, data| {
+            w.answers.insert("127.0.0.1:8000".into(), Answer { version: Some("0.1.0".into()), local_root: "/srv/apps".into() });
+            w.starts_at = Some(("127.0.0.1:8001".into(), ours(data)));
+        });
+        let s = r.svc.start(false).unwrap();
+        assert_eq!(s.url, "http://127.0.0.1:8001");
+        let note = s.other.unwrap();
+        assert!(note.contains("Wardian 0.1.0 serving /srv/apps") && note.contains("8000"), "{note}");
+        assert!(r.svc.status().other.is_some());
+    }
+
+    #[test]
+    fn service_start_says_so_when_wardian_never_answers() {
+        let r = rig("silent", "macos", |w, _| {
+            w.starts_at = None;
+            // A job left loaded by an older start is booted out first.
+            w.loaded = true;
+        });
+        let e = r.svc.start(false).unwrap_err();
+        assert!(e.contains("did not answer within 15 s") && e.contains("wardian.log"), "{e}");
+        assert_eq!(r.fake.0.lock().unwrap().sleeps, 60);
+        let calls = r.fake.calls();
+        let out = calls.iter().position(|c| c.starts_with("launchctl bootout")).expect("bootout");
+        let boot = calls.iter().position(|c| c.starts_with("launchctl bootstrap")).expect("bootstrap");
+        assert!(out < boot, "{calls:?}");
+        // Loaded but silent: status says it is there and not running.
+        let st = r.svc.status();
+        assert_eq!((st.how, st.running()), (Some(How::Launchd), false));
+    }
+
+    #[test]
+    fn service_stop_when_nothing_runs() {
+        let r = rig("idle", "macos", |_, _| {});
+        match r.svc.stop().unwrap() {
+            Stopped::NotRunning { removed, terminal } => assert!(removed.is_empty() && terminal.is_none()),
+            other => panic!("{other:?}"),
+        }
+        assert!(!r.fake.calls().iter().any(|c| c.contains("bootout")));
+    }
+
+    #[test]
+    fn service_systemd_start_enables_at_login_and_stop_disables_it() {
+        let r = rig("systemd", "linux", |w, _| w.systemd = true);
+        let s = r.svc.start(true).unwrap();
+        assert_eq!((s.how, s.at_login), (How::Systemd, true));
+        let unit = r.home.join(".config/systemd/user/wardian.service");
+        let text = std::fs::read_to_string(&unit).unwrap();
+        assert!(text.contains("ExecStart=\"/opt/my bin/wardian\"") && text.contains("Restart=on-failure"), "{text}");
+        let calls = r.fake.calls();
+        for c in ["systemctl --user daemon-reload", "systemctl --user restart wardian.service", "systemctl --user enable --quiet wardian.service"] {
+            assert!(calls.contains(&c.to_string()), "{c}: {calls:?}");
+        }
+        assert!(r.svc.status().at_login);
+        match r.svc.stop().unwrap() {
+            Stopped::Stopped(How::Systemd, removed) => assert_eq!(removed, vec![unit.clone()]),
+            other => panic!("{other:?}"),
+        }
+        let calls = r.fake.calls();
+        assert!(calls.contains(&"systemctl --user stop wardian.service".to_string()) && calls.contains(&"systemctl --user disable --quiet wardian.service".to_string()), "{calls:?}");
+        assert!(!unit.exists());
+        assert!(!r.svc.status().running());
+    }
+
+    #[test]
+    fn service_without_a_service_manager_runs_plain_with_a_pid_file() {
+        let r = rig("plain", "linux", |_, _| {});
+        let s = r.svc.start(true).unwrap();
+        assert_eq!((s.how, s.at_login), (How::Plain, false));
+        let pid_file = r.data.join("wardian.pid");
+        assert_eq!(std::fs::read_to_string(&pid_file).unwrap(), "4242\n");
+        let spawn = r.fake.calls().into_iter().find(|c| c.starts_with("spawn")).unwrap();
+        assert!(spawn.contains(&format!("DATA_DIR={}", r.data.display())) && spawn.contains("WARDIAN_NO_OPEN=1"), "{spawn}");
+        assert!(spawn.ends_with(&format!("> {}", r.data.join("wardian.log").display())), "{spawn}");
+        let st = r.svc.status();
+        assert_eq!((st.how, st.running()), (Some(How::Plain), true));
+        match r.svc.stop().unwrap() {
+            Stopped::Stopped(How::Plain, removed) => assert_eq!(removed, vec![pid_file.clone()]),
+            other => panic!("{other:?}"),
+        }
+        assert!(r.fake.calls().contains(&"kill -TERM 4242".to_string()));
+        assert!(!pid_file.exists() && !r.svc.status().running());
+    }
+
+    #[test]
+    fn service_a_stale_pid_file_is_never_used_to_end_another_process() {
+        let r = rig("stale", "linux", |w, _| {
+            w.others.insert(999);
+        });
+        let pid_file = r.data.join("wardian.pid");
+        std::fs::create_dir_all(&r.data).unwrap();
+        std::fs::write(&pid_file, "999\n").unwrap();
+        assert!(!r.svc.status().running());
+        match r.svc.stop().unwrap() {
+            Stopped::NotRunning { removed, .. } => assert_eq!(removed, vec![pid_file.clone()]),
+            other => panic!("{other:?}"),
+        }
+        assert!(!r.fake.calls().iter().any(|c| c.starts_with("kill")), "{:?}", r.fake.calls());
+        assert!(r.fake.0.lock().unwrap().others.contains(&999));
+        // A start over a stale file starts Wardian and replaces it.
+        std::fs::write(&pid_file, "999\n").unwrap();
+        r.svc.start(false).unwrap();
+        assert_eq!(std::fs::read_to_string(&pid_file).unwrap(), "4242\n");
+        assert!(!r.fake.calls().iter().any(|c| c.starts_with("kill")));
+    }
+
+    #[test]
+    fn service_status_exits_0_when_running_and_3_when_not() {
+        use crate::adapters::primary::cli::{self, Command};
+        use crate::ports::service::Exports;
+        let code = |r: &Rig| {
+            let service = || -> Box<dyn Background> { Box::new(Service::new(r.fake.clone(), Arc::new(LocalDisk), setup("macos", &r.home, &r.data))) };
+            let no_export = || -> Arc<dyn Exports> { unreachable!() };
+            let no_key = || -> Box<dyn crate::ports::secrets::MasterKey> { unreachable!() };
+            let docs = crate::usecases::docs::Docs::new(Arc::new(crate::adapters::secondary::embedded_assets::Embedded));
+            match cli::run(&["status".to_string()], &super::scaffold(), &docs, &r.data, &no_export, &no_key, &service) {
+                Command::Exit(c) => c,
+                Command::Serve { .. } => panic!("status served"),
+            }
+        };
+        let r = rig("codes", "macos", |_, _| {});
+        assert_eq!(code(&r), 3);
+        r.svc.start(false).unwrap();
+        assert_eq!(code(&r), 0);
+        r.svc.stop().unwrap();
+        assert_eq!(code(&r), 3);
+        // A misspelled argument is a usage error.
+        let service = || -> Box<dyn Background> { unreachable!() };
+        let no_export = || -> Arc<dyn Exports> { unreachable!() };
+        let no_key = || -> Box<dyn crate::ports::secrets::MasterKey> { unreachable!() };
+        let docs = crate::usecases::docs::Docs::new(Arc::new(crate::adapters::secondary::embedded_assets::Embedded));
+        assert!(matches!(cli::run(&["start".into(), "--at-logon".into()], &super::scaffold(), &docs, &r.data, &no_export, &no_key, &service), Command::Exit(2)));
+    }
 }

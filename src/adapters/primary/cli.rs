@@ -1,7 +1,9 @@
-//! The command line: `wardian check|new|add|docs|--version|--help`. Serving apps is the composition
+//! The command line: `wardian check|new|add|docs|start|stop|status|--version|--help`. Serving apps is the composition
 //! root's job; this handles every other command and says how to run the program.
 
+use super::terminal;
 use crate::ports::secrets::MasterKey;
+use crate::ports::service_manager::Background;
 use crate::ports::service::{Exports, Pages};
 use crate::ports::tools::{PackageTools, COMPONENTS, FORMAT, KINDS};
 use std::path::Path;
@@ -12,6 +14,11 @@ const USAGE: &str = "Wardian — runs WebAssembly apps and suites in the browser
 usage:
   wardian [APPS_FOLDER]          serve the apps (default: DATA_DIR/apps, filled from ./apps on the first start);
                                  in a terminal it opens your browser, unless --no-open or WARDIAN_NO_OPEN=1
+  wardian start [--at-login]     run Wardian in the background as a service (launchd on macOS, systemd
+                                 on Linux) and open it; --at-login also starts it when you log in
+  wardian stop                   stop the background Wardian (and its start at login)
+  wardian status                 say whether Wardian runs, how, where, and whether it starts at login;
+                                 exits 0 when it runs, 3 when not
   wardian promote APP [FOLDER]   copy an app from DATA_DIR/apps into FOLDER (default: ./apps), to commit it
   wardian export APP [FILE] [--with-data]
                                  write APP from DATA_DIR/apps as a .wardian file (default: APP.wardian);
@@ -44,7 +51,7 @@ pub enum Command {
 /// Runs any command but serving. `args` are the program's arguments without its name.
 /// `data_dir` is where the working folder lives, for `promote`; `exports` builds the exporter on
 /// demand, since only `export` needs the app's data.
-pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_dir: &Path, exports: &dyn Fn() -> Arc<dyn Exports>, key: &dyn Fn() -> Box<dyn MasterKey>) -> Command {
+pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_dir: &Path, exports: &dyn Fn() -> Arc<dyn Exports>, key: &dyn Fn() -> Box<dyn MasterKey>, service: &dyn Fn() -> Box<dyn Background>) -> Command {
     // `--no-open` belongs to serving, before or after the folder (ADR-2610080930).
     let no_open = args.iter().any(|a| a == "--no-open");
     let serve_args: Vec<&String> = args.iter().filter(|a| *a != "--no-open").collect();
@@ -60,6 +67,7 @@ pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_di
         Some("docs") => Command::Exit(docs(&args[1..], pages)),
         Some("skills") => Command::Exit(skills(&args[1..], pages)),
         Some("key") => Command::Exit(master_key(&args[1..], &*key())),
+        Some(cmd @ ("start" | "stop" | "status")) => Command::Exit(background(cmd, &args[1..], service)),
         Some("--version" | "-V") => {
             println!("Wardian {} (package format {FORMAT})", env!("CARGO_PKG_VERSION"));
             Command::Exit(0)
@@ -77,7 +85,65 @@ pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_di
 }
 
 /// The commands other than serving, which a folder to serve may not be named.
-const COMMANDS: [&str; 9] = ["export", "check", "promote", "new", "add", "docs", "skills", "key", "help"];
+const COMMANDS: [&str; 12] = ["export", "check", "promote", "new", "add", "docs", "skills", "key", "start", "stop", "status", "help"];
+
+/// `wardian start [--at-login] [--no-open]`, `wardian stop`, `wardian status` (ADR-2610081800).
+/// Styled blocks in a terminal, `name: value` lines otherwise. `status` exits 0 when Wardian runs
+/// and 3 when not.
+fn background(cmd: &str, args: &[String], service: &dyn Fn() -> Box<dyn Background>) -> i32 {
+    use std::io::IsTerminal;
+    let allowed: &[&str] = if cmd == "start" { &["--at-login", "--no-open"] } else { &[] };
+    if let Some(a) = args.iter().find(|a| !allowed.contains(&a.as_str())) {
+        eprintln!("wardian {cmd}: unknown argument {a}\n\nusage: wardian start [--at-login] [--no-open]\n       wardian stop\n       wardian status");
+        return 2;
+    }
+    let tty = std::io::stdout().is_terminal();
+    let colour = terminal::Colour::from_env(tty);
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let svc = service();
+    match cmd {
+        "start" => match svc.start(args.iter().any(|a| a == "--at-login")) {
+            Ok(s) => {
+                let no_open = args.iter().any(|a| a == "--no-open");
+                if tty {
+                    let opened = terminal::should_open(tty, no_open, std::env::var("WARDIAN_NO_OPEN").ok().as_deref()) && terminal::open_browser(&s.url);
+                    print!("{}", terminal::started_block(&s, opened, home.as_deref(), colour));
+                } else {
+                    print!("{}", terminal::started_lines(&s));
+                }
+                0
+            }
+            Err(e) => {
+                if std::io::stderr().is_terminal() {
+                    let c = terminal::Colour::from_env(true);
+                    eprintln!("{}", terminal::error_block(&format!("Wardian did not start: {e}"), "Run `wardian status`, or plain `wardian` to see it start in this terminal.", c));
+                } else {
+                    eprintln!("wardian start: {e}");
+                }
+                1
+            }
+        },
+        "stop" => match svc.stop() {
+            Ok(s) => {
+                print!("{}", terminal::stopped_text(&s, home.as_deref(), colour, tty));
+                0
+            }
+            Err(e) => {
+                eprintln!("wardian stop: {e}");
+                1
+            }
+        },
+        _ => {
+            let s = svc.status();
+            print!("{}", if tty { terminal::status_block(&s, home.as_deref(), colour) } else { terminal::status_lines(&s) });
+            if s.running() {
+                0
+            } else {
+                3
+            }
+        }
+    }
+}
 
 const KEY_USAGE: &str = "usage: wardian key
        wardian key export FILE [--force]   (FILE - writes to the screen)

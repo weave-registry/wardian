@@ -21,6 +21,17 @@ Wardian 1.0") is done or written down there as left out.
 - **`wardian key`** (ADR-2610081700) says where the master key is and how many saved keys it opens;
   `wardian key export FILE` backs it up into a private file, and `wardian key import FILE` restores
   it, refusing a key that opens none of the saved keys unless `--force`.
+- **`wardian start`, `wardian stop`, `wardian status`** (ADR-2610081800) run Wardian in the
+  background as a user service: a launchd agent on macOS, a systemd user service on Linux, no
+  `sudo`. It comes back after a crash; `--at-login` also starts it when you log in. `start` waits
+  until Wardian answers and opens it; `status` exits 0 when it runs and 3 when not. Without launchd
+  or systemd, `start` runs it detached with its process id in `wardian.pid`. The installer restarts
+  a Wardian service when it replaces the program.
+
+### Fixed
+
+- The start and stop records are written to `wardian.log` once, not twice, when Wardian's output
+  goes to that same file (a service, Wardian.app).
 
 ## [0.4.4] - 2026-10-08
 

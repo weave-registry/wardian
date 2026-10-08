@@ -5,7 +5,8 @@
 #
 # It downloads the tarball for this computer and SHA256SUMS, refuses a tarball whose checksum
 # does not match, and puts bin/wardian and lib/wardian/example-apps into WARDIAN_PREFIX. It
-# never runs Wardian and never edits your shell files. It says each step on one line, ✓ or ✗, in
+# never edits your shell files, and runs Wardian only to restart a Wardian service (`wardian start`,
+# ADR-2610081800) so that it runs the new version. It says each step on one line, ✓ or ✗, in
 # colour on a terminal (not with NO_COLOR or TERM=dumb), and ends with what to run next.
 #
 #   WARDIAN_VERSION=0.4.0     install this version instead of the latest
@@ -53,6 +54,11 @@ fail() {
   printf '  %s✗%s %s\n' "$bad" "${off}" "$*" >&2
   exit 1
 }
+# A step that went wrong without stopping the install.
+warn() {
+  if [ "$waiting" = 1 ]; then printf '\r%s[K' "$(printf '\033')"; waiting=0; fi
+  printf '  %s!%s %s\n' "$bad" "${off}" "$*"
+}
 # A path with the home folder written ~.
 show() {
   case "${HOME:-/}" in /) printf '%s' "$1"; return ;; esac
@@ -66,6 +72,57 @@ fetch() { # fetch <url> <file>
     wget -q -O "$2" "$1" || fail "could not download $1"
   else
     fail "this needs curl or wget to download Wardian"
+  fi
+}
+
+# One variable from a service file `wardian start` wrote, unescaped: the launchd plist's
+# <key>NAME</key><string>…</string>, or the systemd unit's Environment="NAME=…".
+service_value() { # service_value <file> <NAME>
+  case "$1" in
+    *.plist) sed -n "s|.*<key>$2</key><string>\(.*\)</string>.*|\1|p" "$1" | head -n 1 |
+      sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e "s/&apos;/'/g" -e 's/&amp;/\&/g' ;;
+    *) sed -n "s|^Environment=\"$2=\(.*\)\"\$|\1|p" "$1" | head -n 1 |
+      sed -e 's/\\"/"/g' -e 's/\\\\/\\/g' -e 's/%%/%/g' -e 's/\$\$/$/g' ;;
+  esac
+}
+
+# A Wardian service (ADR-2610081800) runs the program just replaced: stop it and start it again,
+# with the data folder and address it had, and at login if it was. A service file left from a
+# start that no longer runs (a logout ended it) is left alone.
+restart_service() { # restart_service <wardian>
+  label=${WARDIAN_SERVICE_LABEL:-studio.wardian}
+  conf=${XDG_CONFIG_HOME:-$HOME/.config}
+  file='' at_login=''
+  case "$os" in
+    macos)
+      if [ -f "$HOME/Library/LaunchAgents/$label.plist" ]; then
+        file="$HOME/Library/LaunchAgents/$label.plist" at_login=--at-login
+      elif [ -f "$conf/wardian/$label.plist" ] && launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+        file="$conf/wardian/$label.plist"
+      fi ;;
+    linux)
+      unit="${label#studio.}.service"
+      if [ -f "$conf/systemd/user/$unit" ]; then
+        if systemctl --user is-enabled --quiet "$unit" 2>/dev/null; then
+          file="$conf/systemd/user/$unit" at_login=--at-login
+        elif systemctl --user is-active --quiet "$unit" 2>/dev/null; then
+          file="$conf/systemd/user/$unit"
+        fi
+      fi ;;
+  esac
+  [ -n "$file" ] || return 0
+  data=$(service_value "$file" DATA_DIR)
+  addr=$(service_value "$file" ADDR)
+  step "Restarting the Wardian service"
+  if (
+    cd "$HOME" || exit 1
+    if [ -n "$data" ]; then export DATA_DIR="$data"; fi
+    if [ -n "$addr" ]; then export ADDR="$addr"; fi
+    "$1" stop && "$1" start --no-open $at_login
+  ) >"$tmp/restart.log" 2>&1; then
+    ok "Restarted the Wardian service ${dim}(wardian stop, then wardian start${at_login:+ $at_login}) so it runs the new version${off}"
+  else
+    warn "Could not restart the Wardian service; run ${acc}wardian start${at_login:+ $at_login}${off}. It said: $(tail -n 1 "$tmp/restart.log")"
   fi
 }
 
@@ -166,6 +223,7 @@ main() {
 
   apps=$(ls "$prefix/lib/wardian/example-apps" | wc -l | tr -d ' ')
   ok "Installed to $(show "$prefix/bin/wardian") ${dim}· with $apps example apps${off}"
+  restart_service "$prefix/bin/wardian"
 
   # Next: the command to run, and the PATH line when the folder is not on PATH yet.
   say ""
@@ -176,6 +234,7 @@ main() {
   esac
   printf '    %sRun%s       %s%s%s\n' "${dim}" "${off}" "$acc" "$run" "${off}"
   printf '    %sThen%s      Wardian opens %shttp://127.0.0.1:8000%s in your browser\n' "${dim}" "${off}" "$link" "${off}"
+  printf '    %sOr%s        %s%s start --at-login%s runs it in the background, also after you log in\n' "${dim}" "${off}" "$acc" "$run" "${off}"
   if [ "$on_path" = 0 ]; then
     case "${SHELL:-}" in
       */zsh) rc="~/.zshrc" ;;

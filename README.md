@@ -184,6 +184,48 @@ Install a copy instead, with `cargo install --path .` (then run `wardian`), or c
 copying a new one over it (`rm -f bin/wardian && cp target/release/wardian bin/`): a program file
 rewritten in place keeps its old signature record, and macOS kills it when it starts.
 
+### In the background
+
+Plain `wardian` runs until you press Ctrl-C. To keep Wardian running without a terminal, hand it to
+the system:
+
+    wardian start              # runs it now, as a service; opens it in your browser
+    wardian start --at-login   # and also each time you log in
+    wardian status             # whether it runs, how, where, and whether it starts at login
+    wardian stop               # stops it, and its start at login
+
+On macOS `start` hands Wardian to launchd as a user agent, `studio.wardian`; on Linux with a
+systemd user session, to systemd as `wardian.service`. Neither needs `sudo`. The service runs the
+program `start` was run with, by its full path, with the data folder written in full (found by the
+rule above, from where you run `start`), `WARDIAN_NO_OPEN=1`, and its output appended to
+`wardian.log` in the data folder. It comes back after a crash, but not after `wardian stop`. The
+service file is `~/Library/LaunchAgents/studio.wardian.plist` when it starts at login and
+`~/.config/wardian/studio.wardian.plist` when it does not (launchd loads every file in
+LaunchAgents at login), or `~/.config/systemd/user/wardian.service`; `wardian stop` removes it.
+Moving the program means running `wardian start` again. `start` without `--at-login` keeps a
+start at login set before.
+
+The service gets `ADDR`, `HOME`, `XDG_CONFIG_HOME` and `WARDIAN_MASTER_KEY_FILE` when they are
+set, never a key: keep keys in Settings → Keys. Without launchd or systemd, `start` runs Wardian
+detached, keeps its process id in `wardian.pid` in the data folder, and says that it will not come
+back after a crash or start at login.
+
+`start` waits up to 15 seconds for Wardian to answer, then opens it and prints:
+
+      ◆ Wardian started 0.4.4
+
+        Ready at  http://127.0.0.1:8000 · opened in your browser
+        Apps      ~/Library/Application Support/Wardian/apps
+        Runs as   a launchd service · starts at login
+
+        Stop it with wardian stop · log: ~/Library/Application Support/Wardian/wardian.log
+
+When this same Wardian already answers, `start` opens it instead; another Wardian on port 8000 is
+named and left alone. `status` prints the same kind of block, and exits 0 when Wardian runs and 3
+when it does not. Outside a terminal, all three print `name: value` lines instead (`running: yes`,
+`address: http://…`). The installer restarts a Wardian service when it replaces the program, so the
+new version runs.
+
 ## Connect Google Drive (from the browser)
 
 1. In the Google Cloud console, create a project and turn on the Drive API.
@@ -451,6 +493,7 @@ Settings live in `DATA_DIR` (in a checkout `./data`, which git ignores; see Run 
 | `ADDR` | `127.0.0.1:8000` | Address to listen on; anything but `127.0.0.0/8`, `::1` or `localhost` needs `ADMIN_TOKEN`. Unset, a busy 8000 moves Wardian up to 8010, or opens the Wardian already there |
 | `WARDIAN_NO_OPEN` | unset | `1`: a start in a terminal does not open the browser (as `--no-open`) |
 | `NO_COLOR` | unset | Any value: no colour in the terminal output |
+| `WARDIAN_SERVICE_LABEL` | `studio.wardian` | The service `wardian start`, `stop` and `status` manage (the systemd unit drops `studio.`); tests use their own, starting `studio.wardian.` |
 | `DATA_DIR` | `data` in a checkout or where it exists, else the platform's folder (see Run) | Where settings, the working folder of apps and their history are kept |
 | `ADMIN_TOKEN` | none | Whoever sends it is an admin, and nobody else; required to listen on a non-loopback address |
 | `REFRESH_SECS` | `60` | How often to re-read the Drive folder |
