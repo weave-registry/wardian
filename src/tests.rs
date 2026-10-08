@@ -2842,6 +2842,20 @@ fn key_commands_back_up_and_restore_the_master_key() {
     let _ = fs::remove_dir_all(base);
 }
 
+/// ADR-2610081900: every download the website links is a `.wardian` file it holds.
+#[test]
+fn demos_the_website_links_only_wardian_downloads() {
+    let site = Docs::new(Arc::new(Embedded)).site();
+    let held: Vec<&str> = site.iter().map(|(p, _)| p.as_str()).collect();
+    for (path, bytes) in site.iter().filter(|(p, _)| p.ends_with(".html")) {
+        let html = String::from_utf8_lossy(bytes);
+        for link in html.split("href=\"/downloads/").skip(1).map(|r| r.split('"').next().unwrap_or("")) {
+            assert!(link.ends_with(".wardian"), "{path} links /downloads/{link}, not a .wardian file");
+            assert!(held.contains(&format!("downloads/{link}").as_str()), "{path} links /downloads/{link}, which the site does not hold");
+        }
+    }
+}
+
 /// ADR-2610081900: each example's download on the website imports into Wardian as that app, and
 /// the imported app passes `wardian check`.
 #[test]

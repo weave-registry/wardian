@@ -141,7 +141,7 @@ pub fn gallery(assets: &dyn Assets) -> String {
             let act = if k.runs_in_a_browser() {
                 format!("<a class=\"go\" href=\"/docs/examples/{app}/#try-it\">Try it</a>")
             } else {
-                format!("<span class=\"needs\">Needs Wardian</span> <a href=\"/downloads/{app}.zip\" download>Download</a>")
+                format!("<span class=\"needs\">Needs Wardian</span> <a href=\"/downloads/{app}.wardian\" download>Download</a>")
             };
             format!(
                 "<li><a class=\"card-link\" href=\"/docs/examples/{app}/\"><strong>{}</strong><small>{what}</small><span>{}</span></a>{act}</li>",
