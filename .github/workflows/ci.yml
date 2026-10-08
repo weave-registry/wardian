@@ -1,5 +1,11 @@
-# CI for Wardian (ADR-2610072033, "Release basics"): unit tests, hexa's two gates, and every
-# browser suite, on each push and pull request.
+# CI for Wardian (ADR-2610082000): the right tests at the right moment.
+#
+#   every push to main        fast: cargo test, hexa, the install test (a few minutes)
+#   pull requests, releases,  fast, then every browser suite, each on its own runner at once,
+#   by hand                   and the Splunk and Make-an-app suites again through a fake Bedrock
+#   every night, or by hand   all of that and the load test
+#
+# A release (release.yml) calls this workflow and builds nothing until every suite passes.
 #
 # hexa lives at https://git.local/gary/hexa, which GitHub's runners cannot reach. Its steps run only
 # when the repository variable HEXA_INSTALL holds a shell command that installs `hexa` on the
@@ -12,20 +18,37 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      load:
+        description: Also run the load test
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      suites:
+        description: Run every browser suite after the fast checks
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+  WARDIAN_NO_OPEN: "1"
+  # The suites launch Google Chrome by default; on the runner they use Playwright's Chromium.
+  WARDIAN_BROWSER: chromium
+
 jobs:
-  test:
+  fast:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_TARGET_DIR: ${{ github.workspace }}/target
-      # The suites launch Google Chrome by default; on the runner they use Playwright's Chromium.
-      WARDIAN_BROWSER: chromium
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -33,19 +56,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-
-      - name: Install Playwright and Chromium
-        run: |
-          npm install -g playwright
-          npx --yes playwright install --with-deps chromium
-          echo "NODE_PATH=$(npm root -g)" >> "$GITHUB_ENV"
 
       - name: cargo test --release
         run: cargo test --release
@@ -71,18 +84,106 @@ jobs:
         if: steps.hexa.outputs.ok == 'true'
         run: hexa adr gates
 
-      - name: Browser suites
-        run: |
-          for runner in tests/run-*-e2e.sh; do
-            echo "::group::$runner"
-            "$runner"
-            echo "::endgroup::"
-          done
+      - name: The install test
+        run: tests/run-install-e2e.sh
 
-      - name: Browser suites through a fake Amazon Bedrock
+  # The browser suites to run, one per runner: every tests/run-*-e2e.sh but the install test (in
+  # fast) and the load test (nightly), and the two that also run through a fake Amazon Bedrock.
+  list:
+    if: github.event_name != 'push' || inputs.suites
+    runs-on: ubuntu-24.04
+    outputs:
+      suites: ${{ steps.list.outputs.suites }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: list
         run: |
-          for runner in tests/run-splunk-e2e.sh tests/run-background-e2e.sh; do
-            echo "::group::PROVIDER=bedrock $runner"
-            PROVIDER=bedrock "$runner"
-            echo "::endgroup::"
-          done
+          {
+            for r in tests/run-*-e2e.sh; do
+              case "$r" in tests/run-install-e2e.sh|tests/run-load-e2e.sh) continue ;; esac
+              printf '{"runner":"%s","provider":"anthropic"}\n' "$r"
+            done
+            for r in tests/run-splunk-e2e.sh tests/run-background-e2e.sh; do
+              printf '{"runner":"%s","provider":"bedrock"}\n' "$r"
+            done
+          } | python3 -c 'import json,sys; print("suites=" + json.dumps([json.loads(l) for l in sys.stdin]))' >> "$GITHUB_OUTPUT"
+
+  suites:
+    needs: [fast, list]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.list.outputs.suites) }}
+    name: ${{ matrix.suite.runner }} (${{ matrix.suite.provider }})
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: suites
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install -g playwright
+          npx --yes playwright install --with-deps chromium
+          echo "NODE_PATH=$(npm root -g)" >> "$GITHUB_ENV"
+
+      - name: ${{ matrix.suite.runner }}
+        run: PROVIDER=${{ matrix.suite.provider }} ${{ matrix.suite.runner }}
+
+  load:
+    needs: fast
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.load)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        suite: [{ runner: tests/run-load-e2e.sh, provider: anthropic }]
+    name: tests/run-load-e2e.sh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: suites
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install -g playwright
+          npx --yes playwright install --with-deps chromium
+          echo "NODE_PATH=$(npm root -g)" >> "$GITHUB_ENV"
+
+      - name: ${{ matrix.suite.runner }}
+        run: PROVIDER=${{ matrix.suite.provider }} ${{ matrix.suite.runner }}

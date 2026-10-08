@@ -569,7 +569,7 @@ in `DATA_DIR`.
 ## Tests
 
     cargo test --release
-    tests/run-all.sh          # what CI runs: unit tests, hexa (if installed), every browser suite
+    tests/run-all.sh          # everything, one after another: unit tests, hexa (if installed), every browser suite
 
 Each `tests/run-*-e2e.sh` starts its own Wardian with a throwaway data folder, fakes for Splunk,
 Claude and Bedrock where it needs them, and drives the pages in a browser.
@@ -580,7 +580,10 @@ Node with the `playwright` package (`npm i -g playwright`). They launch Google C
 `WARDIAN_BROWSER=chromium` to use Playwright's own Chromium instead (`npx playwright install
 chromium`), as CI does. `tests/run-all.sh` stops at the first failure.
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request on GitHub. hexa lives on
+CI (`.github/workflows/ci.yml`) runs the fast checks (unit tests, hexa, the install test) on every
+push to `main`; every browser suite at once, one runner each, on pull requests, before each release
+and by hand; and the load test every night (ADR-2610082000). A release builds nothing until the full
+set passes. hexa lives on
 git.local, which GitHub's runners cannot reach, so its two steps run only when the repository
 variable `HEXA_INSTALL` holds a command that installs it; otherwise the job notes that it skipped
 them, and `tests/run-all.sh` on a machine with hexa covers them.

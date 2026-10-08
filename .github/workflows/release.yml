@@ -4,7 +4,8 @@
 #
 #   curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh
 #
-# installs the latest release. install.sh finds its tarball by reading SHA256SUMS.
+# installs the latest release. install.sh finds its tarball by reading SHA256SUMS. It builds nothing
+# until CI's fast checks and every browser suite pass on the tagged commit (ADR-2610082000).
 #
 # Intel Macs: GitHub retired the macos-13 runner image in December 2025; macos-15-intel is the
 # Intel image that replaced it.
@@ -18,7 +19,13 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+    with:
+      suites: true
+
   build:
+    needs: test
     strategy:
       fail-fast: true
       matrix:

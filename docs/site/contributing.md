@@ -32,7 +32,7 @@ that file, and macOS can stop a program whose file was replaced. Run an installe
 
 ```
 cargo test --release
-tests/run-all.sh          # what CI runs: unit tests, hexa (if installed), every browser suite
+tests/run-all.sh          # everything, one after another: unit tests, hexa (if installed), every browser suite
 ```
 
 `cargo test` runs the unit tests in `src/` and the tests in `src/tests.rs`, which use the real disk
@@ -75,8 +75,18 @@ variable its script reads (for example `PORT`, `SPLUNK_PORT` or `PORT_A`) to mov
 
 ### CI
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request on GitHub, on Ubuntu, with
-Playwright's Chromium. It runs the same steps as `tests/run-all.sh`, except the live checks.
+CI (`.github/workflows/ci.yml`) runs on GitHub, on Ubuntu, with Playwright's Chromium, in three
+tiers (ADR-2610082000):
+
+| When | What |
+|---|---|
+| Every push to `main` | The fast checks: `cargo test --release`, hexa, the install test |
+| Pull requests, releases, by hand | The fast checks, then every browser suite at once, one runner each, and the Splunk and Make-an-app suites again through a fake Bedrock |
+| Every night, or by hand | All of that and the load test |
+
+A release (`release.yml`) builds nothing until the full set passes on the tagged commit. To run it
+by hand: **Actions → CI → Run workflow**, with **Also run the load test** if wanted.
+`tests/run-all.sh` runs everything on one machine, except the live checks.
 
 hexa lives on git.local, which GitHub's runners cannot reach. So its two steps run only when the
 repository variable `HEXA_INSTALL` holds a command that installs it. Otherwise the job notes that it

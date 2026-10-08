@@ -112,7 +112,7 @@ that file, and macOS can stop a program whose file was replaced. Run an installe
 (<code>cargo install --path .</code>) instead. <a href="/docs/install#run-from-a-checkout">Install and run</a> explains why.</p>
 <h2 id="tests">Tests<a class="anchor" href="#tests" aria-label="Link to this section">#</a></h2>
 <pre><code>cargo test --release
-tests/run-all.sh          # what CI runs: unit tests, hexa (if installed), every browser suite
+tests/run-all.sh          # everything, one after another: unit tests, hexa (if installed), every browser suite
 </code></pre>
 <p><code>cargo test</code> runs the unit tests in <code>src/</code> and the tests in <code>src/tests.rs</code>, which use the real disk
 and the built-in files. They include the refusal tests for the SQL wall and for hostile zips, and the
@@ -147,8 +147,16 @@ Google Chrome. Set <code>WARDIAN_BROWSER=chromium</code> to use Playwright's own
 (<code>npx playwright install chromium</code>), as CI does. Each suite listens on its own port; set the <code>PORT</code>
 variable its script reads (for example <code>PORT</code>, <code>SPLUNK_PORT</code> or <code>PORT_A</code>) to move it.</p>
 <h3 id="ci">CI<a class="anchor" href="#ci" aria-label="Link to this section">#</a></h3>
-<p>CI (<code>.github/workflows/ci.yml</code>) runs on every push and pull request on GitHub, on Ubuntu, with
-Playwright's Chromium. It runs the same steps as <code>tests/run-all.sh</code>, except the live checks.</p>
+<p>CI (<code>.github/workflows/ci.yml</code>) runs on GitHub, on Ubuntu, with Playwright's Chromium, in three
+tiers (ADR-2610082000):</p>
+<table><thead><tr><th>When</th><th>What</th></tr></thead><tbody>
+<tr><td>Every push to <code>main</code></td><td>The fast checks: <code>cargo test --release</code>, hexa, the install test</td></tr>
+<tr><td>Pull requests, releases, by hand</td><td>The fast checks, then every browser suite at once, one runner each, and the Splunk and Make-an-app suites again through a fake Bedrock</td></tr>
+<tr><td>Every night, or by hand</td><td>All of that and the load test</td></tr>
+</tbody></table>
+<p>A release (<code>release.yml</code>) builds nothing until the full set passes on the tagged commit. To run it
+by hand: <strong>Actions → CI → Run workflow</strong>, with <strong>Also run the load test</strong> if wanted.
+<code>tests/run-all.sh</code> runs everything on one machine, except the live checks.</p>
 <p>hexa lives on git.local, which GitHub's runners cannot reach. So its two steps run only when the
 repository variable <code>HEXA_INSTALL</code> holds a command that installs it. Otherwise the job notes that it
 skipped them, and <code>tests/run-all.sh</code> on a machine with hexa covers them.</p>
