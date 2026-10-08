@@ -18,13 +18,16 @@ the spec section named below whenever you need an exact rule rather than guessin
 | The app… | Kind | Why |
 |---|---|---|
 | is a few functions whose inputs and outputs are all numbers | `module` | Wardian builds the interface itself: an input per parameter, a Run button. No HTML to write. |
-| needs text, arrays, JSON, a chart, or any designed interface | `page` | WebAssembly only passes numbers; your page moves richer data through the module's memory and draws the UI. |
-| has several parts that each own one job (input, compute, chart, export…) and share data | `suite` | Each part is sealed in its own frame and talks only through the kernel, so parts stay small, testable and replaceable. |
+| has one job and needs text, arrays, JSON, a chart, or any designed interface | `page` | WebAssembly only passes numbers; your page moves richer data through the module's memory and draws the UI. |
+| has more than one job (inputs, compute, each view of the result, export…) | `suite` | Each part is sealed in its own frame and its own panel, talks only through the kernel, and each viewer can arrange the panels, so parts stay small, testable and replaceable. |
 
-When in doubt between page and suite, pick **page**: one page is easier to build and change. Choose
-a suite when the user asks for separate parts, when parts must be reused or swapped, or when the
-app is large enough that one page would turn into a tangle. Tell the user which kind you chose and
-why, in one sentence.
+**Split by default** (ADR-2610080900). When the app has more than one job, build a suite with one
+part per job: the inputs, each view of the result, each export. Inputs go in the `aside` slot and
+results in `main`, each in its own card. Keep every part's `app.js` under about 250 lines; split a
+part that grows past that. Code that several parts need (formatting, parsing, number tests) goes in
+`shared/*.js` listed in `suite.json` `"scripts"`, never copied between parts. `apps/loan-planner`
+and `apps/splunk-table` show the shape. A page is right only for an app with one job. Tell the
+user which kind you chose and why, in one sentence.
 
 ## 2. Start from a template
 
@@ -63,7 +66,9 @@ ask for Rust or WebAssembly, a page or suite may skip WebAssembly entirely — s
   `apps/<name>/app.js`. The contract fields — `emits`, `listens`, `provides`, `needs`, `caps` — must
   match exactly, or the kernel refuses to start the app. Change both together, every time.
 - Design the data flow before writing code: which app owns which state, which topics carry it,
-  which methods compute. Mark a topic `"retain": true` when it carries *current state* (latest
+  which methods compute. One part per job; `wardian check` warns about a part whose `app.js` is over
+  400 lines, or a suite whose only panel has more than one `<h2>`. Results must never wait on a
+  panel the viewer may hide. Mark a topic `"retain": true` when it carries *current state* (latest
   data, settings) so apps that start later still receive it.
 - Frames have **no network**. Load files (a `.wasm` module, a data file) with `ctx.asset(path)`,
   which needs the `asset` capability. Compile WebAssembly from those bytes with

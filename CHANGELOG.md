@@ -41,9 +41,20 @@ Wardian 1.0") is done or written down there as left out.
   credentials are set.
 - `scripts/package-linux.sh` builds a tarball with the binary, the example apps, a desktop entry,
   the `.wardian` MIME type and `install.sh`; on macOS it cross-builds with zig.
+- `wardian check` warns about a suite part whose `app.js` is over 400 lines, and about a suite
+  whose only panel holds more than one `<h2>`, and names the parts it could split into
+  (ADR-2610080900). Make an app and the app-factory skill build a suite of one part per job.
+- `scripts/splunk-table-migrate-storage.js` moves the Splunk table's saved searches and tables to
+  the parts that now own them, after a backup.
 
 ### Changed
 
+- The Splunk table is five parts instead of one (ADR-2610080900): `search`, `ask`, `about`, `rows`
+  and `keep`, each its own panel that Arrange can move or hide. It has both **Save search** /
+  **Save table** with their saved lists and the background-job resume. The message on
+  `splunk.table` is unchanged. Its saved data moves with `scripts/splunk-table-migrate-storage.js`;
+  a part that finds no data starts empty. The `rows` part gives a saved web page every row, up to
+  10,000 (`snapshot`, ADR-2610080905).
 - Without `ADMIN_TOKEN`, Wardian refuses to listen on any address beyond this machine
   (127.0.0.0/8, `::1`, `localhost`) instead of starting; the message says to set `ADMIN_TOKEN`.
   `docker compose` stops early when the token is empty. **This breaks anyone who ran without a

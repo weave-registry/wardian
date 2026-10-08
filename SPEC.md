@@ -142,6 +142,11 @@ The browser gives the page a unique, throwaway origin. So a page:
 A suite is several small apps that share one screen. Each suite app runs in its own frame, and
 the apps talk only through the kernel.
 
+One job per part (ADR-2610080900): inputs, each view of the result and each export SHOULD be parts
+of their own, inputs in `aside` and results in `main`, so viewers can arrange them (6.11). Code that
+several parts need goes in a shared file listed in `scripts`, not copied. `wardian check` warns about
+a part whose `app.js` is over 400 lines, and about a suite whose only panel has more than one `<h2>`.
+
 ### 6.1. Layout
 
 ```

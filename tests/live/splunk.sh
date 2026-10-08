@@ -35,14 +35,14 @@ OUT=$(api GET /api/status)
 allow splunk-table splunk
 say "loading the search into the Splunk table app's database (this can take a few minutes)"
 t0=$(date +%s)
-BODY=$(SEARCH="$SEARCH" python3 -c 'import json,os; print(json.dumps({"package":"splunk-table","app":"table","table":"live","search":os.environ["SEARCH"],"earliest":"","latest":""}))')
+BODY=$(SEARCH="$SEARCH" python3 -c 'import json,os; print(json.dumps({"package":"splunk-table","app":"search","table":"live","search":os.environ["SEARCH"],"earliest":"","latest":""}))')
 OUT=$(api POST /api/db/search-into "$BODY")
 [ "$(status)" = 200 ] || fail "search-into failed: $OUT"
 TOTAL=$(echo "$OUT" | json 'j["total"]')
 say "loaded $TOTAL rows in $(( $(date +%s) - t0 )) s; truncated: $(echo "$OUT" | json 'j.get("truncated")'); columns: $(echo "$OUT" | json 'j.get("columns")')"
 [ "$TOTAL" -ge "$MIN" ] || fail "only $TOTAL rows, fewer than $MIN"
 
-page() { api POST /api/db/page "{\"package\":\"splunk-table\",\"app\":\"table\",\"table\":\"live\",$1}"; }
+page() { api POST /api/db/page "{\"package\":\"splunk-table\",\"app\":\"search\",\"table\":\"live\",$1}"; }
 OUT=$(page '"offset":0,"limit":100')
 [ "$(status)" = 200 ] || fail "the first page failed: $OUT"
 [ "$(echo "$OUT" | json 'len(j["rows"])')" = 100 ] || fail "the first page does not hold 100 rows"

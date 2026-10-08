@@ -72,10 +72,10 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   await page.keyboard.press('Escape');
   ok(await page.locator('.w-arrange-bar').isHidden(), 'Escape closes Arrange');
 
-  console.log('== a suite with one panel');
+  console.log('== a suite of small parts: each panel is its own, with a height');
   await page.goto(B + '/run/splunk-table/'); await sleep(2000);
-  const box = await page.locator('iframe[title=table]').boundingBox();
-  ok(box && box.height > 100, 'its panel has a height: ' + (box && box.height));
+  const box = await page.locator('iframe[title=search]').boundingBox();
+  ok(box && box.height > 100 && (await order(page, 'main')).join() === 'about,rows,keep', 'the Splunk table\'s search panel has a height: ' + (box && box.height));
 
   console.log('== from the app list, Arrange is in view and works');
   // The app's frame is taller than the window, so a button in the frame's corner can sit below
