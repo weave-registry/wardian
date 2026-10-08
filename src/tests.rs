@@ -40,6 +40,14 @@ fn real_packages_pass() {
     assert!(passes(Path::new("tests/fixtures/rogue")));
 }
 
+/// ADR-2610080900: the Splunk table is made of small parts, so check has nothing to say about its size.
+#[test]
+fn splunk_table_parts_pass_check_without_a_split_warning() {
+    let (ok, report) = checker().check_path(Path::new("apps/splunk-table"));
+    assert!(ok, "{report:?}");
+    assert!(!report.join("").contains("ADR-2610080900"), "{report:?}");
+}
+
 #[test]
 fn channels_need_format_2() {
     let dir = tmp("channels");

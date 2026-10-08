@@ -33,7 +33,7 @@ done
 start_wardian "$TMP/a-apps"
 A=$BASE
 
-api POST /api/state/apps/splunk-table '{"app":"table","key":"state","value":{"s":"index=web | stats count","name":"live export"}}' >/dev/null
+api POST /api/state/apps/splunk-table '{"app":"search","key":"state","value":{"s":"index=web | stats count","name":"live export"}}' >/dev/null
 [ "$(status)" = 200 ] || fail "saving app data failed: $(cat "$TMP/body")"
 say "loading about $TABLE_MB MB of rows into the app's database, 1,000 rows a call"
 ROWS=$(python3 - "$A" "$TABLE_MB" <<'PY'
@@ -48,7 +48,7 @@ for c in range(calls):
     for _ in range(1000):
         rows.append([n, "web-%d" % (n % 20), base64.b64encode(os.urandom(row_bytes * 3 // 4)).decode()])
         n += 1
-    body = json.dumps({"package": "splunk-table", "app": "table", "table": "big", "columns": ["n", "host", "blob"], "rows": rows, "create": True}).encode()
+    body = json.dumps({"package": "splunk-table", "app": "keep", "table": "big", "columns": ["n", "host", "blob"], "rows": rows, "create": True}).encode()
     req = urllib.request.Request(base + "/api/db/insert", body, {"Content-Type": "application/json"})
     out = json.load(urllib.request.urlopen(req, timeout=120))
     assert out.get("inserted") == 1000, out
@@ -97,8 +97,8 @@ for i in 1 2; do
   cmp -s "$TMP/a-apps/splunk-table/media/part-$i.bin" "$TMP/b-apps/splunk-table/media/part-$i.bin" || fail "media/part-$i.bin differs after import"
 done
 OUT=$(api GET /api/state/apps/splunk-table)
-[ "$(echo "$OUT" | json 'j["table"]["state"]["name"]')" = "live export" ] || fail "the saved data did not come across: $OUT"
-OUT=$(api POST /api/db/page '{"package":"splunk-table","app":"table","table":"big","offset":0,"limit":1,"orderBy":"n","desc":true}')
+[ "$(echo "$OUT" | json 'j["search"]["state"]["name"]')" = "live export" ] || fail "the saved data did not come across: $OUT"
+OUT=$(api POST /api/db/page '{"package":"splunk-table","app":"keep","table":"big","offset":0,"limit":1,"orderBy":"n","desc":true}')
 [ "$(status)" = 200 ] || fail "reading the imported table failed: $OUT"
 [ "$(echo "$OUT" | json 'j["total"]')" = "$ROWS" ] || fail "the imported table has $(echo "$OUT" | json 'j["total"]') rows, not $ROWS"
 [ "$(echo "$OUT" | json 'int(j["rows"][0][0])')" = $((ROWS - 1)) ] || fail "the imported table's last row is wrong: $OUT"

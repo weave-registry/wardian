@@ -1,5 +1,5 @@
 /* Splunk table: the Wardian component library (ui/) draws the controls, the card and the table;
-   this file lays them out. */
+   this file lays them out. Every part's frame gets this file, so each rule serves the part that uses it. */
 :root { color-scheme: light dark; --page: #f7f7f8; }
 @media (prefers-color-scheme: dark) { :root { --page: #111113; } }
 * { box-sizing: border-box; }
@@ -13,13 +13,10 @@ textarea.w-input { font-family: var(--w-font-mono); font-size: var(--w-text-sm);
 .btnrow { display: flex; flex-wrap: wrap; gap: var(--w-space-2); margin-top: var(--w-space-1); }
 .status { font-size: var(--w-text-sm); color: var(--w-muted); margin-top: var(--w-space-3); min-height: 1.4em; }
 .status.warn { color: var(--w-destructive); }
-details.ai { margin: 0 0 var(--w-space-4); border: 1px dashed var(--w-border); border-radius: var(--w-radius); padding: var(--w-space-2) var(--w-space-3); }
-details.ai summary { cursor: pointer; font-size: var(--w-text); }
-details.ai[open] summary { margin-bottom: var(--w-space-3); }
-.result-head { margin-top: var(--w-space-5); }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 var(--w-space-4); font-size: var(--w-text-sm); }
 .facts dt { color: var(--w-muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
 .facts code { font: 12px var(--w-font-mono); white-space: pre-wrap; }
+.facts[hidden] { display: none; }
 .w-table-wrap { max-height: 70vh; }
 .w-table th { cursor: pointer; user-select: none; white-space: nowrap; }
 .w-table th:hover { color: var(--w-fg); }
@@ -41,3 +38,16 @@ details.ai[open] summary { margin-bottom: var(--w-space-3); }
 /* Paging through a table kept in the database (ADR-2610071219). */
 .pager { display: flex; gap: var(--w-space-3, 12px); align-items: center; justify-content: flex-end; margin-top: var(--w-space-3, 12px); font-size: var(--w-text-sm, 13px); color: var(--w-muted); font-variant-numeric: tabular-nums; }
 .pager[hidden] { display: none; }
+
+/* Saved searches (search) and saved tables (keep). */
+details.saved { margin: var(--w-space-4) 0 0; border: 1px solid var(--w-border); border-radius: var(--w-radius); padding: var(--w-space-2) var(--w-space-3); }
+details.saved summary { cursor: pointer; font-size: var(--w-text); }
+details.saved .count { color: var(--w-muted); font-size: var(--w-text-sm); }
+details.saved[open] summary { margin-bottom: var(--w-space-2); }
+.saved-list { list-style: none; margin: 0; padding: 0; }
+.saved-list li { display: flex; align-items: center; gap: var(--w-space-2); padding: 6px 0; border-top: 1px solid var(--w-border); }
+.saved-list li:first-child { border-top: 0; }
+.saved-list .what { flex: 1; min-width: 0; }
+.saved-list .what b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-list .what small { color: var(--w-muted); font-size: var(--w-text-sm); }
+.saved-list .empty { padding: 4px 0; border: 0; }

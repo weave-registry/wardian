@@ -26,9 +26,9 @@ function unzip(buf) {
 
 (async () => {
   console.log('== A: an app with data');
-  await post(A, '/api/state/apps/splunk-table', { app: 'table', key: 'state', value: { s: 'index=web | stats count', name: 'Checkout errors' } });
-  await post(A, '/api/state/layout/splunk-table', { layout: { v: 1, mode: 'one', columns: { main: ['table'] }, hidden: [] } });
-  const ins = await post(A, '/api/db/insert', { package: 'splunk-table', app: 'table', table: 'errors', columns: ['host', 'n'], rows: [['web-1', 3], ['web-2', 5], ['web-3', 8]], create: true });
+  await post(A, '/api/state/apps/splunk-table', { app: 'search', key: 'state', value: { s: 'index=web | stats count', name: 'Checkout errors' } });
+  await post(A, '/api/state/layout/splunk-table', { layout: { v: 1, mode: 'one', columns: { main: ['rows'] }, hidden: [] } });
+  const ins = await post(A, '/api/db/insert', { package: 'splunk-table', app: 'keep', table: 'errors', columns: ['host', 'n'], rows: [['web-1', 3], ['web-2', 5], ['web-3', 8]], create: true });
   ok(ins.inserted === 3, 'a table of 3 rows');
 
   const browser = await chromium.launch(require('./browser')({ headless: true }));
@@ -73,23 +73,23 @@ function unzip(buf) {
   const installed = ((await page.locator('#importMsg').textContent()).match(/Its data was installed \(([^)]*)\)/) || [, ''])[1].split(', ').sort().join(',');
   ok(installed === 'layout,storage,tables', 'imported with its data: ' + await page.locator('#importMsg').textContent());
   const st = await (await fetch(B + '/api/state/apps/splunk-table')).json();
-  ok(st.table && st.table.state && st.table.state.name === 'Checkout errors', 'B has the same saved data');
+  ok(st.search && st.search.state && st.search.state.name === 'Checkout errors', 'B has the same saved data');
   const lay = await (await fetch(B + '/api/state/layout/splunk-table')).json();
   ok(lay && lay.mode === 'one', 'and the same layout');
-  const tb = await post(B, '/api/db/tables', { package: 'splunk-table', app: 'table' });
+  const tb = await post(B, '/api/db/tables', { package: 'splunk-table', app: 'keep' });
   ok(tb.tables && tb.tables[0] && tb.tables[0].name === 'errors' && tb.tables[0].rows === 3, 'and the same table');
   ok(!fs.existsSync(path.join(BDATA, 'grants.json')) || !fs.readFileSync(path.join(BDATA, 'grants.json'), 'utf8').includes('splunk-table'), 'no permission answers came along: B asks again');
 
   console.log('== an app-only import of the same file');
   await post(B, '/api/apps/remove', { name: 'splunk-table' });
-  await post(B, '/api/state/apps/splunk-table', { app: 'table', key: 'state', value: null });
+  await post(B, '/api/state/apps/splunk-table', { app: 'search', key: 'state', value: null });
   await page.setInputFiles('#zipFile', file);
   await page.locator('#importPreview:not(.hidden)').waitFor({ timeout: 5000 });
   await page.click('#importGo');
   await page.locator('#importMsg', { hasText: 'Imported' }).waitFor({ timeout: 10000 });
   ok(!/Its data was installed/.test(await page.locator('#importMsg').textContent()), 'without the tick, only the app is installed');
   const st2 = await (await fetch(B + '/api/state/apps/splunk-table')).json();
-  ok(!(st2.table && st2.table.state), 'and no data');
+  ok(!(st2.search && st2.search.state), 'and no data');
   ok(errors.length === 0, 'no page errors ' + JSON.stringify(errors));
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);

@@ -1,0 +1,10 @@
+<h2>Ask Claude</h2>
+<p class="w-hint">Describe what you want, and Claude writes the search and runs it.</p>
+<div class="w-field">
+  <textarea class="w-input" id="aiWhat" rows="3" aria-label="What you want" placeholder="For example: how API request throughput holds up as more requests run at once"></textarea>
+</div>
+<div class="w-field"><label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch" id="aiUsl" checked> The table is for the USL lab: load, throughput and response time</label></div>
+<div class="btnrow"><button class="w-button" data-variant="outline" id="btnAi" type="button">Write with AI</button></div>
+<wardian-progress id="bar" hidden></wardian-progress>
+<div class="status" id="status" role="status"></div>
+<p class="w-hint">Claude sees the index and sourcetype names, the field names, and five sample events with email addresses removed.</p>

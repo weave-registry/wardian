@@ -49,7 +49,7 @@ WANT=$([ "$MODE" = sigv4 ] && echo access-keys || echo api-key)
 
 say "asking Claude through claude:sample, as an app would"
 allow splunk-table ai
-OUT=$(api POST /api/ai/sample '{"package":"splunk-table","app":"table","tier":"quick","prompt":"Reply with exactly the one word: pong"}')
+OUT=$(api POST /api/ai/sample '{"package":"splunk-table","app":"ask","tier":"quick","prompt":"Reply with exactly the one word: pong"}')
 [ "$(status)" = 200 ] || fail "claude:sample failed: $OUT"
 TEXT=$(echo "$OUT" | json 'j.get("text","")')
 MODEL=$(echo "$OUT" | json 'j.get("model","")')

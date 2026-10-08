@@ -12,17 +12,89 @@
     "ui/switch.css",
     "style.css"
   ],
+  "scripts": [
+    "shared/cells.js",
+    "shared/find.js",
+    "shared/range.js",
+    "shared/saved.js"
+  ],
   "header": "header.html",
   "apps": [
     {
-      "name": "table",
-      "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "name": "search",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\">",
+      "scripts": [
+        "apps/search/presets.js",
+        "apps/search/form.js"
+      ],
+      "emits": {
+        "table:ready": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "search:use",
+        "table:ready"
+      ],
       "caps": [
         "storage",
         "splunk",
+        "db"
+      ]
+    },
+    {
+      "name": "ask",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\">",
+      "emits": {
+        "search:use": {}
+      },
+      "caps": [
+        "splunk",
+        "claude:sample"
+      ]
+    },
+    {
+      "name": "about",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "table:ready"
+      ]
+    },
+    {
+      "name": "rows",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "emits": {
+        "table:view": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "table:ready"
+      ],
+      "caps": [
+        "db"
+      ]
+    },
+    {
+      "name": "keep",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "emits": {
+        "table:ready": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "table:ready",
+        "table:view"
+      ],
+      "caps": [
+        "storage",
         "db",
-        "claude:sample",
         "claude:downloads"
       ],
       "channels": {
@@ -31,6 +103,5 @@
         ]
       }
     }
-  ],
-  "scripts": []
+  ]
 }

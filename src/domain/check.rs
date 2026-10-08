@@ -6,8 +6,11 @@ use super::grants::valid_channel;
 use super::import_plan::{MAX_FILE_BYTES, MAX_TOTAL_BYTES};
 use super::package::{safe_rel, safe_segment, FORMAT, MAX_APP_FILES, MAX_DEPTH, PAGE_GUESSES, SKIP_DIRS};
 use super::suite::{tag_name, FONT_CSS};
+use self::split::{split_warnings, PartSize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashSet};
+
+mod split;
 
 const KNOWN_CAPS: &[&str] = &["storage", "asset", "worker", "source", "claude:downloads", "claude:sample", "splunk", "db"];
 const APP_JSON_KEYS: &[&str] = &["$schema", "format", "title", "description", "page", "channels"];
@@ -311,6 +314,7 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
     }
 
     // Second pass: every entry in full.
+    let mut sizes = Vec::new();
     for (i, a) in apps.iter().enumerate() {
         let Value::Object(a) = a else {
             r.err(format!("suite.json: apps[{i}] must be an object"));
@@ -345,6 +349,9 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
             continue;
         }
         check_script(&format!("{dir}/app.js"), served, read, &at, r);
+        let text = |rel: String| read(&rel).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+        let code = text(format!("{dir}/app.js"));
+        sizes.push(PartSize { name: name.to_string(), has_view: slot.is_some(), lines: code.lines().count(), code, view: text(format!("{dir}/view.html")) });
         if slot.is_some() && !served.contains(&format!("{dir}/view.html")) {
             r.warn(format!("{at}: has a slot but no {dir}/view.html, so its view is empty"));
         }
@@ -386,6 +393,9 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
                 r.warn(format!("{at}: capability \"{cap}\" is unknown to this Wardian and is never granted"));
             }
         }
+    }
+    for w in split_warnings(&sizes) {
+        r.warn(w);
     }
     apps.len()
 }
