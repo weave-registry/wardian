@@ -4,12 +4,20 @@ All notable changes to Wardian are written down here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Wardian uses
 [Semantic Versioning](https://semver.org/). The decisions behind the changes are in `docs/adrs/`.
 
-No version before 1.0.0 was tagged; the dates below are those of the commits that set the version.
+Versions before 0.4.0 were not tagged; their dates are those of the commits that set the version.
+From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS and Linux.
 
 ## [Unreleased]
 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
+
+## [0.4.1] - 2026-10-08
+
+A friendlier first run (ADR-2610080930): `wardian` in a terminal prints a short styled block and
+opens the browser, finds a Wardian already running instead of failing on a busy port, and the
+installer shows its steps with ✓ marks. The tag v0.4.0, made earlier the same day, already held the
+other entries below; the version number in Cargo.toml had not been raised since 0.4.0.
 
 ### Added
 
