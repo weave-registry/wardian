@@ -101,6 +101,62 @@ pub fn try_box(assets: &dyn Assets, app: &str) -> Option<String> {
     Some(format!("<section class=\"try\" aria-label=\"Try {app}\"><h2 id=\"try-it\">Try it</h2>{body}{download}</section>"))
 }
 
+/// The app's title and one-line description, from app.json or suite.json.
+fn title_and_line(assets: &dyn Assets, app: &str) -> (String, String) {
+    let m = match kind(assets, app) {
+        Some(Kind::Suite { .. }) => files_of(assets, app).find(|(rel, _)| *rel == "suite.json").and_then(|(_, b)| serde_json::from_slice(b).ok()).unwrap_or_default(),
+        _ => manifest(assets, app),
+    };
+    let title = m["title"].as_str().unwrap_or(app).to_string();
+    // Without a description, the README's first sentence.
+    let readme = || {
+        files_of(assets, app)
+            .find(|(rel, _)| *rel == "README.md")
+            .map(|(_, b)| String::from_utf8_lossy(b).lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')).unwrap_or("").to_string())
+            .unwrap_or_default()
+    };
+    let text = m["description"].as_str().map(String::from).unwrap_or_else(readme).replace(['`', '*'], "");
+    let line = text.split(". ").next().unwrap_or("").trim_end_matches('.').to_string();
+    (title, line)
+}
+
+/// The gallery at the top of the website's examples page: every example, with Try it for the ones
+/// that run in the browser and Download for every one.
+pub fn gallery(assets: &dyn Assets) -> String {
+    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
+    let mut apps: Vec<(&str, Kind)> = names(assets).into_iter().filter_map(|n| kind(assets, n).map(|k| (n, k))).collect();
+    // The ones that run here first, then the rest; each group keeps the build's order.
+    apps.sort_by_key(|(_, k)| !k.runs_in_a_browser());
+    let runnable = apps.iter().filter(|(_, k)| k.runs_in_a_browser()).count();
+    let cards: String = apps
+        .iter()
+        .map(|(app, k)| {
+            let (title, line) = title_and_line(assets, app);
+            let what = match k {
+                Kind::Module => "module",
+                Kind::Page { .. } => "page",
+                Kind::Suite { .. } => "suite",
+            };
+            let act = if k.runs_in_a_browser() {
+                format!("<a class=\"go\" href=\"/docs/examples/{app}/#try-it\">Try it</a>")
+            } else {
+                format!("<span class=\"needs\">Needs Wardian</span> <a href=\"/downloads/{app}.zip\" download>Download</a>")
+            };
+            format!(
+                "<li><a class=\"card-link\" href=\"/docs/examples/{app}/\"><strong>{}</strong><small>{what}</small><span>{}</span></a>{act}</li>",
+                esc(&title),
+                esc(&line)
+            )
+        })
+        .collect();
+    format!(
+        "<section class=\"gallery\" id=\"try\" aria-label=\"Try the examples\"><h2>Try them in your browser</h2>\
+         <p>{runnable} of the {} examples run right here, with nothing to install. The others need a Wardian: download one and \
+         import it.</p><ul>{cards}</ul></section>",
+        apps.len()
+    )
+}
+
 /// A module's form page: each exported function with an input per parameter and a Run button,
 /// as Wardian draws it.
 fn module_page(app: &str) -> String {

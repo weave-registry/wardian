@@ -19,6 +19,19 @@ const SERVER_ONLY = ['csv-explorer', 'focus-log', 'focus-timer', 'splunk-table',
     await first.goto(`${B}/docs/?x-vercel-protection-bypass=${encodeURIComponent(process.env.VERCEL_BYPASS)}&x-vercel-set-bypass-cookie=true`);
     await first.close();
   }
+  {
+    const page = await ctx.newPage();
+    await page.goto(`${B}/docs/examples`);
+    const tries = await page.locator('section.gallery a.go').count();
+    ok(tries === RUNNABLE.length + SUITES.length, `the examples page offers Try it for ${tries} apps`);
+    ok(await page.locator('section.gallery li').count() === 16, 'and lists all sixteen');
+    await page.locator('section.gallery a.go').first().click();
+    await page.waitForLoadState('load');
+    ok(await page.locator('iframe.try-frame').count() === 1, 'Try it opens the app running: ' + page.url());
+    await page.goto(`${B}/`);
+    ok(await page.locator('a[href="/docs/examples#try"]').count() >= 1, 'the home page links to them');
+    await page.close();
+  }
   for (const app of RUNNABLE) {
     const page = await ctx.newPage();
     const errors = [];
