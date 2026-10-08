@@ -13,6 +13,7 @@ mod domain {
     pub mod components;
     pub mod db;
     pub mod export;
+    pub mod folders;
     pub mod grants;
     pub mod history;
     pub mod import_plan;
@@ -356,7 +357,8 @@ fn serve(cfg: Settings, no_open: bool) {
     let splunk = Arc::new(Splunk::new(Arc::clone(&secrets), Arc::clone(&checks), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone()));
     detail(&hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone()));
 
-    let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir));
+    let examples = usecases::workspace::example_names(&*fs, cfg.example_apps.as_deref(), assets.example_apps());
+    let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir).with_examples(examples));
     let exports = Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), Arc::clone(&db), Arc::clone(&state), Arc::clone(&history), &cfg.local_root, &cfg.data_dir));
     let owners: Vec<Arc<dyn KeyOwner>> = vec![studio.clone(), splunk.clone(), hub.clone()];
     let keys = Arc::new(Keyring::new(owners, admin, checks, secrets));

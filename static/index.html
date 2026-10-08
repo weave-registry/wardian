@@ -96,6 +96,58 @@
     width: 100%; text-align: left; border: 0; background: none; padding: .4rem .5rem; border-radius: 6px;
   }
   #apps li button.active { background: var(--accent); color: var(--accent-ink); }
+  /* Folders in the app list (ADR-2610081830): one level; apps in no folder first. */
+  .apps-tools { display: flex; justify-content: flex-end; margin: -.15rem 0 .35rem; }
+  .apps-tools button { font-size: .82rem; padding: .15rem .5rem; color: var(--muted); border-color: transparent; background: none; display: inline-flex; align-items: center; gap: .3rem; }
+  .apps-tools button:hover:not(:disabled) { color: var(--accent); background: var(--hover); }
+  .apps-tools svg { width: 14px; height: 14px; }
+  #apps li.app { display: flex; align-items: center; border-radius: 6px; position: relative; }
+  #apps li.app > button.app-open { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  #apps li.app > button.app-open:hover:not(.active) { background: var(--hover); }
+  #apps li button.app-move, #apps li button.folder-more {
+    width: auto; flex: none; display: grid; place-items: center; padding: 0; width: 1.75rem; height: 1.75rem;
+    color: var(--muted); opacity: 0; margin-left: .1rem;
+  }
+  #apps li button.app-move svg, #apps li button.folder-more svg { width: 16px; height: 16px; }
+  #apps li.app:hover > .app-move, #apps li.app:focus-within > .app-move, #apps .app-move[aria-expanded="true"],
+  #apps .folder-row:hover > .folder-more, #apps .folder-row:focus-within > .folder-more, #apps .folder-more[aria-expanded="true"] { opacity: 1; }
+  #apps li button.app-move:hover, #apps li button.folder-more:hover { color: var(--text); background: var(--hover); }
+  @media (hover: none) { #apps li button.app-move, #apps li button.folder-more { opacity: .7; } }
+  #apps li.folder { margin-top: .15rem; }
+  #apps .folder-row { display: flex; align-items: center; border-radius: 6px; }
+  #apps .folder-row > button.folder-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: .35rem; font-weight: 600; }
+  #apps .folder-row > button.folder-toggle:hover { background: var(--hover); }
+  #apps .folder-toggle .chev { width: 14px; height: 14px; flex: none; color: var(--muted); transition: transform .15s ease; }
+  #apps .folder-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  #apps .folder-toggle .folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #apps .folder-toggle .count { color: var(--muted); font-weight: 400; font-size: .78rem; margin-left: auto; padding-left: .35rem; font-variant-numeric: tabular-nums; }
+  #apps .folder-toggle.holds-active .folder-name { color: var(--accent); }
+  #apps ul.folder-apps { list-style: none; margin: 0 0 .2rem .85rem; padding: 0 0 0 .4rem; border-left: 1px solid var(--line); }
+  #apps li.folder-empty { color: var(--muted); font-size: .82rem; padding: .3rem .5rem; }
+  #apps input.folder-rename { flex: 1; min-width: 0; margin: .1rem 0; padding: .3rem .45rem; font-weight: 600; }
+  /* While an app is dragged out of a folder, a target over the filter takes it out; it covers the
+     filter so nothing in the list moves under the pointer. */
+  aside { position: relative; }
+  #dropLoose { display: none; position: absolute; top: .75rem; left: .75rem; right: .75rem; height: 4.1rem; z-index: 5;
+    place-items: center; border: 1.5px dashed var(--accent); border-radius: 8px; background: var(--panel);
+    color: var(--muted); font-size: .88rem; text-align: center; padding: 0 .5rem; }
+  aside.dragging-app.from-folder #dropLoose { display: grid; }
+  #dropLoose.drop-into { color: var(--accent); background: var(--brand-soft); border-style: solid; }
+  #apps li.folder.drop-into > .folder-row { background: var(--brand-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  #apps li.folder.drop-before { box-shadow: 0 -2px 0 var(--accent); }
+  #apps li.folder.drop-after { box-shadow: 0 2px 0 var(--accent); }
+  #apps li.is-dragged { opacity: .45; }
+  @media (prefers-reduced-motion: reduce) { #apps .folder-toggle .chev { transition: none; } }
+  /* The Move to… and folder menus. */
+  .menu { position: fixed; z-index: 40; min-width: 12rem; max-width: min(18rem, calc(100vw - 1rem)); max-height: min(60vh, 24rem); overflow: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .3rem; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+  .menu .menu-title { font-size: .75rem; color: var(--muted); padding: .25rem .55rem .2rem; text-transform: uppercase; letter-spacing: .04em; }
+  .menu button { display: flex; align-items: center; gap: .45rem; width: 100%; text-align: left; border: 0; background: none; padding: .38rem .55rem; border-radius: 5px; }
+  .menu button:hover, .menu button:focus { background: var(--hover); outline: none; }
+  .menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .menu button .tick { width: 1rem; flex: none; color: var(--accent); }
+  .menu button.danger-item { color: var(--bad); }
+  .menu .menu-sep { height: 1px; background: var(--line); margin: .3rem .2rem; }
   #content { padding: 1rem 1.25rem; min-width: 0; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
   .card h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
@@ -285,7 +337,10 @@
 <main>
   <aside>
     <input id="filter" placeholder="Filter apps" aria-label="Filter apps">
-    <ul id="apps"></ul>
+    <div class="apps-tools"><button id="newFolder" title="Make a folder to file apps in"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>New folder</button></div>
+    <ul id="apps" aria-label="Apps"></ul>
+    <div id="dropLoose" data-drop="loose" aria-hidden="true">Drop here: no folder</div>
+    <p id="appsSay" class="w-sr" aria-live="polite"></p>
     <p id="appsEmpty" class="muted hidden"></p>
   </aside>
 
@@ -678,25 +733,384 @@ async function loadStatus() {
 // ---------- app list ----------
 let apps = [];
 let current = null;
+// The viewer's folders (ADR-2610081830): {folders: [{id, name, open, apps}]}, kept by the server,
+// which files the example apps once and drops apps that are gone.
+let folders = { v: 1, folders: [] };
+let foldersSaving = 0;            // writes on their way: a list read meanwhile may be older than this page
+const filterClosed = new Set();   // folders closed while the filter has text; never saved
+let appsPaused = false;           // a menu, a rename or a drag is under way: redraw when it ends
+let appsStale = false;
+const MAX_FOLDERS = 100, MAX_FOLDER_NAME = 60;
 
 async function loadApps() {
   try { apps = await api('/api/app-list'); }
   catch (e) { apps = []; log(`app list: ${e.message}`, 'e'); }
+  if (!foldersSaving) {
+    const f = await WardianState.folders.load();
+    if (!foldersSaving && f && Array.isArray(f.folders)) folders = f;
+  }
   renderApps();
 }
 
-function renderApps() {
-  const f = $('filter').value.trim().toLowerCase();
-  const shown = apps.filter((a) => `${a.name} ${a.title || ''}`.toLowerCase().includes(f));
-  $('apps').replaceChildren(...shown.map((a) => el('li', {}, el('button', {
-    title: a.error || a.description || a.name,
-    className: a.name === current ? 'active' : '', onclick: () => openApp(a),
-  }, (a.error ? '⚠ ' : '') + (a.title || a.name), el('span', { className: 'kind', textContent: a.suite ? 'suite' : a.page ? 'page' : 'module' })))));
-  const empty = $('appsEmpty');
-  empty.classList.toggle('hidden', shown.length > 0);
-  empty.textContent = apps.length ? 'No app matches the filter.' : 'No apps found. Open Settings to choose a source.';
+const titleOf = (a) => a.title || a.name;
+const byTitle = (x, y) => titleOf(x).localeCompare(titleOf(y), undefined, { sensitivity: 'base' }) || x.name.localeCompare(y.name);
+const folderById = (id) => folders.folders.find((f) => f.id === id);
+const folderOf = (name) => folders.folders.find((f) => f.apps.includes(name)) || null;
+const svg = (body, cls = '') => {
+  const t = document.createElement('template');
+  t.innerHTML = `<svg class="${cls}" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+  return t.content.firstChild;
+};
+const chevron = () => svg('<path d="M6 3.5 10.5 8 6 12.5"/>', 'chev');
+const dots = () => svg('<circle cx="3.5" cy="8" r=".9" fill="currentColor"/><circle cx="8" cy="8" r=".9" fill="currentColor"/><circle cx="12.5" cy="8" r=".9" fill="currentColor"/>');
+const say = (text) => { $('appsSay').textContent = ''; setTimeout(() => ($('appsSay').textContent = text), 50); };
+function focusKey(key) {
+  const n = key && $('apps').querySelector(`[data-key="${CSS.escape(key)}"]`);
+  if (n) n.focus();
+  return !!n;
 }
-$('filter').oninput = renderApps;
+
+function renderApps() {
+  if (appsPaused) { appsStale = true; return; }
+  appsStale = false;
+  const f = $('filter').value.trim().toLowerCase();
+  const match = (a) => !f || `${a.name} ${a.title || ''}`.toLowerCase().includes(f);
+  const had = $('apps').contains(document.activeElement) ? document.activeElement.dataset.key : null;
+  // Each app is in the first folder that names it; names of apps that are gone are left out.
+  const byName = new Map(apps.map((a) => [a.name, a]));
+  const filed = new Set();
+  const lists = folders.folders.map((folder) => {
+    const list = folder.apps.filter((n) => byName.has(n) && !filed.has(n) && filed.add(n)).map((n) => byName.get(n)).sort(byTitle);
+    return [folder, list];
+  });
+  const loose = apps.filter((a) => !filed.has(a.name) && match(a)).sort(byTitle);
+  const rows = loose.map((a) => appRow(a, true));
+  let shown = loose.length;
+  for (const [folder, list] of lists) {
+    const hits = list.filter(match);
+    if (f && !hits.length) continue;
+    shown += hits.length;
+    rows.push(folderRow(folder, list, hits, !!f));
+  }
+  $('apps').replaceChildren(...rows);
+  const empty = $('appsEmpty');
+  const none = !apps.length || (f && !shown);
+  empty.classList.toggle('hidden', !none);
+  empty.textContent = apps.length ? 'No app matches the filter.' : 'No apps found. Open Settings to choose a source.';
+  $('newFolder').disabled = folders.folders.length >= MAX_FOLDERS;
+  if (had) focusKey(had);
+}
+
+function appRow(a, loose) {
+  const open = el('button', {
+    title: a.error || a.description || a.name,
+    className: 'app-open' + (a.name === current ? ' active' : ''), onclick: () => openApp(a),
+  }, (a.error ? '⚠ ' : '') + titleOf(a), el('span', { className: 'kind', textContent: a.suite ? 'suite' : a.page ? 'page' : 'module' }));
+  open.dataset.key = 'app:' + a.name;
+  if (a.name === current) open.setAttribute('aria-current', 'page');
+  const move = el('button', { className: 'app-move', ariaLabel: `Move ${titleOf(a)} to…`, title: 'Move to a folder' }, dots());
+  move.dataset.key = 'move:' + a.name;
+  move.setAttribute('aria-haspopup', 'menu');
+  move.setAttribute('aria-expanded', 'false');
+  move.onclick = () => openMoveMenu(a, move);
+  const li = el('li', { className: 'app', draggable: true }, open, move);
+  li.dataset.app = a.name;
+  if (loose) li.dataset.drop = 'loose';
+  li.addEventListener('dragstart', (e) => dragStart(e, li, { kind: 'app', name: a.name }));
+  li.addEventListener('dragend', dragEnd);
+  return li;
+}
+
+function folderRow(folder, list, hits, filtering) {
+  const open = filtering ? !filterClosed.has(folder.id) : !!folder.open;
+  const n = list.length;
+  const toggle = el('button', { className: 'folder-toggle', onclick: () => toggleFolder(folder.id, filtering) },
+    chevron(), el('span', { className: 'folder-name', textContent: folder.name }),
+    el('span', { className: 'count', textContent: filtering ? `${hits.length}/${n}` : String(n) }));
+  toggle.dataset.key = 'folder:' + folder.id;
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-controls', 'fold-' + folder.id);
+  toggle.ariaLabel = `${folder.name}, ${filtering ? `${hits.length} of ${n}` : n} app${n === 1 ? '' : 's'}`;
+  if (!open && list.some((a) => a.name === current)) toggle.classList.add('holds-active');
+  const more = el('button', { className: 'folder-more', ariaLabel: `${folder.name} folder: rename, move or delete`, title: 'Folder actions' }, dots());
+  more.dataset.key = 'more:' + folder.id;
+  more.setAttribute('aria-haspopup', 'menu');
+  more.setAttribute('aria-expanded', 'false');
+  more.onclick = () => openFolderMenu(folder.id, more);
+  const row = el('div', { className: 'folder-row', draggable: true }, toggle, more);
+  row.addEventListener('dragstart', (e) => dragStart(e, li, { kind: 'folder', id: folder.id }));
+  row.addEventListener('dragend', dragEnd);
+  const inner = el('ul', { className: 'folder-apps', id: 'fold-' + folder.id, hidden: !open, ariaLabel: folder.name },
+    ...(filtering ? hits : list).map((a) => appRow(a, false)));
+  if (!list.length) inner.append(el('li', { className: 'folder-empty', textContent: 'Empty. Drag an app here, or use its Move to… button.' }));
+  const li = el('li', { className: 'folder' }, row, inner);
+  li.dataset.folder = folder.id;
+  li.dataset.drop = 'folder:' + folder.id;
+  return li;
+}
+
+// ---------- changing the folders ----------
+async function saveFolders() {
+  foldersSaving++;
+  try {
+    const kept = await WardianState.folders.save({ v: 1, folders: folders.folders });
+    if (foldersSaving === 1 && kept && Array.isArray(kept.folders)) {
+      const changed = JSON.stringify(kept.folders) !== JSON.stringify(folders.folders);
+      folders = kept;
+      if (changed) renderApps();
+    }
+  } finally { foldersSaving--; }
+}
+
+function toggleFolder(id, filtering) {
+  const folder = folderById(id);
+  if (!folder) return;
+  if (filtering) { if (filterClosed.has(id)) filterClosed.delete(id); else filterClosed.add(id); }
+  else { folder.open = !folder.open; saveFolders(); }
+  renderApps();
+}
+
+// Puts `name` in folder `id`, or in no folder when `id` is null.
+function moveApp(name, id, { reveal = false } = {}) {
+  const from = folderOf(name);
+  const to = id ? folderById(id) : null;
+  if ((from && from.id) === (to && to.id)) return;
+  for (const f of folders.folders) f.apps = f.apps.filter((n) => n !== name);
+  if (to) { to.apps.push(name); to.apps.sort(); if (reveal) to.open = true; }
+  saveFolders();
+  renderApps();
+  const a = apps.find((x) => x.name === name);
+  say(`${a ? titleOf(a) : name} moved to ${to ? `the folder ${to.name}` : 'no folder'}.`);
+}
+
+function newFolder(withApp = null) {
+  if (folders.folders.length >= MAX_FOLDERS) { say(`There can be at most ${MAX_FOLDERS} folders.`); return; }
+  const taken = new Set(folders.folders.map((f) => f.name));
+  let name = 'New folder';
+  for (let i = 2; taken.has(name); i++) name = `New folder ${i}`;
+  const id = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const folder = { id, name, open: true, apps: [] };
+  if (withApp) { for (const f of folders.folders) f.apps = f.apps.filter((n) => n !== withApp); folder.apps.push(withApp); }
+  folders.folders.push(folder);
+  // A new folder holds nothing the filter matches yet, so the filter is cleared to show it.
+  $('filter').value = ''; filterClosed.clear();
+  saveFolders();
+  renderApps();
+  renameFolder(id);
+}
+$('newFolder').onclick = () => newFolder();
+
+// The folder's name becomes a text box: Enter keeps the new name, Escape keeps the old one.
+function renameFolder(id) {
+  const li = $('apps').querySelector(`li.folder[data-folder="${CSS.escape(id)}"]`);
+  const folder = folderById(id);
+  if (!li || !folder) return;
+  const row = li.querySelector('.folder-row');
+  const input = el('input', { className: 'folder-rename', value: folder.name, maxLength: MAX_FOLDER_NAME, ariaLabel: 'Folder name', autocomplete: 'off' });
+  row.draggable = false;
+  row.replaceChildren(input);
+  appsPaused = true;
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    appsPaused = false;
+    const f = folderById(id), name = input.value.trim().slice(0, MAX_FOLDER_NAME);
+    if (keep && f && name && name !== f.name) { f.name = name; saveFolders(); say(`Folder renamed to ${name}.`); }
+    renderApps();
+    focusKey('folder:' + id);
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.focus();
+  input.select();
+}
+
+function deleteFolder(id) {
+  const i = folders.folders.findIndex((f) => f.id === id);
+  if (i < 0) return;
+  const [gone] = folders.folders.splice(i, 1);
+  filterClosed.delete(id);
+  saveFolders();
+  renderApps();
+  const n = gone.apps.filter((x) => apps.some((a) => a.name === x)).length;
+  say(`Folder ${gone.name} deleted.${n ? ` Its ${n} app${n === 1 ? ' is' : 's are'} now in no folder.` : ''}`);
+  const next = folders.folders[i] || folders.folders[i - 1];
+  if (!(next && focusKey('folder:' + next.id))) $('newFolder').focus();
+}
+
+// Moves folder `id` to position `to` in the list.
+function placeFolder(id, to) {
+  const from = folders.folders.findIndex((f) => f.id === id);
+  if (from < 0 || to < 0 || to >= folders.folders.length || to === from) return;
+  const [f] = folders.folders.splice(from, 1);
+  folders.folders.splice(to, 0, f);
+  saveFolders();
+  renderApps();
+  say(`Folder ${f.name} moved to position ${to + 1} of ${folders.folders.length}.`);
+}
+
+// ---------- menus: Move to… and the folder actions ----------
+// A small menu by its button: arrow keys move, Enter picks, Escape or Tab closes it and the focus
+// goes back to the button.
+let menu = null;
+function openMenu(opener, label, items) {
+  closeMenu(false);
+  const node = el('div', { className: 'menu' });
+  node.setAttribute('role', 'menu');
+  node.setAttribute('aria-label', label);
+  node.append(el('div', { className: 'menu-title', textContent: label, ariaHidden: 'true' }));
+  for (const it of items) {
+    if (it === '-') { const sep = el('div', { className: 'menu-sep' }); sep.setAttribute('role', 'separator'); node.append(sep); continue; }
+    const b = el('button', { tabIndex: -1, className: it.danger ? 'danger-item' : '' },
+      el('span', { className: 'tick', textContent: it.checked ? '✓' : '', ariaHidden: 'true' }), it.label);
+    b.setAttribute('role', it.checked === undefined ? 'menuitem' : 'menuitemradio');
+    if (it.checked !== undefined) b.setAttribute('aria-checked', String(!!it.checked));
+    b.onclick = () => {
+      const key = opener.dataset.key;
+      closeMenu(false);
+      it.run();
+      if (!$('apps').contains(document.activeElement) && document.activeElement?.tagName !== 'INPUT') focusKey(key);
+    };
+    node.append(b);
+  }
+  $('apps').after(node);
+  const r = opener.getBoundingClientRect(), m = node.getBoundingClientRect();
+  const left = Math.max(8, Math.min(r.right - m.width, innerWidth - m.width - 8));
+  const top = r.bottom + 4 + m.height > innerHeight - 8 ? Math.max(8, r.top - 4 - m.height) : r.bottom + 4;
+  Object.assign(node.style, { left: `${left}px`, top: `${top}px` });
+  opener.setAttribute('aria-expanded', 'true');
+  appsPaused = true;
+  menu = { node, opener };
+  node.addEventListener('keydown', menuKeys);
+  document.addEventListener('pointerdown', menuOutside, true);
+  const all = [...node.querySelectorAll('button')];
+  (all.find((b) => b.getAttribute('aria-checked') === 'true') || all[0]).focus();
+}
+function closeMenu(refocus = true) {
+  if (!menu) return;
+  const { node, opener } = menu;
+  menu = null;
+  node.remove();
+  opener.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('pointerdown', menuOutside, true);
+  appsPaused = false;
+  const key = opener.dataset.key;
+  if (appsStale) renderApps();
+  if (refocus && !(opener.isConnected && (opener.focus(), true))) focusKey(key);
+}
+function menuOutside(e) {
+  if (menu && !menu.node.contains(e.target) && e.target !== menu.opener && !menu.opener.contains(e.target)) closeMenu(false);
+}
+function menuKeys(e) {
+  const items = [...menu.node.querySelectorAll('button')];
+  const i = items.indexOf(document.activeElement);
+  const go = (j) => { e.preventDefault(); items[(j + items.length) % items.length].focus(); };
+  if (e.key === 'ArrowDown') go(i + 1);
+  else if (e.key === 'ArrowUp') go(i - 1);
+  else if (e.key === 'Home') go(0);
+  else if (e.key === 'End') go(items.length - 1);
+  else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeMenu(true); }
+}
+
+function openMoveMenu(a, opener) {
+  if (menu && menu.opener === opener) { closeMenu(true); return; }
+  const here = folderOf(a.name);
+  openMenu(opener, `Move ${titleOf(a)} to`, [
+    { label: 'No folder', checked: !here, run: () => moveApp(a.name, null, { reveal: true }) },
+    ...folders.folders.map((f) => ({ label: f.name, checked: here === f, run: () => moveApp(a.name, f.id, { reveal: true }) })),
+    '-',
+    ...(folders.folders.length < MAX_FOLDERS ? [{ label: 'New folder…', run: () => newFolder(a.name) }] : []),
+  ]);
+}
+
+function openFolderMenu(id, opener) {
+  if (menu && menu.opener === opener) { closeMenu(true); return; }
+  const i = folders.folders.findIndex((f) => f.id === id);
+  if (i < 0) return;
+  const f = folders.folders[i];
+  openMenu(opener, `Folder ${f.name}`, [
+    { label: 'Rename…', run: () => renameFolder(id) },
+    ...(i > 0 ? [{ label: 'Move up', run: () => { placeFolder(id, i - 1); focusKey('more:' + id); } }] : []),
+    ...(i < folders.folders.length - 1 ? [{ label: 'Move down', run: () => { placeFolder(id, i + 1); focusKey('more:' + id); } }] : []),
+    '-',
+    { label: 'Delete folder (keeps its apps)', danger: true, run: () => deleteFolder(id) },
+  ]);
+}
+
+// ---------- drag and drop: apps into folders, folders into order ----------
+let dragging = null;
+function dragStart(e, li, what) {
+  e.stopPropagation();
+  dragging = what;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', what.name || what.id);
+  appsPaused = true;
+  li.classList.add('is-dragged');
+  side.classList.add('dragging-' + what.kind);
+  if (what.kind === 'app' && folderOf(what.name)) side.classList.add('from-folder');
+}
+const side = $('apps').closest('aside');
+function clearDrop() {
+  side.querySelectorAll('.drop-into, .drop-before, .drop-after').forEach((n) => n.classList.remove('drop-into', 'drop-before', 'drop-after'));
+}
+// The drop is carried out when the drag ends, so the dragged row is still there for the browser
+// to finish its drag with.
+let dropped = null;
+function dragEnd() {
+  dragging = null;
+  clearDrop();
+  $('apps').querySelectorAll('.is-dragged').forEach((n) => n.classList.remove('is-dragged'));
+  side.classList.remove('dragging-app', 'dragging-folder', 'from-folder');
+  appsPaused = false;
+  const d = dropped;
+  dropped = null;
+  if (d) setTimeout(() => applyDrop(d), 0);
+  else if (appsStale) renderApps();
+}
+function applyDrop({ what, t }) {
+  if (what.kind === 'app') { moveApp(what.name, t.folder); return; }
+  const from = folders.folders.findIndex((f) => f.id === what.id);
+  let to = folders.folders.findIndex((f) => f.id === t.folder) + (t.after ? 1 : 0);
+  if (from < to) to--;
+  placeFolder(what.id, to);
+}
+// Where a drop over `e` would go: {node, place} or null.
+function dropTarget(e) {
+  if (!dragging) return null;
+  const node = e.target.closest && e.target.closest('[data-drop]');
+  if (!node || !side.contains(node)) return null;
+  const [kind, id] = node.dataset.drop.split(':');
+  if (dragging.kind === 'app') {
+    const from = folderOf(dragging.name);
+    if (kind === 'loose') return from ? { node: $('dropLoose'), folder: null } : null;
+    return from && from.id === id ? null : { node, folder: id };
+  }
+  if (kind !== 'folder' || id === dragging.id) return null;
+  const r = node.getBoundingClientRect();
+  return { node, folder: id, after: e.clientY > r.top + Math.min(r.height, 40) / 2 };
+}
+side.addEventListener('dragover', (e) => {
+  const t = dropTarget(e);
+  clearDrop();
+  if (!t) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  t.node.classList.add(dragging.kind === 'app' ? 'drop-into' : t.after ? 'drop-after' : 'drop-before');
+});
+side.addEventListener('dragleave', (e) => { if (!side.contains(e.relatedTarget)) clearDrop(); });
+side.addEventListener('drop', (e) => {
+  const t = dropTarget(e);
+  if (!t) return;
+  e.preventDefault();
+  dropped = { what: dragging, t };
+  clearDrop();
+});
+
+$('filter').oninput = () => { if (!$('filter').value.trim()) filterClosed.clear(); renderApps(); };
 
 $('refreshBtn').onclick = async () => {
   if (status.admin && status.source === 'drive') {

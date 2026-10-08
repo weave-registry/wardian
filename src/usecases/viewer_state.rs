@@ -1,7 +1,9 @@
 //! Keeps the viewer's state in the data folder (ADR-2610071055): Arrange layouts, each suite app's
-//! saved data, and the latest message per channel, under `<data dir>/state/`. Every file is
+//! saved data, the latest message per channel, and the folders of the app list (ADR-2610081830),
+//! under `<data dir>/state/`. Every file is
 //! written private, like the keys and the permission answers.
 
+use crate::domain::folders::{self, Folders};
 use crate::domain::viewer_state::{self, check_layout, check_name};
 use crate::ports::{service::ViewerState, storage::FileSystem};
 use serde_json::{json, Map, Value};
@@ -15,11 +17,19 @@ pub struct State {
     dir: PathBuf,
     /// One writer at a time, so two changes never overwrite each other.
     lock: Mutex<()>,
+    /// The names of the example apps (ADR-2610081600), filed in "Examples" the first time.
+    examples: Vec<String>,
 }
 
 impl State {
     pub fn new(fs: Arc<dyn FileSystem>, data_dir: &Path) -> State {
-        State { fs, dir: data_dir.join("state"), lock: Mutex::new(()) }
+        State { fs, dir: data_dir.join("state"), lock: Mutex::new(()), examples: Vec::new() }
+    }
+
+    /// Which apps are the example apps, for the folders.
+    pub fn with_examples(mut self, examples: Vec<String>) -> State {
+        self.examples = examples;
+        self
     }
 
     fn read_map(&self, path: &Path) -> Map<String, Value> {
@@ -39,6 +49,9 @@ impl State {
     }
     fn channels_path(&self) -> PathBuf {
         self.dir.join("channels.json")
+    }
+    fn folders_path(&self) -> PathBuf {
+        self.dir.join("folders.json")
     }
     fn app_path(&self, package: &str) -> PathBuf {
         self.dir.join("apps").join(format!("{package}.json"))
@@ -112,5 +125,25 @@ impl ViewerState for State {
         viewer_state::set_channel(&mut all, channel, message)?;
         self.write_map(&self.channels_path(), &all)?;
         Ok(json!({ "saved": true }))
+    }
+
+    fn folders(&self, apps: &[String]) -> Result<Value, String> {
+        let _guard = self.lock.lock().unwrap();
+        let mut f = Folders::read(&Value::Object(self.read_map(&self.folders_path())));
+        let tidied = folders::tidy(&mut f, apps);
+        let seeded = folders::seed(&mut f, apps, &self.examples);
+        if tidied || seeded {
+            self.write_map(&self.folders_path(), f.to_json().as_object().ok_or("the folders are damaged")?)?;
+        }
+        Ok(f.to_json())
+    }
+
+    fn set_folders(&self, body: &Value, apps: &[String]) -> Result<Value, String> {
+        let _guard = self.lock.lock().unwrap();
+        let kept = Folders::read(&Value::Object(self.read_map(&self.folders_path())));
+        let mut f = folders::from_viewer(body, &kept)?;
+        folders::tidy(&mut f, apps);
+        self.write_map(&self.folders_path(), f.to_json().as_object().ok_or("the folders are damaged")?)?;
+        Ok(f.to_json())
     }
 }

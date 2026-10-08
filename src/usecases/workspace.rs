@@ -33,15 +33,7 @@ const EXAMPLES_SEEN: &str = ".examples-seen";
 /// Returns the names added.
 pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&str, &[u8])], working: &Path) -> Result<Vec<String>, String> {
     let source = source.filter(|s| fs.is_dir(s));
-    let is_app = |dir: &Path| APP_MARKERS.iter().any(|m| fs.is_file(&dir.join(m)));
-    let examples: Vec<String> = match source {
-        Some(src) => fs.list_dir(src).into_iter().filter(|n| safe_segment(n) && is_app(&src.join(n))).collect(),
-        None => {
-            let mut names: Vec<String> = built_in.iter().filter_map(|(p, _)| p.split('/').next().map(String::from)).collect();
-            names.dedup();
-            names
-        }
-    };
+    let examples = example_names(fs, source, built_in);
     fs.create_dir_all(working)?;
     let seen = fs.read(&working.join(EXAMPLES_SEEN)).map(|b| String::from_utf8_lossy(&b).lines().map(str::to_string).collect::<Vec<_>>()).unwrap_or_default();
     let trashed = fs.list_dir(&working.join(".trash"));
@@ -68,6 +60,20 @@ pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&st
     list.dedup();
     fs.write(&working.join(EXAMPLES_SEEN), format!("{}\n", list.join("\n")).as_bytes())?;
     Ok(added)
+}
+
+/// The names of the example apps: the apps in `source` on disk when there is one, otherwise the
+/// ones built into the program, `built_in` (ADR-2610081600).
+pub fn example_names(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&str, &[u8])]) -> Vec<String> {
+    let is_app = |dir: &Path| APP_MARKERS.iter().any(|m| fs.is_file(&dir.join(m)));
+    match source.filter(|s| fs.is_dir(s)) {
+        Some(src) => fs.list_dir(src).into_iter().filter(|n| safe_segment(n) && is_app(&src.join(n))).collect(),
+        None => {
+            let mut names: Vec<String> = built_in.iter().filter_map(|(p, _)| p.split('/').next().map(String::from)).collect();
+            names.dedup();
+            names
+        }
+    }
 }
 
 /// Proves Wardian can write in `data_dir` by writing and removing a small file, before anything

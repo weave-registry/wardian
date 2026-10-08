@@ -43,6 +43,8 @@ channel messages. Packages are portable and say nothing about where a viewer fil
 
 - `domain/folders.rs`: the record, validation, tidying, seeding (pure, tested; names start
   `folders_`). Viewer-state port and use case: read and write; HTTP: `GET/POST /api/state/folders`.
+  The record also lists `examples`, the example apps already filed once, which tells an example new
+  to the data folder from one the viewer moved out of "Examples".
 - `static/index.html`: the folder list, menus, drag and drop, filter.
 - `tests/folders-e2e.js` + `tests/run-folders-e2e.sh`; `tests/a11y-e2e.js` covers the new controls.
 - SPEC.md (viewer state), README, CHANGELOG, docs site copy.

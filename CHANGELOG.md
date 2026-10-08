@@ -21,6 +21,11 @@ Wardian 1.0") is done or written down there as left out.
 - **`wardian key`** (ADR-2610081700) says where the master key is and how many saved keys it opens;
   `wardian key export FILE` backs it up into a private file, and `wardian key import FILE` restores
   it, refusing a key that opens none of the saved keys unless `--force`.
+- **Folders in the app list** (ADR-2610081830): apps in no folder first, then folders that open and
+  close and say how many apps they hold. The example apps start in an "Examples" folder, closed
+  when you have apps of your own. New folder, rename, delete (its apps stay), Move to… on every app
+  from the mouse or the keyboard, and drag and drop for apps and folders. The filter opens folders
+  with a match. Kept per data folder in `state/folders.json`, through `GET/POST /api/state/folders`.
 
 ## [0.4.4] - 2026-10-08
 

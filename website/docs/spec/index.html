@@ -482,12 +482,23 @@ cannot keep the layout, so the script asks the host page with
 <code>postMessage({wardian: 'layout', k: 'get' | 'set', id, layout})</code>, and the host replies
 <code>{wardian: 'layout', id, layout}</code>. Outside a host, the layout lasts until the page closes.</li>
 </ul>
-<p>Wardian keeps layouts, each app's <code>storage</code> data and the latest channel messages in its data folder
-(<code>state/</code>), with a copy in the browser for a viewer the host does not let write (ADR-2610071055).
+<p>Wardian keeps layouts, each app's <code>storage</code> data, the latest channel messages and the app list's
+folders in its data folder (<code>state/</code>), with a copy in the browser for a viewer the host does not let
+write (ADR-2610071055).
 <code>wardian check</code> warns about a page with no <code>data-panel</code>.</p>
 <ul>
 <li><strong>Module app.</strong> The host draws one card per function, and arranges those.</li>
 </ul>
+<p><strong>Folders</strong> (ADR-2610081830) are how the viewer files the apps in the host's app list; a package says
+nothing about them, and an exported file holds none. Wardian keeps them in <code>state/folders.json</code>:
+<code>{v: 1, folders: [{id, name, open, apps: [package names]}], seeded, examples}</code>. Folders hold apps,
+not folders; an app is in at most one; a name is 1 to 60 characters; there are at most 100. <code>GET /api/state/folders</code> returns the record after dropping names that match no app being served, and the
+first time it files the example apps present into a folder with the id <code>examples</code>, named "Examples",
+open only when every app served is an example; <code>seeded</code> then says this was done and <code>examples</code> lists
+the examples already filed, so an example new to the data folder goes into that folder while it
+exists. <code>POST /api/state/folders</code> with <code>{folders: [...]}</code> replaces the folders and returns the record
+as kept; <code>seeded</code> and <code>examples</code> are the host's. Both need the same rights as the rest of the
+viewer's state.</p>
 <h2 id="7-distribution">7. Distribution<a class="anchor" href="#7-distribution" aria-label="Link to this section">#</a></h2>
 <p>7.1. <strong>A folder.</strong> Put the package folder in the host's apps folder, or in the Google Drive
 folder the host serves. Wardian's apps folder is its working folder, <code>DATA_DIR/apps</code>, kept apart from

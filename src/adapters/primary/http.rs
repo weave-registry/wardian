@@ -459,6 +459,11 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
             let package = body["package"].as_str().filter(|p| !p.is_empty()).map(String::from);
             jobs_route(&Method::Post, rest, package.as_deref(), s)
         })),
+        // The folders of the app list (ADR-2610081830), tidied against the apps being served.
+        (Method::Get, ["api", "state", "folders"]) if admin => result_resp(s.state.folders(&hub.list_apps())),
+        (Method::Post, ["api", "state", "folders"]) if admin => {
+            result_resp(read_json(req).and_then(|body| s.state.set_folders(&body, &hub.list_apps())))
+        }
         (Method::Post, ["api", "state", kind, name]) if admin => {
             result_resp(read_json_upto(req, MAX_STATE_BODY_BYTES).and_then(|body| post_state(kind, name, body, s)))
         }
