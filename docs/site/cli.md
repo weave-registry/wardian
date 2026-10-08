@@ -36,14 +36,16 @@ wardian [APPS_FOLDER]
 
 Starts the web server on `ADDR` (default `127.0.0.1:8000`) and serves the apps.
 
-- With no folder, Wardian serves its **working folder**, `DATA_DIR/apps`. On the first start it
-  fills that folder from `./apps`, if there is one. It leaves out `target/`, `node_modules/`, `.git`
-  and `Cargo.lock`. It never changes `./apps`.
+- With no folder, Wardian serves its **working folder**, `DATA_DIR/apps`. On every start it adds
+  every example app it has not had before: from `./apps` in a checkout, from the copy
+  installed beside the program, or else from the copies built into Wardian itself. An example you
+  remove stays removed; an app already there is never replaced (ADR-2610081600).
+  It leaves out `target/`, `node_modules/`, `.git` and `Cargo.lock`, and never changes `./apps`.
 - With a folder, Wardian serves that folder as it is. If the folder is inside a git work tree,
   Wardian prints a note: changes you make in the app show up in git.
 
 ```
-wardian                         # serves ./data/apps, filled from ./apps on the first start
+wardian                         # serves ./data/apps, with every example app
 wardian ~/my-apps               # serves ~/my-apps as it is
 ADDR=127.0.0.1:8001 wardian     # another port
 ```
@@ -52,7 +54,7 @@ At start Wardian prints:
 
 - who counts as an admin (`admin: …`);
 - the full path of the data folder (`data: …`);
-- how many apps it copied into the working folder, on the first start only;
+- how many example apps it added to the working folder, when it added any;
 - where apps come from (`source: local dir …` or `source: google drive folder …`);
 - the address it listens on (`listening on http://…`).
 

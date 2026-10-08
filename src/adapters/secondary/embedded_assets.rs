@@ -123,6 +123,8 @@ const DOCS: &[DocPage] = &[
     doc!("", "decisions/ADR-2610080928", "ADR-2610080928: Wardian ships its AI skills", "docs/adrs/ADR-2610080928-wardian-ships-its-ai-skills.md"),
     doc!("", "decisions/ADR-2610081003", "ADR-2610081003: a page app reaches only its own package", "docs/adrs/ADR-2610081003-a-page-app-reaches-only-its-own-package.md"),
     doc!("", "decisions/ADR-2610081041", "ADR-2610081041: every claim names its test", "docs/adrs/ADR-2610081041-every-claim-names-its-test.md"),
+    doc!("", "decisions/ADR-2610081500", "ADR-2610081500: keys and Claude settings in one place", "docs/adrs/ADR-2610081500-keys-and-claude-settings-in-one-place.md"),
+    doc!("", "decisions/ADR-2610081600", "ADR-2610081600: example apps are built in", "docs/adrs/ADR-2610081600-example-apps-are-built-in.md"),
 ];
 
 /// One file of a shipped skill (skills/).
@@ -235,6 +237,9 @@ impl Assets for Embedded {
     fn example_suite(&self) -> &'static [(&'static str, &'static str)] {
         EXAMPLES
     }
+    fn example_apps(&self) -> &'static [(&'static str, &'static [u8])] {
+        example_apps::EXAMPLE_APPS
+    }
     fn schema(&self, name: &str) -> Option<&'static str> {
         match name {
             "app.schema.json" => Some(APP_SCHEMA),
@@ -242,4 +247,9 @@ impl Assets for Embedded {
             _ => None,
         }
     }
+}
+
+/// The example apps, listed by build.rs from the folders `.gitignore` names.
+mod example_apps {
+    include!(concat!(env!("OUT_DIR"), "/example_apps.rs"));
 }

@@ -32,7 +32,8 @@ Files marked *private* are written readable by their owner only (mode `600`).
 
 | File or folder | What it holds |
 |---|---|
-| `apps/` | The working folder: the apps Wardian serves and saves. Filled from `./apps` on the first start. |
+| `apps/` | The working folder: the apps Wardian serves and saves. Every example app is added once ([Install and run](/docs/install#the-working-folder)). |
+| `examples.json` | The example apps the working folder has been given, so one you remove stays removed. |
 | `apps/.trash/` | Removed apps, until you empty it yourself. Hidden folders are never listed or served. |
 | `config.json` | The chosen app source: local, or a Google Drive folder and its name. *Private.* |
 | `service-account.json` | The uploaded Google service account key. *Private.* |

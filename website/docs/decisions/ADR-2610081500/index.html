@@ -2,8 +2,8 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Building Wardian apps · Wardian docs</title>
-<meta name="description" content="Wardian documentation: Building Wardian apps">
+<title>ADR-2610081500: keys and Claude settings in one place · Wardian docs</title>
+<meta name="description" content="Wardian documentation: ADR-2610081500: keys and Claude settings in one place">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: light dark; --bg: #f6f5ef; --panel: #fbfaf6; --ink: #183e32; --text: #23302a; --muted: #5f6b62; --line: #d8ddd2; --code: #ecefe4; --accent: #2f6b50; --mark: #dce8a5; }
@@ -77,143 +77,144 @@
   <div class="links"><a href="/">Home</a><a href="https://github.com/weave-registry/wardian">GitHub</a></div>
 </header>
 <div class="wrap">
-<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide" aria-current="page">Building Wardian apps</a><ul class="toc"><li><a href="#which-kind-of-app">Which kind of app?</a></li><li><a href="#a-module-in-two-minutes">A module in two minutes</a></li><li><a href="#a-page-when-numbers-are-not-enough">A page: when numbers are not enough</a></li><li><a href="#a-suite-several-sealed-parts">A suite: several sealed parts</a></li><li><a href="#check-then-share">Check, then share</a></li><li><a href="#editor-help">Editor help</a></li></ul></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
+<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions" aria-current="page">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
 <main id="content">
-<h1 id="building-wardian-apps">Building Wardian apps</h1>
-<p>This guide takes you from nothing to a working app. It covers the three kinds of package and
-when to use each. For the exact rules, see the <a href="/docs/spec">package format</a>.</p>
-<p>You need Wardian running (<code>wardian</code>, then open http://127.0.0.1:8000). To rebuild the WebAssembly
-in the templates, you also need Rust and its WebAssembly target:</p>
-<pre><code>rustup target add wasm32-unknown-unknown
-</code></pre>
-<p>Would you rather describe the app than write it? Press <strong>Make an app</strong> in Wardian. Claude
-builds a page or a suite from your description, checks it, and tries it in your browser. This guide
-explains what Claude makes, so it also helps you to read and change those apps.</p>
-<h2 id="which-kind-of-app">Which kind of app?<a class="anchor" href="#which-kind-of-app" aria-label="Link to this section">#</a></h2>
-<table><thead><tr><th>Your app…</th><th>Make a</th><th>Wardian gives you</th></tr></thead><tbody>
-<tr><td>is a few functions of numbers</td><td><strong>module</strong></td><td>the whole interface: an input per parameter and a Run button</td></tr>
-<tr><td>works on text, lists or JSON, or needs a real interface</td><td><strong>page</strong></td><td>a sandboxed frame for your own HTML and JavaScript</td></tr>
-<tr><td>has several parts that share data</td><td><strong>suite</strong></td><td>a kernel that seals each part and passes messages between them</td></tr>
+<h1 id="adr-2610081500-keys-and-claude-settings-in-one-place">ADR-2610081500: Keys and Claude settings in one place</h1>
+<p><strong>Status:</strong> Accepted
+<strong>Date:</strong> 2026-10-08
+<strong>Drivers:</strong> Wardian holds up to five secrets: the Anthropic key, the Bedrock keys, the Splunk
+account, the Google service account key and the admin token. Each is kept safely, but nothing
+manages them. No page lists them, a saved key cannot be tested again, the Drive key cannot be
+removed, and the admin token can be set only in the environment. Claude's own settings are fixed:
+the model is chosen only by environment variables, the limits of <strong>Make an app</strong> are constants in
+the code, nothing counts the tokens Claude uses, and nothing stops an app that calls
+<code>claude:sample</code> in a loop.</p>
+<h2 id="context">Context<a class="anchor" href="#context" aria-label="Link to this section">#</a></h2>
+<p>Each secret belongs to the use case that uses it:</p>
+<table><thead><tr><th>Secret</th><th>File in the data folder</th><th>Owner</th></tr></thead><tbody>
+<tr><td>Anthropic key, workspace</td><td><code>anthropic-key</code>, <code>anthropic-workspace</code></td><td><code>usecases/studio.rs</code></td></tr>
+<tr><td>Bedrock region and keys</td><td><code>bedrock.json</code></td><td><code>usecases/studio.rs</code></td></tr>
+<tr><td>Splunk account</td><td><code>splunk.json</code></td><td><code>usecases/splunk.rs</code></td></tr>
+<tr><td>Google service account key</td><td><code>service-account.json</code></td><td><code>usecases/catalog.rs</code></td></tr>
+<tr><td>Admin token</td><td>none: <code>ADMIN_TOKEN</code> only</td><td><code>adapters/primary/http.rs</code>, <code>config.rs</code></td></tr>
 </tbody></table>
-<p>Start with the simplest kind that fits. You can move up later.</p>
-<h2 id="a-module-in-two-minutes">A module in two minutes<a class="anchor" href="#a-module-in-two-minutes" aria-label="Link to this section">#</a></h2>
-<p>Wardian serves the apps in its working folder, <code>data/apps</code> (or <code>DATA_DIR/apps</code>), so create apps
-there. The README's <strong>Run</strong> section explains the folder, and <code>wardian promote</code> for shipping an app.</p>
-<pre><code>wardian new module data/apps/converter
-</code></pre>
-<p>Open Wardian. <strong>converter</strong> is in the list. Click it and you see <code>add</code>, <code>c_to_f</code> and <code>fib</code>, each with
-input boxes. Type numbers and press <strong>Run</strong>.</p>
-<p>Now make it yours. Open <code>data/apps/converter/src/lib.rs</code> and add a function:</p>
-<pre><code class="language-rust">#[no_mangle]
-pub extern "C" fn km_to_miles(km: f64) -&gt; f64 {
-    km * 0.621371
-}
-</code></pre>
-<p>Rebuild and check it:</p>
-<pre><code>cd data/apps/converter
-./build.sh
-wardian check .
-</code></pre>
-<p>Click <strong>converter</strong> again: <code>km_to_miles</code> is in the list.</p>
-<p>Each <code>#[no_mangle] pub extern "C" fn</code> becomes a function in Wardian. Its parameters and result must
-be numbers: <code>i32</code>, <code>i64</code>, <code>u32</code>, <code>u64</code>, <code>f32</code> or <code>f64</code>. An <code>i64</code> shows up in JavaScript as a
-BigInt, so very large whole numbers stay exact.</p>
-<h2 id="a-page-when-numbers-are-not-enough">A page: when numbers are not enough<a class="anchor" href="#a-page-when-numbers-are-not-enough" aria-label="Link to this section">#</a></h2>
-<p>WebAssembly functions only pass numbers. To work on text, your own JavaScript copies the text into
-the module's memory and reads the answer back. The page template does this for you.</p>
-<pre><code>wardian new page data/apps/wordcount
-</code></pre>
-<p>Open <strong>wordcount</strong> in Wardian: type, and it counts the words and shouts the text back. The files:</p>
-<table><thead><tr><th>File</th><th>Job</th></tr></thead><tbody>
-<tr><td><code>index.html</code></td><td>the page you see</td></tr>
-<tr><td><code>app.js</code></td><td>loads <code>app.wasm</code> and moves text in and out of its memory</td></tr>
-<tr><td><code>src/lib.rs</code></td><td>the module: <code>alloc</code>, <code>dealloc</code>, <code>upper</code>, <code>words</code></td></tr>
-</tbody></table>
-<p>The pattern in <code>app.js</code>, in four steps:</p>
+<p>Each owner tests a secret before it saves it (ADR-2610071106) and writes it with
+<code>FileSystem::write_private</code>, readable by its owner only. Settings shows whether one is saved, never
+the secret. These rules stay.</p>
+<p><code>studio.rs</code> fixes <code>MAX_STEPS</code> (40), <code>MAX_TOKENS</code> (16,000) and <code>MAX_SESSIONS</code> (20). The inference
+adapters fix the models, which <code>WARDIAN_AI_MODEL</code>, <code>WARDIAN_BEDROCK_MODEL</code> and
+<code>WARDIAN_BEDROCK_QUICK_MODEL</code> replace. Both APIs answer every Messages request with
+<code>usage: {input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}</code>, and
+Wardian drops it.</p>
+<h2 id="decision">Decision<a class="anchor" href="#decision" aria-label="Link to this section">#</a></h2>
 <ol>
-<li>Ask the module for space: <code>ptr = alloc(len)</code>.</li>
-<li>Copy the bytes in at <code>ptr</code>.</li>
-<li>Call the function with the address and length: <code>words(ptr, len)</code>.</li>
-<li>Read any bytes back, then free the space: <code>dealloc(ptr, len)</code>.</li>
+<li>
+<p><strong>Secrets go through one port.</strong> <code>ports/secrets.rs</code>, <code>Secrets</code>: <code>read</code>, <code>write</code>, <code>remove</code>, and
+<code>describe</code> (how secrets are kept, for Settings). Every owner above reads and writes its secret
+through it, never through <code>FileSystem</code>. The adapter in this decision keeps today's files
+(<code>adapters/secondary/plain_secrets.rs</code>); ADR-2610081501 replaces it with sealed files. A secret
+that is there but cannot be read is an error, not "no key", so Settings can say so.</p>
+</li>
+<li>
+<p><strong>One list of keys.</strong> <code>GET /api/keys</code> lists each secret: <code>id</code>, <code>name</code>, whether it is set, where
+it comes from (<code>settings</code>, <code>environment</code> or none), a short description that is never the secret
+(such as <code>region us-east-1, API key</code>), and the last test: when, whether it passed, and what the
+service said. <code>POST /api/keys/&lt;id&gt;/test</code> tests it again with the saved values.
+<code>POST /api/keys/&lt;id&gt;/remove</code> removes the saved one; the environment's value, if any, then
+applies. Every test is recorded, including the test before a save and Claude's refusal (401 or
+403) of a key while an app or Make an app uses it, in <code>key-checks.json</code>, which holds no secret.
+An API key is described by its last four characters at most. The Drive key gets the removal
+it does not have; removing it while Drive is the app source switches the source to Local.</p>
+</li>
+<li>
+<p><strong>The admin token can be set in Settings.</strong> <code>POST /api/keys/admin</code> saves a token of at least 24
+printable characters, or makes one (32 random bytes, base64url) and shows it once. From that
+moment every admin request needs it, and the browser that set it keeps it for its tab.
+<code>ADMIN_TOKEN</code> wins: while it is set, Settings shows the token as set by the environment and
+refuses to change it. A saved token counts as a token at start, so Wardian may listen on a
+non-loopback address with it. Removing the saved token is refused while Wardian listens on a
+non-loopback address. If the token is lost, stop Wardian and remove <code>admin-token</code> from the data
+folder.</p>
+</li>
+<li>
+<p><strong>Agent settings.</strong> <code>agent.json</code> in the data folder holds, for each provider, the main and the
+quick model, and the limits of <strong>Make an app</strong>:</p>
+<table><thead><tr><th>Setting</th><th>Default</th><th>Allowed</th></tr></thead><tbody>
+<tr><td><code>max_steps</code>: model requests in one turn</td><td>40</td><td>5 to 200</td></tr>
+<tr><td><code>max_tokens</code>: tokens in one reply</td><td>16,000</td><td>1,000 to 64,000</td></tr>
+<tr><td><code>max_sessions</code>: chats kept at once</td><td>20</td><td>1 to 100</td></tr>
+<tr><td><code>sample_max_tokens</code>: tokens in one <code>claude:sample</code> reply</td><td>4,000</td><td>256 to 16,000</td></tr>
+<tr><td><code>sample_daily_tokens</code>: tokens each app may use per day</td><td>200,000</td><td>0 (no limit) to 100,000,000</td></tr>
+<tr><td><code>build_daily_tokens</code>: tokens <strong>Make an app</strong> may use per day</td><td>0 (no limit)</td><td>0 to 100,000,000</td></tr>
+</tbody></table>
+<p>A model name is 1 to 200 of <code>A-Z a-z 0-9 . _ : - /</code>. A new model is tested with one request
+before it is saved, as a key is, so a typo never replaces a working model. An empty model means
+the adapter's default. Saved settings win over the environment variables, which stay the
+defaults. <code>Llm::test_key</code> takes the model it tests. The use case passes the model in each body;
+the adapters still own the default names (hexa rule <code>no-model-name-outside-inference</code>).</p>
+</li>
+<li>
+<p><strong>Usage is counted.</strong> Every Messages reply's <code>usage</code> is added to <code>usage.json</code> under the UTC day
+and the payer: the package for <code>claude:sample</code>, <code>Make an app</code> for the builder (a name no package
+can have). Wardian keeps 31
+days. <code>GET /api/usage</code> returns the days, a total per payer and the caps. Settings shows today and
+the last 31 days per app.</p>
+</li>
+<li>
+<p><strong>Caps.</strong> Before a <code>claude:sample</code> request, Wardian adds the package's tokens for today: every
+token Claude read, cached or not, and every token it wrote. At or over its cap, the request fails with the new code <code>over_budget</code>, which
+<code>e.code</code> carries to the app. A cap per package (<code>caps: {package: tokens}</code> in <code>agent.json</code>)
+replaces <code>sample_daily_tokens</code> for that package. <strong>Make an app</strong> checks <code>build_daily_tokens</code>
+before each model request and stops the turn with a message. A request already under way
+finishes, so a day can end a little over its cap.</p>
+</li>
 </ol>
-<p><strong>The page runs sandboxed.</strong> It can load its own files with relative URLs, like <code>./app.wasm</code>. It
-cannot use <code>localStorage</code>, cookies, or Wardian's own pages. That rule lets you run a page from a
-zip you don't fully trust. If your page must keep data, let the user download it and load it again.</p>
-<h2 id="a-suite-several-sealed-parts">A suite: several sealed parts<a class="anchor" href="#a-suite-several-sealed-parts" aria-label="Link to this section">#</a></h2>
-<p>A suite is for an app with parts: an input panel, a calculation, a chart, an export button. Each
-part runs in its own sealed frame. The parts never touch each other. They send messages through
-the <strong>kernel</strong>, which checks each message against the suite's contract.</p>
-<pre><code>wardian new suite data/apps/notes
-</code></pre>
-<p>The template has three apps:</p>
-<table><thead><tr><th>App</th><th>Where</th><th>Its contract</th></tr></thead><tbody>
-<tr><td><code>input</code></td><td>left column</td><td><strong>emits</strong> <code>text:changed</code>; may use <strong>storage</strong></td></tr>
-<tr><td><code>output</code></td><td>right column</td><td><strong>listens</strong> to <code>text:changed</code>; <strong>needs</strong> <code>text.analyze</code></td></tr>
-<tr><td><code>text</code></td><td>out of sight</td><td><strong>provides</strong> <code>analyze</code>; may use <strong>asset</strong> to load <code>text.wasm</code></td></tr>
-</tbody></table>
-<p>Type in <strong>input</strong>. It emits <code>text:changed</code>. The kernel copies the message to <strong>output</strong>, which calls
-<code>text.analyze</code>. The kernel forwards that call to <strong>text</strong>, which runs WebAssembly and answers.</p>
-<h3 id="the-contract">The contract<a class="anchor" href="#the-contract" aria-label="Link to this section">#</a></h3>
-<p>Each app's contract lives in <code>suite.json</code>, and the kernel enforces that copy:</p>
-<pre><code class="language-json">{ "name": "output", "slot": "main",
-  "listens": ["text:changed"], "needs": ["text.analyze"] }
-</code></pre>
-<p>The app's code states the same contract when it registers:</p>
-<pre><code class="language-js">Kernel.register({
-  name: 'output',
-  listens: ['text:changed'],
-  needs: ['text.analyze'],
-  init(ctx) {
-    ctx.on('text:changed', async ({ text }) =&gt; {
-      const { words } = await ctx.call('text', 'analyze', { text });
-      ctx.$('#count').textContent = words;
-    });
-  }
-});
-</code></pre>
-<p><strong>The two copies must match.</strong> If they differ, the kernel refuses to start the app and shows a
-fault at the bottom of the page. When you change a contract, change both.</p>
-<h3 id="what-ctx-gives-an-app">What <code>ctx</code> gives an app<a class="anchor" href="#what-ctx-gives-an-app" aria-label="Link to this section">#</a></h3>
-<table><thead><tr><th>Use</th><th>To</th></tr></thead><tbody>
-<tr><td><code>ctx.emit(topic, data)</code> / <code>ctx.on(topic, fn)</code></td><td>send and receive messages</td></tr>
-<tr><td><code>ctx.provide({ name: fn })</code> / <code>ctx.call(app, name, args)</code></td><td>offer and call methods</td></tr>
-<tr><td><code>ctx.store.get(key)</code> / <code>ctx.store.set(key, value)</code></td><td>keep data between visits (<code>storage</code>)</td></tr>
-<tr><td><code>ctx.asset(path)</code></td><td>read a file from the suite, such as a <code>.wasm</code> (<code>asset</code>)</td></tr>
-<tr><td><code>ctx.cap('downloads')</code></td><td>save a file for the user (<code>claude:downloads</code>)</td></tr>
-<tr><td><code>ctx.cap('splunk')</code></td><td>run a Splunk search with the server's account, after the user allows it (<code>splunk</code>)</td></tr>
-<tr><td><code>ctx.$(selector)</code></td><td>find elements in the app's own view</td></tr>
-</tbody></table>
-<p>Three habits keep a suite healthy:</p>
+<p>Not in this decision: keys sealed at rest (ADR-2610081501), cost in money (prices change and differ
+between Anthropic and Bedrock, so Wardian counts tokens), and caps per viewer.</p>
+<h2 id="consequences">Consequences<a class="anchor" href="#consequences" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><strong>Mark state topics <code>"retain": true</code>.</strong> An app that starts late still gets the latest value.</li>
-<li><strong>Send plain data.</strong> Every message is copied. Functions and page elements cannot be copied.</li>
-<li><strong>Put heavy work in an app with no slot that <code>provides</code> methods.</strong> The views stay simple and fast.</li>
+<li>An admin sees every secret on one page, can test each one again, and can remove each one,
+without opening the data folder.</li>
+<li>A runaway app costs at most its daily cap; the app sees <code>over_budget</code> and the admin sees who
+used what.</li>
+<li>A team can change the model or the limits without restarting Wardian.</li>
+<li>An admin token set in Settings locks out every program that does not know it, including scripts
+on the same machine. The recovery is to remove a file, which needs access to the machine.</li>
+<li><code>usage.json</code> and <code>key-checks.json</code> are written on every request and test. They are small, and
+written private through a temp file.</li>
 </ul>
-<h3 id="add-an-app-to-a-suite">Add an app to a suite<a class="anchor" href="#add-an-app-to-a-suite" aria-label="Link to this section">#</a></h3>
-<ol>
-<li>Create <code>apps/&lt;name&gt;/app.js</code>, plus <code>apps/&lt;name&gt;/view.html</code> if it has a view.</li>
-<li>Add an entry to <code>suite.json</code> with its <code>slot</code> and its contract.</li>
-<li>Run <code>wardian check data/apps/&lt;suite&gt;</code>. The check reports a <code>needs</code> with no matching <code>provides</code>, a
-topic nobody emits, and typos in field names.</li>
-<li>Reload the suite. If an app does not start, read the fault box at the bottom of the page.</li>
-</ol>
-<h2 id="check-then-share">Check, then share<a class="anchor" href="#check-then-share" aria-label="Link to this section">#</a></h2>
-<pre><code>wardian check data/apps/notes
-</code></pre>
-<p>The check tests everything that can be tested without running the app: names, files, sizes,
-contracts that point at each other, and the format version. Fix every error. Warnings are worth
-reading too.</p>
-<p>To share an app, zip its folder and rename the zip to <code>name.wardian</code>. Others import it in
-<strong>Settings → Import from a zip</strong>.</p>
-<h2 id="editor-help">Editor help<a class="anchor" href="#editor-help" aria-label="Link to this section">#</a></h2>
-<p>Wardian serves JSON Schemas for its files. Name the schema at the top of <code>app.json</code> or
-<code>suite.json</code>, and editors such as VS Code check the file and complete field names as you type:</p>
-<pre><code class="language-json">{ "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json", "format": 1 }
-</code></pre>
-<p>The templates already include this line.</p>
+<h2 id="implementation">Implementation<a class="anchor" href="#implementation" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><code>ports/secrets.rs</code>, <code>adapters/secondary/plain_secrets.rs</code>.</li>
+<li><code>domain/agent.rs</code>: <code>AgentSettings</code>, its bounds and its JSON. <code>domain/usage.rs</code>: <code>UsageBook</code>,
+days, totals and pruning.</li>
+<li><code>usecases/keys.rs</code>: <code>Keyring</code> (the list, tests, removal, the admin token) and <code>KeyChecks</code>.</li>
+<li><code>usecases/usage.rs</code>: <code>Meter</code> (record, today's total, report).</li>
+<li><code>usecases/studio.rs</code>, <code>usecases/splunk.rs</code>, <code>usecases/catalog.rs</code>: secrets through <code>Secrets</code>;
+every test recorded in <code>KeyChecks</code>; the agent settings, the meter and the caps in the studio.</li>
+<li><code>ports/service.rs</code>: the <code>Keys</code> driving port; <code>Builder::agent</code>, <code>set_agent</code> and <code>usage</code>.</li>
+<li><code>adapters/primary/http.rs</code>: <code>/api/keys</code>, <code>/api/agent</code>, <code>/api/usage</code>; the admin check reads the
+token from <code>Keys</code>.</li>
+<li><code>static/index.html</code>: Settings gains <strong>Keys</strong> and <strong>Usage</strong>, and <strong>Claude</strong> gains the models and
+limits.</li>
+<li><code>SPEC.md</code> §6.4: <code>over_budget</code>. <code>docs/site/config.md</code>, <code>docs/site/security.md</code>.</li>
+<li><code>tests/run-keys-e2e.sh</code>: the pages, against the fake Anthropic API, in a browser.</li>
+</ul>
+<h2 id="enforced-by-hexa-adr-gates-run-on-demand">Enforced-By: hexa adr gates (run on demand)<a class="anchor" href="#enforced-by-hexa-adr-gates-run-on-demand" aria-label="Link to this section">#</a></h2>
+<h2 id="gate">Gate<a class="anchor" href="#gate" aria-label="Link to this section">#</a></h2>
+<p><code>env CARGO_TARGET_DIR=target/verify cargo test --release keys_ &amp;&amp; env CARGO_TARGET_DIR=target/verify cargo test --release agent_ &amp;&amp; env CARGO_TARGET_DIR=target/verify cargo test --release usage_</code></p>
+<p>Rerun by <code>hexa adr gates</code>. It builds into <code>target/verify</code>, never into the copy of Wardian a user runs.
+<code>tests/run-keys-e2e.sh</code> proves the pages in a browser, and <code>tests/run-all.sh</code> runs it.</p>
+<h2 id="references">References<a class="anchor" href="#references" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>ADR-2610071106 (Claude through Amazon Bedrock): how keys are tested before they are saved</li>
+<li>ADR-2610071055 (viewer state on the server): the data folder's private files</li>
+<li>ADR-2610081501 (keys sealed at rest)</li>
+<li>ADR-2610081041 (every claim names its test)</li>
+</ul>
 
-<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/GUIDE.md"><code>GUIDE.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
-<div class="pager"><a class="prev" href="/docs/concepts" rel="prev"><small>Previous</small>How Wardian works</a><a class="next" href="/docs/pages" rel="next"><small>Next</small>Page apps in depth</a></div>
+<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/adrs/ADR-2610081500-keys-and-claude-settings-in-one-place.md"><code>docs/adrs/ADR-2610081500-keys-and-claude-settings-in-one-place.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
+<div class="pager"><a class="prev" href="/docs/decisions" rel="prev"><small>Back to</small>Decisions</a></div>
 </main>
 </div>
 <script>

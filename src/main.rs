@@ -273,17 +273,18 @@ fn serve(cfg: Settings, no_open: bool) {
             detail(&format!("note: {} is inside a git repository, so apps changed in Wardian show up there as uncommitted changes. Run without a folder to use {}.", cfg.local_root.display(), cfg.data_dir.join("apps").display()));
             git_note = Some("inside a git repository: changes show up there");
         }
-    } else if let Some(source) = &cfg.example_apps {
-        match usecases::workspace::seed(&*fs, source, &cfg.local_root) {
-            Ok(Some(n)) => {
-                added = Some(n);
-                detail(&format!("apps: copied {n} example app(s) from {} into {} (the working folder; {} is not changed)", source.display(), cfg.local_root.display(), source.display()));
+    } else {
+        // Every example app the working folder has not been given yet (ADR-2610081600): from the
+        // copy on disk when there is one, else from the copies built into the program.
+        let from = cfg.example_apps.as_ref().map(|s| s.display().to_string()).unwrap_or_else(|| "the copies built into Wardian".into());
+        match usecases::workspace::add_examples(&*fs, cfg.example_apps.as_deref(), assets.example_apps(), &cfg.local_root, &cfg.data_dir) {
+            Ok(names) if !names.is_empty() => {
+                added = Some(names.len());
+                detail(&format!("apps: added {} example app(s) from {from} into {} (the working folder): {}", names.len(), cfg.local_root.display(), names.join(", ")));
             }
-            Ok(None) => {}
-            Err(e) => eprintln!("apps: could not fill {} from {}: {e}", cfg.local_root.display(), source.display()),
+            Ok(_) => {}
+            Err(e) => eprintln!("apps: could not add the example apps to {} from {from}: {e}", cfg.local_root.display()),
         }
-    } else if let Err(e) = fs.create_dir_all(&cfg.local_root) {
-        eprintln!("apps: could not make {}: {e}", cfg.local_root.display());
     }
     let history = Arc::new(History::new(Arc::clone(&fs), &cfg.data_dir, &cfg.local_root));
     let checks = Arc::new(KeyChecks::new(Arc::clone(&fs), &cfg.data_dir));

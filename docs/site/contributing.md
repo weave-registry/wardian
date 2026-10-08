@@ -148,8 +148,9 @@ hexa adr gates                # the gate of every decision, not only this one
 ## Add an example app
 
 The repository's `apps/` folder holds the example apps that ship with Wardian. The server never
-writes there: it serves its working folder, `DATA_DIR/apps`, and fills it from `./apps` only when it is
-empty. So an app you add to `./apps` does not appear in a Wardian that has run before.
+writes there: it serves its working folder, `DATA_DIR/apps`, and adds each example from `./apps`
+that the working folder has not had before. So a new example in `./apps` appears at the next start.
+The examples are also built into the program by `build.rs`, from the folders `.gitignore` names.
 
 You can work in either place.
 

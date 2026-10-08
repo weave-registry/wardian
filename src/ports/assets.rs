@@ -33,6 +33,9 @@ pub trait Assets: Send + Sync {
     /// The AI skills Wardian ships (ADR-2610080928), as (path under skills/, text):
     /// "wardian-app-factory/SKILL.md", "wardian-app-factory/scripts/smoke.js" …
     fn skills(&self) -> &'static [(&'static str, &'static str)];
+    /// Every file of the example apps, built into the program (ADR-2610081600), as (path under
+    /// apps/, contents): "adder/app.json", "usl-lab/suite.json" …
+    fn example_apps(&self) -> &'static [(&'static str, &'static [u8])];
     /// A complete example suite, as (path, text), for Claude to learn from.
     fn example_suite(&self) -> &'static [(&'static str, &'static str)];
     /// app.schema.json or suite.schema.json.

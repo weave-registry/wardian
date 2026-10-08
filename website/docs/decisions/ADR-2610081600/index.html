@@ -2,8 +2,8 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Building Wardian apps · Wardian docs</title>
-<meta name="description" content="Wardian documentation: Building Wardian apps">
+<title>ADR-2610081600: example apps are built in · Wardian docs</title>
+<meta name="description" content="Wardian documentation: ADR-2610081600: example apps are built in">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: light dark; --bg: #f6f5ef; --panel: #fbfaf6; --ink: #183e32; --text: #23302a; --muted: #5f6b62; --line: #d8ddd2; --code: #ecefe4; --accent: #2f6b50; --mark: #dce8a5; }
@@ -77,143 +77,59 @@
   <div class="links"><a href="/">Home</a><a href="https://github.com/weave-registry/wardian">GitHub</a></div>
 </header>
 <div class="wrap">
-<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide" aria-current="page">Building Wardian apps</a><ul class="toc"><li><a href="#which-kind-of-app">Which kind of app?</a></li><li><a href="#a-module-in-two-minutes">A module in two minutes</a></li><li><a href="#a-page-when-numbers-are-not-enough">A page: when numbers are not enough</a></li><li><a href="#a-suite-several-sealed-parts">A suite: several sealed parts</a></li><li><a href="#check-then-share">Check, then share</a></li><li><a href="#editor-help">Editor help</a></li></ul></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
+<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions" aria-current="page">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
 <main id="content">
-<h1 id="building-wardian-apps">Building Wardian apps</h1>
-<p>This guide takes you from nothing to a working app. It covers the three kinds of package and
-when to use each. For the exact rules, see the <a href="/docs/spec">package format</a>.</p>
-<p>You need Wardian running (<code>wardian</code>, then open http://127.0.0.1:8000). To rebuild the WebAssembly
-in the templates, you also need Rust and its WebAssembly target:</p>
-<pre><code>rustup target add wasm32-unknown-unknown
-</code></pre>
-<p>Would you rather describe the app than write it? Press <strong>Make an app</strong> in Wardian. Claude
-builds a page or a suite from your description, checks it, and tries it in your browser. This guide
-explains what Claude makes, so it also helps you to read and change those apps.</p>
-<h2 id="which-kind-of-app">Which kind of app?<a class="anchor" href="#which-kind-of-app" aria-label="Link to this section">#</a></h2>
-<table><thead><tr><th>Your app…</th><th>Make a</th><th>Wardian gives you</th></tr></thead><tbody>
-<tr><td>is a few functions of numbers</td><td><strong>module</strong></td><td>the whole interface: an input per parameter and a Run button</td></tr>
-<tr><td>works on text, lists or JSON, or needs a real interface</td><td><strong>page</strong></td><td>a sandboxed frame for your own HTML and JavaScript</td></tr>
-<tr><td>has several parts that share data</td><td><strong>suite</strong></td><td>a kernel that seals each part and passes messages between them</td></tr>
-</tbody></table>
-<p>Start with the simplest kind that fits. You can move up later.</p>
-<h2 id="a-module-in-two-minutes">A module in two minutes<a class="anchor" href="#a-module-in-two-minutes" aria-label="Link to this section">#</a></h2>
-<p>Wardian serves the apps in its working folder, <code>data/apps</code> (or <code>DATA_DIR/apps</code>), so create apps
-there. The README's <strong>Run</strong> section explains the folder, and <code>wardian promote</code> for shipping an app.</p>
-<pre><code>wardian new module data/apps/converter
-</code></pre>
-<p>Open Wardian. <strong>converter</strong> is in the list. Click it and you see <code>add</code>, <code>c_to_f</code> and <code>fib</code>, each with
-input boxes. Type numbers and press <strong>Run</strong>.</p>
-<p>Now make it yours. Open <code>data/apps/converter/src/lib.rs</code> and add a function:</p>
-<pre><code class="language-rust">#[no_mangle]
-pub extern "C" fn km_to_miles(km: f64) -&gt; f64 {
-    km * 0.621371
-}
-</code></pre>
-<p>Rebuild and check it:</p>
-<pre><code>cd data/apps/converter
-./build.sh
-wardian check .
-</code></pre>
-<p>Click <strong>converter</strong> again: <code>km_to_miles</code> is in the list.</p>
-<p>Each <code>#[no_mangle] pub extern "C" fn</code> becomes a function in Wardian. Its parameters and result must
-be numbers: <code>i32</code>, <code>i64</code>, <code>u32</code>, <code>u64</code>, <code>f32</code> or <code>f64</code>. An <code>i64</code> shows up in JavaScript as a
-BigInt, so very large whole numbers stay exact.</p>
-<h2 id="a-page-when-numbers-are-not-enough">A page: when numbers are not enough<a class="anchor" href="#a-page-when-numbers-are-not-enough" aria-label="Link to this section">#</a></h2>
-<p>WebAssembly functions only pass numbers. To work on text, your own JavaScript copies the text into
-the module's memory and reads the answer back. The page template does this for you.</p>
-<pre><code>wardian new page data/apps/wordcount
-</code></pre>
-<p>Open <strong>wordcount</strong> in Wardian: type, and it counts the words and shouts the text back. The files:</p>
-<table><thead><tr><th>File</th><th>Job</th></tr></thead><tbody>
-<tr><td><code>index.html</code></td><td>the page you see</td></tr>
-<tr><td><code>app.js</code></td><td>loads <code>app.wasm</code> and moves text in and out of its memory</td></tr>
-<tr><td><code>src/lib.rs</code></td><td>the module: <code>alloc</code>, <code>dealloc</code>, <code>upper</code>, <code>words</code></td></tr>
-</tbody></table>
-<p>The pattern in <code>app.js</code>, in four steps:</p>
+<h1 id="adr-2610081600-example-apps-are-built-in">ADR-2610081600: Example apps are built in</h1>
+<p><strong>Status:</strong> Accepted
+<strong>Date:</strong> 2026-10-08
+<strong>Drivers:</strong> A Wardian built in a checkout and started from another folder showed no apps at all.
+The example apps were found only in <code>./apps</code> of a checkout or beside an installed program, and
+only copied into an empty working folder. So a build started elsewhere had none, and a data folder
+filled by an older Wardian never got the examples added since.</p>
+<h2 id="context">Context<a class="anchor" href="#context" aria-label="Link to this section">#</a></h2>
+<p>ADR-2610071122 fills the working folder (<code>DATA_DIR/apps</code>) from the example apps on the first start.
+ADR-2610080915 finds them in <code>./apps</code> of a checkout, <code>../lib/wardian/example-apps</code> or
+<code>../Resources/apps</code>. Any other start serves an empty folder. The examples are about 1.8 MB; the
+release binary must stay under 12 MB (ADR-2610081041).</p>
+<h2 id="decision">Decision<a class="anchor" href="#decision" aria-label="Link to this section">#</a></h2>
 <ol>
-<li>Ask the module for space: <code>ptr = alloc(len)</code>.</li>
-<li>Copy the bytes in at <code>ptr</code>.</li>
-<li>Call the function with the address and length: <code>words(ptr, len)</code>.</li>
-<li>Read any bytes back, then free the space: <code>dealloc(ptr, len)</code>.</li>
+<li><strong>Built in.</strong> <code>build.rs</code> builds every file of the examples into the program: the folders
+<code>.gitignore</code> names with <code>!/apps/&lt;name&gt;/</code>, without <code>target/</code>, <code>node_modules/</code>, <code>Cargo.lock</code> or
+hidden files. <code>Assets::example_apps</code> returns them.</li>
+<li><strong>Where they come from.</strong> A copy on disk still comes first, so a developer's edits win:
+<code>./apps</code> in a checkout, then the checkout a build in <code>target/</code> was built in, then the copy
+beside an installed program. Without one, the built-in copies are used.</li>
+<li><strong>Added once each, on every start.</strong> <code>examples.json</code> in the data folder lists the examples the
+working folder has been given. Each start adds the examples not on that list and not already in
+the folder, then adds them all to the list. An example new in this version reaches an old data
+folder; one the user removed stays removed; an app already there is never replaced. A data
+folder with no list gets what it is missing, once.</li>
+<li>A folder named on the command line is served as it is, as before.</li>
 </ol>
-<p><strong>The page runs sandboxed.</strong> It can load its own files with relative URLs, like <code>./app.wasm</code>. It
-cannot use <code>localStorage</code>, cookies, or Wardian's own pages. That rule lets you run a page from a
-zip you don't fully trust. If your page must keep data, let the user download it and load it again.</p>
-<h2 id="a-suite-several-sealed-parts">A suite: several sealed parts<a class="anchor" href="#a-suite-several-sealed-parts" aria-label="Link to this section">#</a></h2>
-<p>A suite is for an app with parts: an input panel, a calculation, a chart, an export button. Each
-part runs in its own sealed frame. The parts never touch each other. They send messages through
-the <strong>kernel</strong>, which checks each message against the suite's contract.</p>
-<pre><code>wardian new suite data/apps/notes
-</code></pre>
-<p>The template has three apps:</p>
-<table><thead><tr><th>App</th><th>Where</th><th>Its contract</th></tr></thead><tbody>
-<tr><td><code>input</code></td><td>left column</td><td><strong>emits</strong> <code>text:changed</code>; may use <strong>storage</strong></td></tr>
-<tr><td><code>output</code></td><td>right column</td><td><strong>listens</strong> to <code>text:changed</code>; <strong>needs</strong> <code>text.analyze</code></td></tr>
-<tr><td><code>text</code></td><td>out of sight</td><td><strong>provides</strong> <code>analyze</code>; may use <strong>asset</strong> to load <code>text.wasm</code></td></tr>
-</tbody></table>
-<p>Type in <strong>input</strong>. It emits <code>text:changed</code>. The kernel copies the message to <strong>output</strong>, which calls
-<code>text.analyze</code>. The kernel forwards that call to <strong>text</strong>, which runs WebAssembly and answers.</p>
-<h3 id="the-contract">The contract<a class="anchor" href="#the-contract" aria-label="Link to this section">#</a></h3>
-<p>Each app's contract lives in <code>suite.json</code>, and the kernel enforces that copy:</p>
-<pre><code class="language-json">{ "name": "output", "slot": "main",
-  "listens": ["text:changed"], "needs": ["text.analyze"] }
-</code></pre>
-<p>The app's code states the same contract when it registers:</p>
-<pre><code class="language-js">Kernel.register({
-  name: 'output',
-  listens: ['text:changed'],
-  needs: ['text.analyze'],
-  init(ctx) {
-    ctx.on('text:changed', async ({ text }) =&gt; {
-      const { words } = await ctx.call('text', 'analyze', { text });
-      ctx.$('#count').textContent = words;
-    });
-  }
-});
-</code></pre>
-<p><strong>The two copies must match.</strong> If they differ, the kernel refuses to start the app and shows a
-fault at the bottom of the page. When you change a contract, change both.</p>
-<h3 id="what-ctx-gives-an-app">What <code>ctx</code> gives an app<a class="anchor" href="#what-ctx-gives-an-app" aria-label="Link to this section">#</a></h3>
-<table><thead><tr><th>Use</th><th>To</th></tr></thead><tbody>
-<tr><td><code>ctx.emit(topic, data)</code> / <code>ctx.on(topic, fn)</code></td><td>send and receive messages</td></tr>
-<tr><td><code>ctx.provide({ name: fn })</code> / <code>ctx.call(app, name, args)</code></td><td>offer and call methods</td></tr>
-<tr><td><code>ctx.store.get(key)</code> / <code>ctx.store.set(key, value)</code></td><td>keep data between visits (<code>storage</code>)</td></tr>
-<tr><td><code>ctx.asset(path)</code></td><td>read a file from the suite, such as a <code>.wasm</code> (<code>asset</code>)</td></tr>
-<tr><td><code>ctx.cap('downloads')</code></td><td>save a file for the user (<code>claude:downloads</code>)</td></tr>
-<tr><td><code>ctx.cap('splunk')</code></td><td>run a Splunk search with the server's account, after the user allows it (<code>splunk</code>)</td></tr>
-<tr><td><code>ctx.$(selector)</code></td><td>find elements in the app's own view</td></tr>
-</tbody></table>
-<p>Three habits keep a suite healthy:</p>
+<h2 id="consequences">Consequences<a class="anchor" href="#consequences" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><strong>Mark state topics <code>"retain": true</code>.</strong> An app that starts late still gets the latest value.</li>
-<li><strong>Send plain data.</strong> Every message is copied. Functions and page elements cannot be copied.</li>
-<li><strong>Put heavy work in an app with no slot that <code>provides</code> methods.</strong> The views stay simple and fast.</li>
+<li>Every Wardian shows the examples, however it was installed or started.</li>
+<li>The binary grows by the examples' size: 9.05 MB on macOS arm64, under the 12 MB limit.</li>
+<li>An example removed before this version, in a data folder without <code>examples.json</code>, comes back
+once.</li>
 </ul>
-<h3 id="add-an-app-to-a-suite">Add an app to a suite<a class="anchor" href="#add-an-app-to-a-suite" aria-label="Link to this section">#</a></h3>
-<ol>
-<li>Create <code>apps/&lt;name&gt;/app.js</code>, plus <code>apps/&lt;name&gt;/view.html</code> if it has a view.</li>
-<li>Add an entry to <code>suite.json</code> with its <code>slot</code> and its contract.</li>
-<li>Run <code>wardian check data/apps/&lt;suite&gt;</code>. The check reports a <code>needs</code> with no matching <code>provides</code>, a
-topic nobody emits, and typos in field names.</li>
-<li>Reload the suite. If an app does not start, read the fault box at the bottom of the page.</li>
-</ol>
-<h2 id="check-then-share">Check, then share<a class="anchor" href="#check-then-share" aria-label="Link to this section">#</a></h2>
-<pre><code>wardian check data/apps/notes
-</code></pre>
-<p>The check tests everything that can be tested without running the app: names, files, sizes,
-contracts that point at each other, and the format version. Fix every error. Warnings are worth
-reading too.</p>
-<p>To share an app, zip its folder and rename the zip to <code>name.wardian</code>. Others import it in
-<strong>Settings → Import from a zip</strong>.</p>
-<h2 id="editor-help">Editor help<a class="anchor" href="#editor-help" aria-label="Link to this section">#</a></h2>
-<p>Wardian serves JSON Schemas for its files. Name the schema at the top of <code>app.json</code> or
-<code>suite.json</code>, and editors such as VS Code check the file and complete field names as you type:</p>
-<pre><code class="language-json">{ "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json", "format": 1 }
-</code></pre>
-<p>The templates already include this line.</p>
+<h2 id="implementation">Implementation<a class="anchor" href="#implementation" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><code>build.rs</code>; <code>adapters/secondary/embedded_assets.rs</code>, <code>ports/assets.rs</code>: <code>example_apps</code>.</li>
+<li><code>usecases/workspace.rs</code>: <code>add_examples</code> replaces <code>seed</code>. <code>config.rs</code>: a build finds its checkout.</li>
+<li><code>main.rs</code>: adds the examples at each start.</li>
+</ul>
+<h2 id="enforced-by-hexa-adr-gates-run-on-demand">Enforced-By: hexa adr gates (run on demand)<a class="anchor" href="#enforced-by-hexa-adr-gates-run-on-demand" aria-label="Link to this section">#</a></h2>
+<h2 id="gate">Gate<a class="anchor" href="#gate" aria-label="Link to this section">#</a></h2>
+<p><code>env CARGO_TARGET_DIR=target/verify cargo test --release examples_</code></p>
+<p>Rerun by <code>hexa adr gates</code>. It builds into <code>target/verify</code>, never into the copy of Wardian a user runs.</p>
+<h2 id="references">References<a class="anchor" href="#references" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>ADR-2610071122 (the working folder), ADR-2610080915 (install with one command)</li>
+</ul>
 
-<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/GUIDE.md"><code>GUIDE.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
-<div class="pager"><a class="prev" href="/docs/concepts" rel="prev"><small>Previous</small>How Wardian works</a><a class="next" href="/docs/pages" rel="next"><small>Next</small>Page apps in depth</a></div>
+<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/adrs/ADR-2610081600-example-apps-are-built-in.md"><code>docs/adrs/ADR-2610081600-example-apps-are-built-in.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
+<div class="pager"><a class="prev" href="/docs/decisions" rel="prev"><small>Back to</small>Decisions</a></div>
 </main>
 </div>
 <script>

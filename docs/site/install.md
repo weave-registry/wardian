@@ -83,8 +83,11 @@ Docker listens on `0.0.0.0`, and its requests do not come from the same machine.
 ## The working folder
 
 Wardian serves and saves apps in its **working folder**, `DATA_DIR/apps`. By default that is
-`./data/apps`. On the first start, Wardian fills it from `./apps`, the example apps in the
-repository. It leaves out build output (`target/`, `node_modules/`, `Cargo.lock`).
+`./data/apps`. Every Wardian has the example apps built in, however it was installed or started.
+On each start it adds every example app the working folder has not had before: from `./apps` in a
+checkout, else the copy installed beside the program, else the built-in copies. An example you remove
+stays removed, and an app already there is never replaced (ADR-2610081600). It leaves out build
+output (`target/`, `node_modules/`, `Cargo.lock`).
 
 After that, apps you make or change inside Wardian change only the working folder, never the
 repository. To ship one of them, copy it back and commit it:

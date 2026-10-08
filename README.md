@@ -163,10 +163,11 @@ Wardian serves and saves apps in its **working folder**, `DATA_DIR/apps`. Withou
 data folder is `./data` when Wardian starts in a Wardian checkout or where `./data` already exists;
 anywhere else it is `~/Library/Application Support/Wardian` on macOS and `$XDG_DATA_HOME/wardian`
 (default `~/.local/share/wardian`) on Linux. Wardian prints the one it uses at start.
-On the first start it fills the working folder from the example apps: `./apps` in a checkout,
-otherwise the ones installed beside the program (`../lib/wardian/example-apps`, or
-`../Resources/apps` in Wardian.app), leaving out build output (`target/`, `node_modules/`,
-`Cargo.lock`). After that, apps made or changed inside
+On each start it adds every example app the working folder has not had before: `./apps` in a
+checkout, otherwise the ones installed beside the program (`../lib/wardian/example-apps`, or
+`../Resources/apps` in Wardian.app), otherwise the copies built into the program itself, so every
+Wardian has them. It leaves out build output (`target/`, `node_modules/`, `Cargo.lock`); an example
+you remove stays removed. After that, apps made or changed inside
 Wardian (Make an app, Change this app, imports, restores) change only the working folder, never the
 repository. To ship one of them, copy it back and commit it:
 

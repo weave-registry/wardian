@@ -22,20 +22,52 @@ pub fn copy_tree(fs: &dyn FileSystem, from: &Path, to: &Path) -> Result<usize, S
     Ok(n)
 }
 
-/// On the first start, fills an empty or missing working folder from `source` (the repository's
-/// `./apps` when Wardian runs from a checkout). `source` is never changed. Returns how many apps
-/// were copied, or None when there was nothing to do.
-pub fn seed(fs: &dyn FileSystem, source: &Path, working: &Path) -> Result<Option<usize>, String> {
-    if fs.exists(working) && !fs.list_dir(working).is_empty() {
-        return Ok(None);
+/// The file in the data folder naming every example app the working folder has been given.
+const EXAMPLES_GIVEN: &str = "examples.json";
+
+/// Gives the working folder each example app it has not been given before (ADR-2610081600): from
+/// `source` on disk when there is one (a checkout's `./apps`, or the copy beside an installed
+/// program), otherwise from the copies built into the program. `examples.json` remembers what was
+/// given, so an example the user removed stays removed, and an example new in this version arrives
+/// in a working folder that is years old. An app already in the folder is never replaced. Returns
+/// the names added.
+pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&str, &[u8])], working: &Path, data_dir: &Path) -> Result<Vec<String>, String> {
+    let record = data_dir.join(EXAMPLES_GIVEN);
+    let mut given: Vec<String> = fs.read(&record).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    let examples: Vec<String> = match source.filter(|s| fs.is_dir(s)) {
+        Some(src) => fs.list_dir(src).into_iter().filter(|n| safe_segment(n) && APP_MARKERS.iter().any(|m| fs.is_file(&src.join(n).join(m)))).collect(),
+        None => {
+            let mut names: Vec<String> = built_in.iter().filter_map(|(p, _)| p.split('/').next().map(String::from)).collect();
+            names.dedup();
+            names
+        }
+    };
+    fs.create_dir_all(working)?;
+    let mut added = Vec::new();
+    for name in &examples {
+        if given.contains(name) || fs.exists(&working.join(name)) {
+            continue;
+        }
+        match source.filter(|s| fs.is_dir(s)) {
+            Some(src) => {
+                copy_tree(fs, &src.join(name), &working.join(name))?;
+            }
+            None => {
+                for (path, bytes) in built_in.iter().filter(|(p, _)| p.split('/').next() == Some(name.as_str())) {
+                    fs.write(&working.join(path), bytes).map_err(|e| format!("writing {}: {e}", working.join(path).display()))?;
+                }
+            }
+        }
+        added.push(name.clone());
     }
-    if !fs.is_dir(source) {
-        fs.create_dir_all(working)?;
-        return Ok(None);
+    for name in examples {
+        if !given.contains(&name) {
+            given.push(name);
+        }
     }
-    copy_tree(fs, source, working)?;
-    let apps = fs.list_dir(working).into_iter().filter(|n| APP_MARKERS.iter().any(|m| fs.is_file(&working.join(n).join(m)))).count();
-    Ok(Some(apps))
+    given.sort();
+    fs.write(&record, &serde_json::to_vec_pretty(&given).map_err(|e| e.to_string())?)?;
+    Ok(added)
 }
 
 /// Proves Wardian can write in `data_dir` by writing and removing a small file, before anything

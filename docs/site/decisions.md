@@ -55,6 +55,8 @@ All of them are **Accepted**.
 | [ADR-2610080930](/docs/decisions/ADR-2610080930) | a friendly first run in the terminal | 2026-10-08 | In a terminal, `wardian` prints a short block and opens the browser, finds a Wardian already running instead of failing on a busy port, and moves to the next free port when another program holds it. |
 | [ADR-2610081003](/docs/decisions/ADR-2610081003) | a page app reaches only its own package | 2026-10-08 | Each page gets a policy that allows requests only to its own `/apps/<name>/` and `/sdk/`; a test proves no request gets out, and that the three routes a policy cannot close are still open. |
 | [ADR-2610081041](/docs/decisions/ADR-2610081041) | every claim names its test | 2026-10-08 | Every claim in an ADR, in SPEC.md and on the security page is tested, marked "not built", or a stated limit with a test that proves the limit; vague words become measures. |
+| [ADR-2610081500](/docs/decisions/ADR-2610081500) | keys and Claude settings in one place | 2026-10-08 | Every secret on one list in Settings, with its last test, Test again and Remove; the admin token set in Settings; Claude's models and limits as settings; tokens counted per app with a daily cap. |
+| [ADR-2610081600](/docs/decisions/ADR-2610081600) | example apps are built in | 2026-10-08 | The example apps are built into the program, and each start adds the ones a working folder has not had, so every Wardian shows them. |
 
 ## Gates
 
@@ -77,5 +79,7 @@ All of them are **Accepted**.
 | ADR-2610080930 | `cargo test --release start_` |
 | ADR-2610081003 | `cargo test --release page_csp`; in a browser, `tests/run-page-sandbox-e2e.sh` |
 | ADR-2610081041 | `cargo test --release claim_`; in a browser, the suite, page-sandbox, channels, snapshot and splunk e2e tests; `scripts/release-check.sh` for release steps |
+| ADR-2610081500 | `cargo test --release keys_`, `agent_`, `usage_`; `tests/run-keys-e2e.sh` in a browser |
+| ADR-2610081600 | `cargo test --release examples_` |
 
 `hexa adr gates` runs each `cargo test` gate with `CARGO_TARGET_DIR=target/verify`.

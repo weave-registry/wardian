@@ -327,6 +327,9 @@ fn skills_refuse_a_missing_reference() {
         fn example_suite(&self) -> &'static [(&'static str, &'static str)] {
             Embedded.example_suite()
         }
+        fn example_apps(&self) -> &'static [(&'static str, &'static [u8])] {
+            Embedded.example_apps()
+        }
         fn schema(&self, name: &str) -> Option<&'static str> {
             Embedded.schema(name)
         }
@@ -456,11 +459,11 @@ fn seeding_history_and_promote() {
     write(&source.join("hello/Cargo.lock"), "# build output too");
     write(&source.join(".trash/old--1/app.wasm"), "\0asm\x01\0\0\0");
 
-    // Seeding copies the apps and the trash, leaves build output and the source alone.
-    assert_eq!(workspace::seed(&disk, &source, &working).unwrap(), Some(1));
-    assert!(disk.is_file(&working.join("hello/index.html")) && disk.is_file(&working.join(".trash/old--1/app.wasm")));
+    // The examples are added once, without build output, and the source is left alone.
+    assert_eq!(workspace::add_examples(&disk, Some(&source), &[], &working, &data).unwrap(), ["hello"]);
+    assert!(disk.is_file(&working.join("hello/index.html")));
     assert!(!disk.exists(&working.join("hello/target")) && !disk.exists(&working.join("hello/Cargo.lock")), "build output is not copied");
-    assert_eq!(workspace::seed(&disk, &source, &working).unwrap(), None, "a filled working folder is left as it is");
+    assert!(workspace::add_examples(&disk, Some(&source), &[], &working, &data).unwrap().is_empty(), "an example already given is not added again");
 
     // The first change keeps the original as version 1; saves add versions; a restore is a version.
     let history = History::new(Arc::new(LocalDisk), &data, &working);
@@ -1059,7 +1062,12 @@ fn fake_upstream() -> String {
 #[test]
 fn server_child() {
     let Ok(apps) = std::env::var("WARDIAN_TEST_SERVER") else { return };
-    crate::serve(crate::config::Settings::from_env(Some(&apps), &LocalDisk), true);
+    // "-" names no apps folder, so Wardian serves its working folder; WARDIAN_TEST_CWD starts it elsewhere.
+    if let Ok(dir) = std::env::var("WARDIAN_TEST_CWD") {
+        std::env::set_current_dir(dir).unwrap();
+    }
+    let apps = (apps != "-").then_some(apps);
+    crate::serve(crate::config::Settings::from_env(apps.as_deref(), &LocalDisk), true);
 }
 
 /// The real server in a child process, serving `apps` with `data` as its data folder, and every
@@ -2564,5 +2572,62 @@ fn keys_admin_token_that_cannot_be_removed_is_an_error() {
     let e = keyring.remove("admin").err().expect("a token still on disk must not be reported as removed");
     assert!(e.contains("admin token"), "{e}");
     assert_eq!(keyring.admin_token(), Some(token), "the token on disk is the one in force");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081600: with no example apps on disk, Wardian gives the working folder the copies built
+/// into it: every tracked example. An example new in a later version arrives in an old folder; one
+/// the user removed stays removed; an app already there is not replaced.
+#[test]
+fn examples_built_in_fill_any_working_folder_once() {
+    use crate::usecases::workspace::add_examples;
+    let base = tmp("examples-built-in");
+    let (working, data) = (base.join("data/apps"), base.join("data"));
+    let built_in = Embedded.example_apps();
+    let tracked: Vec<String> = fs::read_to_string(".gitignore").unwrap().lines().filter_map(|l| l.strip_prefix("!/apps/").map(|n| n.trim_end_matches('/').to_string())).collect();
+    let mut added = add_examples(&LocalDisk, None, built_in, &working, &data).unwrap();
+    added.sort();
+    let mut want = tracked.clone();
+    want.sort();
+    assert_eq!(added, want, "every tracked example is built in and added");
+    assert!(added.len() >= 16);
+    for name in &tracked {
+        assert!(is_app_dir(&working.join(name)), "{name} is an app");
+    }
+    assert!(!built_in.iter().any(|(p, _)| p.contains("/target/") || p.ends_with("Cargo.lock")), "no build output is built in");
+
+    // Removed by the user: not added again. Changed by the user: not replaced.
+    fs::remove_dir_all(working.join("life")).unwrap();
+    fs::write(working.join("adder/README.md"), "mine").unwrap();
+    assert!(add_examples(&LocalDisk, None, built_in, &working, &data).unwrap().is_empty());
+    assert!(!working.join("life").exists());
+    assert_eq!(fs::read_to_string(working.join("adder/README.md")).unwrap(), "mine");
+
+    // A working folder from an older Wardian, with no record: what is missing arrives.
+    fs::remove_file(data.join("examples.json")).unwrap();
+    fs::remove_dir_all(working.join("habit-tracker")).unwrap();
+    let mut back = add_examples(&LocalDisk, None, built_in, &working, &data).unwrap();
+    back.sort();
+    assert_eq!(back, ["habit-tracker", "life"]);
+    let _ = fs::remove_dir_all(base);
+}
+
+fn is_app_dir(dir: &Path) -> bool {
+    crate::domain::package::APP_MARKERS.iter().any(|m| dir.join(m).is_file())
+}
+
+/// The case that left the app list empty: a build started from a folder that is not a checkout,
+/// with a data folder of its own and no apps folder named. It serves every example app.
+#[test]
+fn examples_a_build_started_anywhere_serves_the_examples() {
+    let base = tmp("examples-anywhere");
+    let (data, elsewhere) = (base.join("data"), base.join("elsewhere"));
+    fs::create_dir_all(&elsewhere).unwrap();
+    let cwd = elsewhere.display().to_string();
+    let server = TestServer::start(Path::new("-"), &data, &[("WARDIAN_TEST_CWD", cwd.as_str())]);
+    let (_, list) = server.json("GET", "/api/apps", None, &[]);
+    let log = server.stop();
+    assert!(list.as_array().map(Vec::len).unwrap_or(0) >= 16, "the example apps are served: {list}\n{log}");
+    assert!(log.contains("apps: added"), "{log}");
     let _ = fs::remove_dir_all(base);
 }

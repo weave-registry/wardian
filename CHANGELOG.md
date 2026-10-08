@@ -14,6 +14,9 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- **The example apps are built into Wardian** (ADR-2610081600), so every Wardian shows them,
+  however it was installed or started. Each start adds the examples a working folder has not had
+  before, so new examples reach old data folders; one you remove stays removed.
 - **Keys and Claude settings in one place** (ADR-2610081500). **Settings → Keys** lists every
   secret Wardian holds, where each comes from and its last test, with **Test again** and **Remove**;
   the Google Drive key can now be removed. The admin token can be set or made there; `ADMIN_TOKEN`
