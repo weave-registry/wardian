@@ -22,19 +22,17 @@ release binary must stay under 12 MB (ADR-2610081041).
 2. **Where they come from.** A copy on disk still comes first, so a developer's edits win:
    `./apps` in a checkout, then the checkout a build in `target/` was built in, then the copy
    beside an installed program. Without one, the built-in copies are used.
-3. **Added once each, on every start.** `examples.json` in the data folder lists the examples the
-   working folder has been given. Each start adds the examples not on that list and not already in
-   the folder, then adds them all to the list. An example new in this version reaches an old data
-   folder; one the user removed stays removed; an app already there is never replaced. A data
-   folder with no list gets what it is missing, once.
+3. **Added once each, on every start.** `.examples-seen` in the working folder lists the examples
+   it has been offered. Each start adds every example that is not there, not in the trash and not
+   on that list, then lists them all. An example new in this version reaches an old folder; one
+   the user removed stays removed; an app already there is never replaced.
 4. A folder named on the command line is served as it is, as before.
 
 ## Consequences
 
 - Every Wardian shows the examples, however it was installed or started.
 - The binary grows by the examples' size: 9.05 MB on macOS arm64, under the 12 MB limit.
-- An example removed before this version, in a data folder without `examples.json`, comes back
-  once.
+- An example deleted for good before `.examples-seen` existed comes back once.
 
 ## Implementation
 

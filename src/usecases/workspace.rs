@@ -22,20 +22,20 @@ pub fn copy_tree(fs: &dyn FileSystem, from: &Path, to: &Path) -> Result<usize, S
     Ok(n)
 }
 
-/// The file in the data folder naming every example app the working folder has been given.
-const EXAMPLES_GIVEN: &str = "examples.json";
+/// The file in the working folder listing every example app Wardian has offered, one name per line.
+const EXAMPLES_SEEN: &str = ".examples-seen";
 
-/// Gives the working folder each example app it has not been given before (ADR-2610081600): from
-/// `source` on disk when there is one (a checkout's `./apps`, or the copy beside an installed
-/// program), otherwise from the copies built into the program. `examples.json` remembers what was
-/// given, so an example the user removed stays removed, and an example new in this version arrives
-/// in a working folder that is years old. An app already in the folder is never replaced. Returns
-/// the names added.
-pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&str, &[u8])], working: &Path, data_dir: &Path) -> Result<Vec<String>, String> {
-    let record = data_dir.join(EXAMPLES_GIVEN);
-    let mut given: Vec<String> = fs.read(&record).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-    let examples: Vec<String> = match source.filter(|s| fs.is_dir(s)) {
-        Some(src) => fs.list_dir(src).into_iter().filter(|n| safe_segment(n) && APP_MARKERS.iter().any(|m| fs.is_file(&src.join(n).join(m)))).collect(),
+/// Gives the working folder every example app it has never had (ADR-2610081600): one that is not
+/// there, not in the trash and not listed in `.examples-seen`, so an app the user removed stays
+/// removed and an example new in this version reaches an old folder. The examples come from
+/// `source` on disk when there is one (a checkout's `./apps`, or the copy installed beside the
+/// program), otherwise from the copies built into the program, `built_in`. Neither is changed.
+/// Returns the names added.
+pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&str, &[u8])], working: &Path) -> Result<Vec<String>, String> {
+    let source = source.filter(|s| fs.is_dir(s));
+    let is_app = |dir: &Path| APP_MARKERS.iter().any(|m| fs.is_file(&dir.join(m)));
+    let examples: Vec<String> = match source {
+        Some(src) => fs.list_dir(src).into_iter().filter(|n| safe_segment(n) && is_app(&src.join(n))).collect(),
         None => {
             let mut names: Vec<String> = built_in.iter().filter_map(|(p, _)| p.split('/').next().map(String::from)).collect();
             names.dedup();
@@ -43,12 +43,15 @@ pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&st
         }
     };
     fs.create_dir_all(working)?;
+    let seen = fs.read(&working.join(EXAMPLES_SEEN)).map(|b| String::from_utf8_lossy(&b).lines().map(str::to_string).collect::<Vec<_>>()).unwrap_or_default();
+    let trashed = fs.list_dir(&working.join(".trash"));
     let mut added = Vec::new();
     for name in &examples {
-        if given.contains(name) || fs.exists(&working.join(name)) {
+        let removed = trashed.iter().any(|t| t.strip_prefix(name.as_str()).is_some_and(|rest| rest.starts_with("--")));
+        if fs.exists(&working.join(name)) || removed || seen.contains(name) {
             continue;
         }
-        match source.filter(|s| fs.is_dir(s)) {
+        match source {
             Some(src) => {
                 copy_tree(fs, &src.join(name), &working.join(name))?;
             }
@@ -60,13 +63,10 @@ pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&st
         }
         added.push(name.clone());
     }
-    for name in examples {
-        if !given.contains(&name) {
-            given.push(name);
-        }
-    }
-    given.sort();
-    fs.write(&record, &serde_json::to_vec_pretty(&given).map_err(|e| e.to_string())?)?;
+    let mut list: Vec<String> = seen.into_iter().chain(examples).collect();
+    list.sort();
+    list.dedup();
+    fs.write(&working.join(EXAMPLES_SEEN), format!("{}\n", list.join("\n")).as_bytes())?;
     Ok(added)
 }
 

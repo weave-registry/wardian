@@ -15,8 +15,8 @@ Wardian 1.0") is done or written down there as left out.
 ### Added
 
 - **The example apps are built into Wardian** (ADR-2610081600), so every Wardian shows them,
-  however it was installed or started. Each start adds the examples a working folder has not had
-  before, so new examples reach old data folders; one you remove stays removed.
+  however it was installed or started. A copy on disk still comes first; a build in a checkout's
+  `target/` finds that checkout's apps.
 - **Keys and Claude settings in one place** (ADR-2610081500). **Settings → Keys** lists every
   secret Wardian holds, where each comes from and its last test, with **Test again** and **Remove**;
   the Google Drive key can now be removed. The admin token can be set or made there; `ADMIN_TOKEN`
@@ -24,6 +24,26 @@ Wardian 1.0") is done or written down there as left out.
   and the limits of **Make an app** and `claude:sample`. **Settings → Usage** counts each app's
   tokens per day and sets its daily cap; past it, `claude:sample` fails with the new code
   `over_budget`. Every secret goes through one port, `Secrets`.
+
+### Changed
+
+- `wardian` opens a Wardian already on its port only when it is the same version serving the same
+  apps folder. Another Wardian, older or serving another folder, is left running: this one takes
+  the next free port and the start block names the other and how to stop it. `/api/status` reports
+  `version`.
+
+## [0.4.3] - 2026-10-08
+
+### Changed
+
+- Each start adds every example app the working folder has never had, so a new version's examples
+  reach existing users. An example the user removed stays removed: Wardian lists the examples it has
+  offered in `.examples-seen` in the working folder and skips any that are in the trash.
+
+## [0.4.2] - 2026-10-08
+
+### Added
+
 - **A documentation site** (ADR-2610080903) at `/docs`: grouped pages, search, a phone layout, and a
   page for every example and every decision, from the Markdown in the repository.
   `wardian docs FOLDER` writes it as a static site; the website keeps it in `website/`. Tests fail

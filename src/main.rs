@@ -125,21 +125,23 @@ fn main() {
 
 /// Where the server listens, decided before anything else starts (ADR-2610080930).
 enum Address {
-    /// Listening; with the usual port when that was busy and a later one was taken.
-    Ready(http::Listener, Option<u16>),
+    /// Listening; with the usual port when that was busy and a later one was taken, and a note when
+    /// another Wardian holds it.
+    Ready(http::Listener, Option<u16>, Option<String>),
     /// A Wardian already answers at this host:port.
     Running(String),
     /// Nothing could be taken: what went wrong, and what to do.
     Failed(String, String),
 }
 
-/// Takes `addr`. When ADDR was not set (`addr_set` false), a busy port is not the end: a Wardian
-/// answering there is reported as running, and a port held by anything else moves Wardian to the
-/// next free one, up to `last_port`. With ADDR set, a busy port is an error.
-fn take_address(addr: &str, addr_set: bool, last_port: u16) -> Address {
+/// Takes `addr`. When ADDR was not set (`addr_set` false), a busy port is not the end: this same
+/// Wardian (version and apps folder `root`) answering there is reported as running, and a port held
+/// by anything else, another Wardian included, moves Wardian to the next free one, up to
+/// `last_port`. With ADDR set, a busy port is an error.
+fn take_address(addr: &str, addr_set: bool, last_port: u16, root: &str) -> Address {
     match config::host_and_port(addr).filter(|&(_, port)| !addr_set && port != 0) {
         Some((host, first)) => {
-            let (mut taken, mut why) = (None, None);
+            let (mut taken, mut why, mut other) = (None, None, None);
             let choice = config::choose_port(first, last_port.max(first), |port| {
                 let at = format!("{host}:{port}");
                 match http::listen(&at) {
@@ -151,16 +153,19 @@ fn take_address(addr: &str, addr_set: bool, last_port: u16) -> Address {
                         if e.kind() != std::io::ErrorKind::AddrInUse {
                             why.get_or_insert_with(|| e.to_string());
                         }
-                        if wardian_probe::is_wardian(&at) {
-                            config::Port::Wardian
-                        } else {
-                            config::Port::Other
+                        match wardian_probe::wardian_at(&at) {
+                            Some(w) if config::same_wardian(w.version.as_deref(), &w.local_root, env!("CARGO_PKG_VERSION"), root) => config::Port::Wardian,
+                            Some(w) => {
+                                other.get_or_insert_with(|| config::other_wardian_note(port, w.version.as_deref(), &w.local_root));
+                                config::Port::OtherWardian
+                            }
+                            None => config::Port::Other,
                         }
                     }
                 }
             });
             match (choice, taken) {
-                (config::PortChoice::Use(port), Some(listener)) => Address::Ready(listener, (port != first).then_some(first)),
+                (config::PortChoice::Use(port), Some(listener)) => Address::Ready(listener, (port != first).then_some(first), other),
                 (config::PortChoice::Running(port), _) => Address::Running(format!("{host}:{port}")),
                 _ => {
                     let (what, todo) = config::cannot_listen(addr, why.as_deref(), why.is_none().then_some(last_port.max(first)));
@@ -169,7 +174,7 @@ fn take_address(addr: &str, addr_set: bool, last_port: u16) -> Address {
             }
         }
         None => match http::listen(addr) {
-            Ok(listener) => Address::Ready(listener, None),
+            Ok(listener) => Address::Ready(listener, None, None),
             Err(e) => {
                 let error = (e.kind() != std::io::ErrorKind::AddrInUse).then(|| e.to_string());
                 let (what, todo) = config::cannot_listen(addr, error.as_deref(), None);
@@ -213,7 +218,7 @@ fn serve(cfg: Settings, no_open: bool) {
         }
     };
     // Then the address, so a Wardian already running is opened before anything is changed.
-    let address = match take_address(&cfg.addr, cfg.addr_set, config::LAST_PORT) {
+    let address = match take_address(&cfg.addr, cfg.addr_set, config::LAST_PORT, &cfg.local_root.display().to_string()) {
         Address::Running(at) => {
             let url = format!("http://{at}");
             if tty {
@@ -224,7 +229,7 @@ fn serve(cfg: Settings, no_open: bool) {
             }
             std::process::exit(0);
         }
-        Address::Ready(listener, busy) => Ok((listener, busy)),
+        Address::Ready(listener, busy, other) => Ok((listener, busy, other)),
         Address::Failed(what, todo) => Err((what, todo)),
     };
     // The data folder may be relative to where Wardian starts, so name it in full, and stop at
@@ -250,7 +255,7 @@ fn serve(cfg: Settings, no_open: bool) {
     }
     stops.catch_panics();
     stops.catch_signals();
-    let (listener, busy_port) = match address {
+    let (listener, busy_port, other_wardian) = match address {
         Ok(taken) => taken,
         Err((what, todo)) => {
             stops.started(&format!("serving {} on {}", cfg.local_root.display(), cfg.addr));
@@ -264,8 +269,8 @@ fn serve(cfg: Settings, no_open: bool) {
     };
     let bound = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| cfg.addr.clone());
     stops.started(&format!("serving {} on {bound}", cfg.local_root.display()));
-    // The working folder (ADR-2610071122): filled from the example apps on the first start (found
-    // by ADR-2610080915's rule), which are never changed. A folder named on the command line is
+    // The working folder (ADR-2610071122): gets every example app it has never had (found by
+    // ADR-2610080915's rule); the example apps themselves are never changed. A folder named on the command line is
     // served as it is.
     let (mut added, mut git_note) = (None, None);
     if cfg.chosen_folder {
@@ -277,7 +282,7 @@ fn serve(cfg: Settings, no_open: bool) {
         // Every example app the working folder has not been given yet (ADR-2610081600): from the
         // copy on disk when there is one, else from the copies built into the program.
         let from = cfg.example_apps.as_ref().map(|s| s.display().to_string()).unwrap_or_else(|| "the copies built into Wardian".into());
-        match usecases::workspace::add_examples(&*fs, cfg.example_apps.as_deref(), assets.example_apps(), &cfg.local_root, &cfg.data_dir) {
+        match usecases::workspace::add_examples(&*fs, cfg.example_apps.as_deref(), assets.example_apps(), &cfg.local_root) {
             Ok(names) if !names.is_empty() => {
                 added = Some(names.len());
                 detail(&format!("apps: added {} example app(s) from {from} into {} (the working folder): {}", names.len(), cfg.local_root.display(), names.join(", ")));
@@ -327,6 +332,9 @@ fn serve(cfg: Settings, no_open: bool) {
     // The address actually taken: with port 0 the system picks a free port.
     let url = format!("http://{bound}");
     detail(&format!("listening on {url}"));
+    if let Some(n) = &other_wardian {
+        detail(&format!("note: {n}"));
+    }
     if tty {
         let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
         let apps_shown = std::env::current_dir().map(|d| d.join(&cfg.local_root)).unwrap_or_else(|_| cfg.local_root.clone());
@@ -338,7 +346,7 @@ fn serve(cfg: Settings, no_open: bool) {
             added,
             admin: config::admins_in_short(token_set),
             log: &terminal::tilde(&data_shown.join("wardian.log"), home.as_deref()),
-            note: git_note,
+            note: other_wardian.as_deref().or(git_note),
         };
         print!("{}", terminal::start_block(&start, colour));
         let _ = std::io::stdout().flush();

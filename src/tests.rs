@@ -440,6 +440,35 @@ fn data_folder_is_checked_writable_at_start() {
     let _ = fs::remove_dir_all(dir);
 }
 
+#[test]
+fn seeding_adds_new_examples_but_not_removed_ones() {
+    let seed = |disk: &LocalDisk, source: &Path, working: &Path| crate::usecases::workspace::add_examples(disk, Some(source), &[], working).map(|n| (!n.is_empty()).then_some(n.len()));
+    let dir = tmp("seed-new");
+    let disk = LocalDisk;
+    let (source, working) = (dir.join("examples"), dir.join("apps"));
+    let app = |root: &Path, name: &str| {
+        disk.write(&root.join(name).join("app.json"), br#"{"format":1,"title":"T","page":"index.html"}"#).unwrap();
+        disk.write(&root.join(name).join("index.html"), b"<p>hi</p>").unwrap();
+        disk.write(&root.join(name).join("app.wasm"), b"\0asm\x01\0\0\0").unwrap();
+    };
+    app(&source, "one");
+    app(&source, "two");
+    assert_eq!(seed(&disk, &source, &working).unwrap(), Some(2), "an empty folder gets every example");
+    // A later version ships three more; the user removed "two" to the trash and deleted "gone" for good.
+    app(&source, "three");
+    app(&source, "four");
+    app(&source, "gone");
+    disk.write(&working.join(".examples-seen"), b"one\ntwo\ngone\n").unwrap();
+    fs::create_dir_all(working.join(".trash")).unwrap();
+    fs::rename(working.join("two"), working.join(".trash/two--1791381188")).unwrap();
+    assert_eq!(seed(&disk, &source, &working).unwrap(), Some(2), "the two new examples are added");
+    assert!(disk.is_file(&working.join("three/app.wasm")) && disk.is_file(&working.join("four/app.wasm")));
+    assert!(!disk.exists(&working.join("two")), "an example in the trash stays removed");
+    assert!(!disk.exists(&working.join("gone")), "an example offered before and deleted stays deleted");
+    assert_eq!(seed(&disk, &source, &working).unwrap(), None, "nothing new, nothing added");
+    let _ = fs::remove_dir_all(dir);
+}
+
 // ---------- the working folder and each app's history (ADR-2610071122) ----------
 
 #[test]
@@ -460,10 +489,10 @@ fn seeding_history_and_promote() {
     write(&source.join(".trash/old--1/app.wasm"), "\0asm\x01\0\0\0");
 
     // The examples are added once, without build output, and the source is left alone.
-    assert_eq!(workspace::add_examples(&disk, Some(&source), &[], &working, &data).unwrap(), ["hello"]);
+    assert_eq!(workspace::add_examples(&disk, Some(&source), &[], &working).unwrap(), ["hello"]);
     assert!(disk.is_file(&working.join("hello/index.html")));
     assert!(!disk.exists(&working.join("hello/target")) && !disk.exists(&working.join("hello/Cargo.lock")), "build output is not copied");
-    assert!(workspace::add_examples(&disk, Some(&source), &[], &working, &data).unwrap().is_empty(), "an example already given is not added again");
+    assert!(workspace::add_examples(&disk, Some(&source), &[], &working).unwrap().is_empty(), "an example already given is not added again");
 
     // The first change keeps the original as version 1; saves add versions; a restore is a version.
     let history = History::new(Arc::new(LocalDisk), &data, &working);
@@ -1353,8 +1382,9 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
 fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
     let held = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = held.local_addr().unwrap().port();
-    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5)) {
-        crate::Address::Ready(listener, busy) => {
+    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
+        crate::Address::Ready(listener, busy, other) => {
+            assert_eq!(other, None, "a plain listener is not named as a Wardian");
             let got = listener.local_addr().unwrap().port();
             assert!(got > port && got <= port.saturating_add(5), "took {got}, held {port}");
             assert_eq!(busy, Some(port));
@@ -1363,7 +1393,7 @@ fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
         crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
     }
     // With ADDR set, the same busy port is an error that says what to do.
-    match crate::take_address(&format!("127.0.0.1:{port}"), true, port.saturating_add(5)) {
+    match crate::take_address(&format!("127.0.0.1:{port}"), true, port.saturating_add(5), "apps") {
         crate::Address::Failed(what, todo) => {
             assert!(what.contains(&format!("cannot listen on 127.0.0.1:{port}")), "{what}");
             assert!(todo.contains("ADDR="), "{todo}");
@@ -1373,10 +1403,8 @@ fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
     drop(held);
 }
 
-/// ADR-2610080930: with ADDR unset, a Wardian answering /api/status on the port is reported as
-/// running, and nothing is taken.
-#[test]
-fn start_finds_a_wardian_already_running() {
+/// A fake Wardian on a free port that answers `/api/status` with `body` a few times.
+fn fake_wardian(body: &'static str) -> u16 {
     use std::io::{Read, Write};
     let fake = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = fake.local_addr().unwrap().port();
@@ -1384,14 +1412,44 @@ fn start_finds_a_wardian_already_running() {
         for mut stream in fake.incoming().flatten().take(4) {
             let mut buf = [0u8; 2048];
             let _ = stream.read(&mut buf);
-            let body = r#"{"source":"local","local_root":"apps","apps":5,"first_run":false,"admin":true}"#;
             let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         }
     });
-    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5)) {
+    port
+}
+
+/// ADR-2610080930: with ADDR unset, this same Wardian (version and apps folder) answering on the
+/// port is reported as running, and nothing is taken.
+#[test]
+fn start_finds_the_same_wardian_already_running() {
+    let body: &'static str = Box::leak(format!(r#"{{"source":"local","version":"{}","local_root":"apps","apps":5,"first_run":false,"admin":true}}"#, env!("CARGO_PKG_VERSION")).into_boxed_str());
+    let port = fake_wardian(body);
+    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
         crate::Address::Running(at) => assert_eq!(at, format!("127.0.0.1:{port}")),
-        crate::Address::Ready(l, _) => panic!("took {:?} although a Wardian runs on {port}", l.local_addr()),
+        crate::Address::Ready(l, _, _) => panic!("took {:?} although this Wardian runs on {port}", l.local_addr()),
         crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
+    }
+}
+
+/// An older Wardian on the port, or one serving another folder, is not opened: this one takes the
+/// next free port and says which Wardian holds the usual one.
+#[test]
+fn start_passes_over_another_wardian_and_names_it() {
+    for (body, says) in [
+        (r#"{"source":"local","local_root":"data/apps","apps":0,"first_run":false}"#, "an older Wardian serving data/apps holds port"),
+        (r#"{"source":"local","version":"0.0.1","local_root":"apps","apps":5,"first_run":false}"#, "Wardian 0.0.1 serving apps holds port"),
+    ] {
+        let port = fake_wardian(body);
+        match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
+            crate::Address::Ready(listener, busy, other) => {
+                assert!(listener.local_addr().unwrap().port() > port);
+                assert_eq!(busy, Some(port));
+                let other = other.expect("the other Wardian is named");
+                assert!(other.contains(says) && other.contains("Ctrl-C"), "{other}");
+            }
+            crate::Address::Running(at) => panic!("opened another Wardian at {at}"),
+            crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
+        }
     }
 }
 
@@ -2582,10 +2640,10 @@ fn keys_admin_token_that_cannot_be_removed_is_an_error() {
 fn examples_built_in_fill_any_working_folder_once() {
     use crate::usecases::workspace::add_examples;
     let base = tmp("examples-built-in");
-    let (working, data) = (base.join("data/apps"), base.join("data"));
+    let working = base.join("data/apps");
     let built_in = Embedded.example_apps();
     let tracked: Vec<String> = fs::read_to_string(".gitignore").unwrap().lines().filter_map(|l| l.strip_prefix("!/apps/").map(|n| n.trim_end_matches('/').to_string())).collect();
-    let mut added = add_examples(&LocalDisk, None, built_in, &working, &data).unwrap();
+    let mut added = add_examples(&LocalDisk, None, built_in, &working).unwrap();
     added.sort();
     let mut want = tracked.clone();
     want.sort();
@@ -2599,14 +2657,14 @@ fn examples_built_in_fill_any_working_folder_once() {
     // Removed by the user: not added again. Changed by the user: not replaced.
     fs::remove_dir_all(working.join("life")).unwrap();
     fs::write(working.join("adder/README.md"), "mine").unwrap();
-    assert!(add_examples(&LocalDisk, None, built_in, &working, &data).unwrap().is_empty());
+    assert!(add_examples(&LocalDisk, None, built_in, &working).unwrap().is_empty());
     assert!(!working.join("life").exists());
     assert_eq!(fs::read_to_string(working.join("adder/README.md")).unwrap(), "mine");
 
     // A working folder from an older Wardian, with no record: what is missing arrives.
-    fs::remove_file(data.join("examples.json")).unwrap();
+    fs::remove_file(working.join(".examples-seen")).unwrap();
     fs::remove_dir_all(working.join("habit-tracker")).unwrap();
-    let mut back = add_examples(&LocalDisk, None, built_in, &working, &data).unwrap();
+    let mut back = add_examples(&LocalDisk, None, built_in, &working).unwrap();
     back.sort();
     assert_eq!(back, ["habit-tracker", "life"]);
     let _ = fs::remove_dir_all(base);
