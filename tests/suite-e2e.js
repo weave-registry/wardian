@@ -13,6 +13,19 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
 
+  console.log('== every part starts even when the saved layout is slow to arrive');
+  // A part with no panel (the engine) is in the page at once, while the kernel waits for the layout,
+  // so its hello can come before the kernel has learned its window. The kernel still hears it.
+  {
+    const slow = await ctx.newPage();
+    await slow.route('**/api/state/layout**', async r => { await sleep(3000); await r.continue(); });
+    await slow.goto(B + '/run/usl-lab/');
+    let n = 0;
+    for (let i = 0; i < 150 && n < 10; i++) { await sleep(100); n = await slow.evaluate(() => Kernel.started().length).catch(() => 0); }
+    ok(n === 10, 'with the layout 3 s late, all 10 apps start: ' + n);
+    await slow.close();
+  }
+
   console.log('== USL lab boots');
   await page.goto(B + '/run/usl-lab/');
   await sleep(3500);

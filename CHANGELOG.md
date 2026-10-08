@@ -47,12 +47,16 @@ Wardian 1.0") is done or written down there as left out.
   navigating the frame away, WebRTC) are listed on the security page, and the same test proves they
   are still open, for pages and suites, so the docs cannot claim more than the browser does.
 
+### Fixed
+
+- Every part of a suite starts, however long the saved layout takes to arrive. The kernel matches a
+  message from a frame it has not yet placed to that frame.
+
 ## [0.4.1] - 2026-10-08
 
 A friendlier first run (ADR-2610080930): `wardian` in a terminal prints a short styled block and
 opens the browser, finds a Wardian already running instead of failing on a busy port, and the
-installer shows its steps with ✓ marks. The tag v0.4.0, made earlier the same day, already held the
-other entries below; the version number in Cargo.toml had not been raised since 0.4.0.
+installer shows its steps with ✓ marks.
 
 ### Added
 

@@ -343,8 +343,17 @@
     fault(app, m){ fault(app, String(m.message)); },
   };
 
+  // A frame can load and say hello before the kernel has learned its window: a frame with no panel
+  // is in the page at once, while the kernel still waits for the saved layout. So a message from a
+  // window not yet known is matched against the kernel's own frames, never dropped.
+  function learn(win){
+    if (!win) return false;
+    if (headerEl && headerEl.contentWindow === win){ byWin.set(win, ''); return true; }
+    for (const [n, f] of frames) if (f.el.contentWindow === win){ f.win = win; byWin.set(win, n); return true; }
+    return false;
+  }
   addEventListener('message', e => {
-    if (!byWin.has(e.source)) return;          // only our own frames are heard
+    if (!byWin.has(e.source) && !learn(e.source)) return;   // only our own frames are heard
     const app = byWin.get(e.source), m = e.data || {};
     const f = app ? frames.get(app) : null;
     if (m.k === 'size'){

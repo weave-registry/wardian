@@ -62,8 +62,7 @@ async function answer(page, re, yes, what) {
   const tab = await context.newPage(), lab = await context.newPage();
   const pageErrors = [];
   for (const p of [tab, lab]) p.on('pageerror', e => pageErrors.push(e.message));
-  // What the lab's frames said: printed when a chart check fails, since CI's Linux runner is the only
-  // place it has failed and nothing else shows why.
+  // What the lab's frames said, and the chart's state: printed when a chart check fails.
   const labSaid = [];
   lab.on('console', m => { if (m.type() !== 'debug') labSaid.push(m.type() + ': ' + m.text().slice(0, 300)); });
   const explainChart = async () => {
@@ -142,8 +141,8 @@ async function answer(page, re, yes, what) {
   ok(await inputs.locator('#colN').inputValue() === 'concurrency' && await inputs.locator('#colX').inputValue() === 'x' && await inputs.locator('#colR').inputValue() === 'r', 'the first three columns are suggested');
   await useTable(inputs);
   // Wait for the chart rather than a fixed time: Playwright's headless Chromium can take longer.
-  await lab.bringToFront();                           // a background tab may pause its frames on Linux
-  // The lab's engine fits first: seconds here, up to a minute on GitHub's two-core runners.
+  await lab.bringToFront();                           // a background tab may pause its frames
+  // The lab's engine fits first: a few seconds, up to a minute on a slow machine.
   await frameOf(lab, 'chart').locator('#chart circle.pt').nth(7).waitFor({ timeout: 60000 }).catch(() => {});
   await sleep(500);
   const data = await inputs.locator('#data').inputValue();

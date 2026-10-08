@@ -16,7 +16,7 @@ async function open(page, name) {
 
 // Wait until every app of the open suite has started, so each can answer with its own snapshot.
 async function started(page, name, n) {
-  for (let i = 0; i < 600; i++) {               // up to a minute: GitHub's runners are slow
+  for (let i = 0; i < 600; i++) {               // up to a minute, for a slow machine
     const k = frameOf(page, '/run/' + name + '/');
     if (k && await k.evaluate(() => window.Kernel ? Kernel.started().length : 0).catch(() => 0) >= n) return k;
     await sleep(100);
