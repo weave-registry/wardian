@@ -406,6 +406,39 @@ fn viewer_state_is_kept_private_on_disk() {
     let _ = fs::remove_dir_all(dir);
 }
 
+/// ADR-2610081830: the folders are kept in state/folders.json, private; the examples are filed
+/// once; what a viewer sends is checked and tidied; the host decides `seeded`.
+#[test]
+fn folders_kept_in_the_state_folder() {
+    use crate::ports::service::ViewerState;
+    use crate::usecases::viewer_state::State;
+    use serde_json::json;
+    let dir = tmp("folders");
+    let state = State::new(Arc::new(LocalDisk), &dir).with_examples(vec!["adder".into(), "usl-lab".into()]);
+    let apps: Vec<String> = vec!["adder".into(), "mine".into(), "usl-lab".into()];
+
+    let f = state.folders(&apps).unwrap();
+    assert_eq!(f["folders"][0]["name"], "Examples", "{f}");
+    assert_eq!(f["folders"][0]["apps"], json!(["adder", "usl-lab"]));
+    assert_eq!((f["folders"][0]["open"].as_bool(), f["seeded"].as_bool()), (Some(false), Some(true)));
+
+    let mine = json!({"folders": [{"id": "work", "name": " Work ", "open": true, "apps": ["mine", "gone"]}], "seeded": false});
+    let kept = state.set_folders(&mine, &apps).unwrap();
+    assert_eq!(kept["folders"], json!([{"id": "work", "name": "Work", "open": true, "apps": ["mine"]}]));
+    assert_eq!(kept["seeded"], true, "the viewer cannot ask for the examples to be filed again");
+    let again = state.folders(&apps).unwrap();
+    assert_eq!(again["folders"].as_array().unwrap().len(), 1, "deleting Examples keeps it deleted: {again}");
+    assert!(state.set_folders(&json!({"folders": [{"id": "x", "name": ""}]}), &apps).is_err());
+    assert_eq!(state.folders(&apps).unwrap(), again, "a refused change keeps what was there");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(fs::metadata(dir.join("state/folders.json")).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+    let _ = fs::remove_dir_all(dir);
+}
+
 // ---------- the first-run setup (ADR-2610072033) ----------
 
 #[test]

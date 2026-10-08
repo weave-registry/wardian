@@ -485,10 +485,23 @@ being visible. All three kinds use the same script, `ui/arrange.js`:
   `postMessage({wardian: 'layout', k: 'get' | 'set', id, layout})`, and the host replies
   `{wardian: 'layout', id, layout}`. Outside a host, the layout lasts until the page closes.
 
-Wardian keeps layouts, each app's `storage` data and the latest channel messages in its data folder
-(`state/`), with a copy in the browser for a viewer the host does not let write (ADR-2610071055).
+Wardian keeps layouts, each app's `storage` data, the latest channel messages and the app list's
+folders in its data folder (`state/`), with a copy in the browser for a viewer the host does not let
+write (ADR-2610071055).
   `wardian check` warns about a page with no `data-panel`.
 - **Module app.** The host draws one card per function, and arranges those.
+
+**Folders** (ADR-2610081830) are how the viewer files the apps in the host's app list; a package says
+nothing about them, and an exported file holds none. Wardian keeps them in `state/folders.json`:
+`{v: 1, folders: [{id, name, open, apps: [package names]}], seeded, examples}`. Folders hold apps,
+not folders; an app is in at most one; a name is 1 to 60 characters; there are at most 100. `GET
+/api/state/folders` returns the record after dropping names that match no app being served, and the
+first time it files the example apps present into a folder with the id `examples`, named "Examples",
+open only when every app served is an example; `seeded` then says this was done and `examples` lists
+the examples already filed, so an example new to the data folder goes into that folder while it
+exists. `POST /api/state/folders` with `{folders: [...]}` replaces the folders and returns the record
+as kept; `seeded` and `examples` are the host's. Both need the same rights as the rest of the
+viewer's state.
 
 ## 7. Distribution
 

@@ -10,7 +10,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ok  ', m); } else { fail+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Every control Chrome exposes in the page (not inside app frames) that has no name.
-const CONTROL_ROLES = new Set(['button', 'link', 'textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'listbox', 'tab', 'switch', 'slider', 'spinbutton', 'menuitem', 'PopUpButton', 'DisclosureTriangle']);
+const CONTROL_ROLES = new Set(['button', 'link', 'textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'listbox', 'tab', 'switch', 'slider', 'spinbutton', 'menuitem', 'menuitemradio', 'PopUpButton', 'DisclosureTriangle']);
 async function names(page, scope) {
   const cdp = await page.context().newCDPSession(page);
   const { nodes } = await cdp.send('Accessibility.getFullAXTree');
@@ -129,8 +129,40 @@ const api = async (p, body) => {
   await checkNames(page, null, 'home and app list', 10);
   await checkTabOrder(page, 'header, aside, #runner', 'home and app list');
   await page.fill('#filter', 'usl');
-  ok(await page.locator('#apps li button').count() === 1, 'the filter is typed into');
+  ok(await page.locator('#apps li.app').count() === 1, 'the filter is typed into');
   await page.fill('#filter', '');
+
+  console.log('== folders in the app list (ADR-2610081830)');
+  const toggle = page.locator('#apps .folder-toggle').first();
+  ok(/^Examples, \d+ apps$/.test(await toggle.getAttribute('aria-label')) && await toggle.getAttribute('aria-expanded') === 'true', 'the Examples folder says its name, its count and that it is open: ' + await toggle.getAttribute('aria-label'));
+  const moves = await page.$$eval('#apps .app-move', (bs) => bs.map((b) => b.getAttribute('aria-label')));
+  ok(moves.length > 5 && moves.every((n) => /^Move .+ to…$/.test(n)), `every app has a named Move to… button (${moves.length})`);
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  ok(await toggle.getAttribute('aria-expanded') === 'false' && await page.locator('#apps ul.folder-apps').first().isHidden(), 'Enter closes the folder');
+  await checkTabOrder(page, 'aside', 'the app list with Examples closed');
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  ok(await toggle.getAttribute('aria-expanded') === 'true', 'and opens it again');
+  await page.keyboard.press('Tab');
+  ok(await page.evaluate(() => document.activeElement.matches('.folder-more') && document.activeElement.getAttribute('aria-haspopup') === 'menu'), 'Tab reaches the folder actions');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  ok(await page.evaluate(() => document.activeElement.matches('.app-move')), 'then an app, then its Move to… button');
+  await page.keyboard.press('Enter');
+  ok(await page.locator('.menu[role=menu]').isVisible() && await page.evaluate(() => /^menuitem/.test(document.activeElement.getAttribute('role'))), 'Enter opens the Move menu with the focus in it');
+  await checkNames(page, '.menu', 'the Move menu', 3);
+  await page.keyboard.press('ArrowDown');
+  ok(await page.evaluate(() => document.activeElement.closest('.menu') !== null), 'ArrowDown moves inside the menu');
+  await page.keyboard.press('Escape');
+  ok(await page.locator('.menu').count() === 0 && await page.evaluate(() => document.activeElement.matches('.app-move') && document.activeElement.getAttribute('aria-expanded') === 'false'), 'Escape closes the Move menu and the focus goes back to its button');
+  await page.focus('#apps .folder-more');
+  await page.keyboard.press('Enter');
+  await checkNames(page, '.menu', 'the folder menu', 2);
+  await page.keyboard.press('Escape');
+  ok(await page.locator('.menu').count() === 0, 'Escape closes the folder menu');
+  await page.focus('#newFolder');
+  ok(await page.evaluate(() => document.activeElement.id === 'newFolder' && document.activeElement.textContent.trim() === 'New folder'), 'New folder is a named button reached by keyboard');
 
   console.log('== Settings');
   await page.focus('#settingsBtn');

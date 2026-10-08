@@ -1,5 +1,5 @@
-/* Wardian state: the viewer's Arrange layouts, each suite app's saved data, and the latest message
-   per channel, kept by the Wardian server in its data folder (ADR-2610071055).
+/* Wardian state: the viewer's Arrange layouts, each suite app's saved data, the latest message
+   per channel, and the folders of the app list, kept by the Wardian server in its data folder (ADR-2610071055).
 
    The server comes first. The browser keeps a copy as a backup, and is used when the server says no
    (a shared Wardian with ADMIN_TOKEN, when this viewer has not given it). When the server has
@@ -91,5 +91,22 @@ const WardianState = (() => {
     },
   };
 
-  return Object.freeze({layout, apps, channel});
+  // The folders of the app list (ADR-2610081830): {v, folders: [{id, name, open, apps}], seeded}.
+  // The server files the example apps once and drops apps that are gone; when it says no, this
+  // browser keeps the folders.
+  const folders = {
+    async load(){
+      const r = await get('folders');
+      if (!r.ok) return local.get('wardian-folders');
+      local.set('wardian-folders', r.value);
+      return r.value;
+    },
+    // Resolves to the folders as the server kept them, or null when it did not.
+    save(record){
+      local.set('wardian-folders', record);
+      return post('folders', record);
+    },
+  };
+
+  return Object.freeze({layout, apps, channel, folders});
 })();

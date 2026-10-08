@@ -116,7 +116,7 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   await page.locator('.fn-cards').waitFor({ state: 'attached', timeout: 5000 });
   await sleep(300);
   ok(await page.locator(`[data-arrange-panel="${fns[0]}"]`).isHidden(), 'and stays hidden after a reload');
-  await page.locator('#apps li button').filter({ hasNotText: /adder/i }).first().click(); await sleep(500);
+  await page.locator('#apps li.app .app-open').filter({ hasNotText: /adder/i }).first().click(); await sleep(500);
   ok(await page.locator('.w-arrange-bar, .w-arrange-btn').count() === 0, 'opening another app removes the module\'s Arrange');
 
   ok(errors.length === 0, 'no page errors ' + JSON.stringify(errors));

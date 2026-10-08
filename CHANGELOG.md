@@ -14,6 +14,11 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- **Folders in the app list** (ADR-2610081830): apps in no folder first, then folders that open and
+  close and say how many apps they hold. The example apps start in an "Examples" folder, closed
+  when you have apps of your own. New folder, rename, delete (its apps stay), Move to… on every app
+  from the mouse or the keyboard, and drag and drop for apps and folders. The filter opens folders
+  with a match. Kept per data folder in `state/folders.json`, through `GET/POST /api/state/folders`.
 - **Saved keys are sealed** (ADR-2610081501) with AES-256-GCM under a master key kept in a file
   outside the data folder, `~/.config/wardian/master.key`, or where `WARDIAN_MASTER_KEY` or
   `WARDIAN_MASTER_KEY_FILE` says. Keys saved before are sealed on the first start. Docker keeps the

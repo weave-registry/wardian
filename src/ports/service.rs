@@ -146,6 +146,11 @@ pub trait ViewerState: Send + Sync {
     fn channel(&self, channel: &str) -> Value;
     /// Keeps the latest message on a channel; null forgets it.
     fn set_channel(&self, channel: &str, message: Value) -> Result<Value, String>;
+    /// The folders of the app list (ADR-2610081830), tidied against `apps` (the apps being
+    /// served), with the example apps filed the first time: {v, folders: [{id, name, open, apps}], seeded}.
+    fn folders(&self, apps: &[String]) -> Result<Value, String>;
+    /// Replaces the folders with the viewer's `{folders: [...]}`; returns the record as kept.
+    fn set_folders(&self, body: &Value, apps: &[String]) -> Result<Value, String>;
 }
 
 /// An app as a `.wardian` file (ADR-2610071248): export, and what an import brings.

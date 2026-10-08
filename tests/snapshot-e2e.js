@@ -10,7 +10,10 @@ const POLICY = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
 const frameOf = (page, end) => page.frames().find(f => f.url().split('?')[0].endsWith(end));
 
 async function open(page, name) {
-  await page.locator('#apps li button', { hasText: name }).first().click();
+  // An example app sits in the Examples folder (ADR-2610081830), closed when there are other apps.
+  const row = page.locator('#apps li.app', { hasText: name }).first();
+  if (!(await row.isVisible())) await page.locator('#apps li.folder', { has: page.locator('li.app', { hasText: name }) }).first().locator('.folder-toggle').click();
+  await row.locator('.app-open').click();
   await page.locator('#saveWebBtn').waitFor({ timeout: 5000 });
 }
 

@@ -31,7 +31,7 @@ async function until(fn, ms, what) {
   await a.fill('#aiInput', 'a small app that says hello');
   await a.click('.ai-wrap button.primary:has-text("Send")');
   await sleep(300);
-  await a.click('#apps li button');                       // open another app while Claude works
+  await a.click('#apps li.app .app-open');                       // open another app while Claude works
   const other = await a.locator('#runner h2').first().textContent();
   ok(!(await a.locator('#chat').count()), 'you are on another app: ' + other);
   await until(async () => /working/.test(await a.locator('#aiBtn').textContent()), 5000, 'working');

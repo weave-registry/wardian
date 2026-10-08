@@ -378,6 +378,24 @@ not lose it; the app itself never changes. **Reset**
 brings back the app's own layout. Suites and module apps get Arrange from Wardian. A page app marks its
 parts with `data-panel` and runs `wardian add arrange` (SPEC.md 6.11).
 
+## Folders
+
+The app list files apps in folders, one level deep. Apps in no folder come first, then each folder
+with its name and how many apps it holds; press a folder to open or close it. The first time, the
+built-in example apps go into a folder named **Examples**, closed if you have apps of your own and
+open if not; an example added by a later version goes there too while that folder exists.
+
+**New folder** under the filter makes one. Each folder's **⋯** button renames it, moves it up or
+down, or deletes it; deleting a folder puts its apps back in no folder and never removes an app.
+Each app's **⋯** button is **Move to…**: no folder, any folder, or a new one. You can also drag an
+app onto a folder, drag it onto the box that covers the filter while you drag to take it out of its
+folder, and drag folders into order. Inside a folder, apps are in order of title. Typing in the
+filter opens the folders that hold a match until the filter is empty again.
+
+Folders belong to the data folder, like layouts: Wardian keeps them in `state/folders.json`, an
+exported `.wardian` file holds none, and two people sharing one Wardian share one set. An app that
+is removed leaves its folder; a new app is in no folder.
+
 ## Components
 
 Wardian has a small library of interface parts: button, field, card, badge, table, switch, tabs,
@@ -514,7 +532,7 @@ in `DATA_DIR`.
   use. A start with no stop before it means the previous run was killed (SIGKILL, out of memory,
   the machine stopped). Past 1 MB it moves to `wardian.log.1`.
 - `history/<app>/` — each app's versions, with `log.json` saying when, by what and why
-- `state/` — layouts, apps' saved data and the latest channel messages
+- `state/` — layouts, apps' saved data, the latest channel messages and the app list's folders
 - `db/<app>.sqlite` — each app's own database (the `db` capability), readable by its owner only
 
 ## Environment variables
