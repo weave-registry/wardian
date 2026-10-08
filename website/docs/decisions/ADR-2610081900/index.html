@@ -90,36 +90,56 @@
 work without installing Wardian, and could not get one except from the repository.</p>
 <h2 id="context">Context<a class="anchor" href="#context" aria-label="Link to this section">#</a></h2>
 <p>The website is static, served at the root of its domain (Vercel), written by <code>wardian docs website</code>
-(ADR-2610080903). The examples are built into the program (ADR-2610081600). Seven need nothing from a
-server: the modules <code>adder</code>, <code>number-lab</code> and <code>unit-converter</code>, and the pages <code>image-lab</code>, <code>life</code>,
-<code>mandelbrot</code> and <code>text-tools</code>. The suites need Wardian's kernel, which the server builds frame by
-frame, and <code>focus-timer</code> talks over channels, which need a Wardian.</p>
+(ADR-2610080903). The examples are built into the program (ADR-2610081600). The modules and the
+pages without channels need nothing from a server. A suite needs Wardian's kernel, which is a page of
+its own, and one frame per part, which the server builds on request from the package; with no server
+behind the kernel, <code>storage</code> falls back to the browser (ADR-2610071055) and <code>claude:sample</code> resolves
+to <code>null</code>, which every app must handle. <code>db</code>, <code>splunk</code> and channels need a Wardian.</p>
 <h2 id="decision">Decision<a class="anchor" href="#decision" aria-label="Link to this section">#</a></h2>
 <ol>
-<li><strong>Try it.</strong> On the website, each example's page starts with a <strong>Try it</strong> box. For the seven, it
-frames the app: a page app at <code>/apps/&lt;name&gt;/&lt;page&gt;</code>, the path Wardian uses, and a module at
-<code>/docs/try/&lt;name&gt;/</code>, a form page that does what Wardian's module form does. For the others, it
-says the app needs a Wardian.</li>
-<li><strong>Download.</strong> Every example's page links <code>/downloads/&lt;name&gt;.zip</code>, which Wardian imports
+<li>
+<p><strong>Try it.</strong> On the website, each example's page starts with a <strong>Try it</strong> box, which frames the
+app when it can run there, at the paths Wardian uses:</p>
+<ul>
+<li>a page app at <code>/apps/&lt;name&gt;/&lt;page&gt;</code>;</li>
+<li>a module at <code>/docs/try/&lt;name&gt;/</code>, a form page that does what Wardian's module form does;</li>
+<li>a suite whose parts declare only <code>storage</code>, <code>asset</code>, <code>worker</code>, <code>source</code>, <code>claude:downloads</code> or
+<code>claude:sample</code>, and no channel, at <code>/run/&lt;name&gt;/</code>: the kernel page, with each frame built now,
+as the server would build it, at <code>/frame/&lt;name&gt;/&lt;part&gt;/</code>. The box says that what it saves stays
+in the browser and that Claude is off.</li>
+</ul>
+<p>That is eleven of the sixteen. For the others, it says they need a Wardian.</p>
+</li>
+<li>
+<p><strong>Download.</strong> Every example's page links <code>/downloads/&lt;name&gt;.zip</code>, which Wardian imports
 (Settings → Import). Each zip is the same for the same files, so the website's copy changes only
-when an app does.</li>
-<li><strong>Isolation on the website.</strong> The frame is sandboxed with <code>allow-same-origin</code>, so the app loads its
+when an app does.</p>
+</li>
+<li>
+<p><strong>Isolation on the website.</strong> The frame is sandboxed with <code>allow-same-origin</code>, so the app loads its
 own files from a plain static host, which sends no CORS header. It runs on the website's origin,
 which holds no data. <code>vercel.json</code>, written with the rest, sends a Content-Security-Policy with
 the apps: no request may leave the website, no form may post, and only the website may frame
 them. This is weaker than in Wardian, where a page app runs on an opaque origin and may reach
-only its own package (ADR-2610081003). These are Wardian's own examples, not uploads.</li>
-<li>Inside Wardian, <code>/docs</code> shows the pages as before: the examples are already in the app list.</li>
+only its own package (ADR-2610081003). These are Wardian's own examples, not uploads. A suite's
+frames get the same <code>FRAME_CSP</code> the server sends, and the kernel sandboxes them as in Wardian.</p>
+</li>
+<li>
+<p>Inside Wardian, <code>/docs</code> shows the pages as before: the examples are already in the app list.</p>
+</li>
 </ol>
 <h2 id="consequences">Consequences<a class="anchor" href="#consequences" aria-label="Link to this section">#</a></h2>
 <ul>
-<li>A visitor sees seven examples work, and can take any of the sixteen, without installing anything.</li>
-<li>The website grows by about 1.1 MB: the seven apps and sixteen zips.</li>
-<li>Suites stay out of the website until the kernel can run without a server.</li>
+<li>A visitor sees eleven examples work, and can take any of the sixteen, without installing anything.</li>
+<li>The website grows by the apps, their frames and the zips: about 3 MB.</li>
+<li>A suite's frames on the website are built when the website is written; a change to the suite needs
+<code>wardian docs website</code> again, as every page does.</li>
 </ul>
 <h2 id="implementation">Implementation<a class="anchor" href="#implementation" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><code>usecases/demos.rs</code>: kinds, the Try it box, the module form page, the zips, <code>vercel.json</code>.</li>
+<li><code>usecases/demos.rs</code>: kinds, the Try it box, the module form page, each suite's kernel page and
+frames, the zips, <code>vercel.json</code>. <code>ports/assets.rs</code>: <code>host_file</code> gives the kernel page and the
+scripts it loads.</li>
 <li><code>usecases/docs.rs</code>: <code>site</code> returns bytes and includes them; the example pages get the box.</li>
 <li><code>tests/run-website-e2e.sh</code>: the website from a plain static server, in a browser.</li>
 </ul>

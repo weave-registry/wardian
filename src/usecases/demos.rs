@@ -1,8 +1,10 @@
 //! The example apps on the static website (ADR-2610081900): a "Try it" frame on each example's
 //! page for the apps that need no Wardian server, and a download of every example. `wardian docs`
 //! writes the apps' files at the paths Wardian serves them from (`/apps/<name>/`), a form page for
-//! each module app, a zip of each example, and the headers the website sends with them.
+//! each module app, each runnable suite's kernel page and frames (`/run/<name>/`, `/frame/<name>/`),
+//! a zip of each example, and the headers the website sends with them.
 
+use crate::domain::suite::{self, FRAME_CSP};
 use crate::ports::assets::Assets;
 use std::io::{Cursor, Write};
 
@@ -13,16 +15,21 @@ pub enum Kind {
     Module,
     /// A page of its own. `channels`: it talks to other apps, which needs a Wardian.
     Page { channels: bool },
-    /// Parts run by Wardian's kernel, which needs the server.
-    Suite,
+    /// Parts run by Wardian's kernel. `browser_only`: every capability it declares works with
+    /// no server behind the kernel (storage then stays in the browser, Claude is off).
+    Suite { browser_only: bool },
 }
 
 impl Kind {
     /// Runs in a plain web page, with no Wardian behind it.
     pub fn runs_in_a_browser(self) -> bool {
-        matches!(self, Kind::Module | Kind::Page { channels: false })
+        matches!(self, Kind::Module | Kind::Page { channels: false } | Kind::Suite { browser_only: true })
     }
 }
+
+/// The capabilities a suite may declare and still run on the website: storage falls back to the
+/// browser, and `claude:sample` resolves to null without a server, which every app must handle.
+const BROWSER_CAPS: [&str; 6] = ["storage", "asset", "worker", "source", "claude:downloads", "claude:sample"];
 
 fn files_of<'a>(assets: &'a dyn Assets, app: &str) -> impl Iterator<Item = (&'a str, &'a [u8])> + 'a {
     let prefix = format!("{app}/");
@@ -38,7 +45,11 @@ pub fn kind(assets: &dyn Assets, app: &str) -> Option<Kind> {
     let mut files = files_of(assets, app).map(|(rel, _)| rel).peekable();
     files.peek()?;
     if files.any(|rel| rel == "suite.json") {
-        return Some(Kind::Suite);
+        let s: serde_json::Value = files_of(assets, app).find(|(rel, _)| *rel == "suite.json").and_then(|(_, b)| serde_json::from_slice(b).ok()).unwrap_or_default();
+        let parts = s["apps"].as_array().cloned().unwrap_or_default();
+        let caps_ok = parts.iter().flat_map(|a| a["caps"].as_array().cloned().unwrap_or_default()).all(|c| c.as_str().is_some_and(|c| BROWSER_CAPS.contains(&c)));
+        let no_channels = s["channels"].is_null() && parts.iter().all(|a| a["channels"].is_null());
+        return Some(Kind::Suite { browser_only: caps_ok && no_channels });
     }
     let m = manifest(assets, app);
     Some(match m["page"].as_str() {
@@ -59,6 +70,7 @@ fn try_src(assets: &dyn Assets, app: &str) -> Option<String> {
     match kind(assets, app)? {
         Kind::Module => Some(format!("/docs/try/{app}/")),
         Kind::Page { channels: false } => manifest(assets, app)["page"].as_str().map(|p| format!("/apps/{app}/{p}")),
+        Kind::Suite { browser_only: true } => Some(format!("/run/{app}/")),
         _ => None,
     }
 }
@@ -75,11 +87,12 @@ pub fn try_box(assets: &dyn Assets, app: &str) -> Option<String> {
         (Some(src), _) => format!(
             "<iframe class=\"try-frame\" src=\"{src}\" title=\"{app}, running\" loading=\"lazy\" \
              sandbox=\"allow-scripts allow-same-origin allow-forms allow-downloads allow-modals\"></iframe>\
-             <p class=\"muted\">The app runs here in your browser. Nothing you type leaves it. \
-             <a href=\"{src}\" target=\"_blank\" rel=\"noopener\">Open it on its own</a>.</p>"
+             <p class=\"muted\">The app runs here in your browser. Nothing you type leaves it{kept}. \
+             <a href=\"{src}\" target=\"_blank\" rel=\"noopener\">Open it on its own</a>.</p>",
+            kept = if matches!(k, Kind::Suite { .. }) { "; what it saves stays in this browser, and Claude is off here" } else { "" }
         ),
-        (None, Kind::Suite) => "<p>This app is a suite: its parts run in Wardian's kernel, which needs a Wardian. Download it and \
-             import it in Wardian to run it.</p>"
+        (None, Kind::Suite { .. }) => "<p>This suite uses its own database, Splunk or channels, which need a Wardian. Download it \
+             and import it in Wardian to run it.</p>"
             .to_string(),
         (None, _) => "<p>This app talks to other apps over channels, which needs a Wardian. Download it and import it in \
              Wardian to run it.</p>"
@@ -152,6 +165,9 @@ fn headers() -> String {
             { "key": "X-Content-Type-Options", "value": "nosniff" } ] },
         { "source": "/docs/try/(.*)", "headers": [
             { "key": "Content-Security-Policy", "value": csp } ] },
+        { "source": "/frame/(.*)", "headers": [
+            { "key": "Content-Security-Policy", "value": FRAME_CSP },
+            { "key": "X-Content-Type-Options", "value": "nosniff" } ] },
         { "source": "/downloads/(.*)", "headers": [
             { "key": "Content-Disposition", "value": "attachment" } ] }
     ] });
@@ -183,9 +199,33 @@ pub fn site_files(assets: &dyn Assets) -> Vec<(String, Vec<u8>)> {
         if k == Some(Kind::Module) {
             out.push((format!("docs/try/{app}/index.html"), module_page(app).into_bytes()));
         }
+        if k == Some(Kind::Suite { browser_only: true }) {
+            out.extend(suite_files(assets, app));
+        }
         out.push((format!("downloads/{app}.zip"), zip_of(assets, app)));
     }
+    for name in ["state.js", "channels.js"] {
+        out.push((name.to_string(), assets.host_file(name).unwrap_or_default().as_bytes().to_vec()));
+    }
     out.push(("vercel.json".to_string(), headers().into_bytes()));
+    out
+}
+
+/// A suite as Wardian serves it: the kernel page at `/run/<name>/`, and each frame the kernel asks
+/// for, built now as the server would build it on request (`/frame/<name>/` for the header,
+/// `/frame/<name>/<part>/` for each part).
+fn suite_files(assets: &dyn Assets, app: &str) -> Vec<(String, Vec<u8>)> {
+    let read = |rel: &str| files_of(assets, app).find(|(r, _)| *r == rel).map(|(_, b)| b.to_vec());
+    let mut out = vec![(format!("run/{app}/index.html"), assets.host_file("kernel.html").unwrap_or_default().as_bytes().to_vec())];
+    if let Ok(header) = suite::frame(&read, assets.frame_shim(), None) {
+        out.push((format!("frame/{app}/index.html"), header.into_bytes()));
+    }
+    let s: serde_json::Value = read("suite.json").and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    for part in s["apps"].as_array().into_iter().flatten().filter_map(|a| a["name"].as_str()) {
+        if let Ok(html) = suite::frame(&read, assets.frame_shim(), Some(part)) {
+            out.push((format!("frame/{app}/{part}/index.html"), html.into_bytes()));
+        }
+    }
     out
 }
 
@@ -200,10 +240,12 @@ mod tests {
         assert_eq!(kind(&a, "adder"), Some(Kind::Module));
         assert_eq!(kind(&a, "life"), Some(Kind::Page { channels: false }));
         assert_eq!(kind(&a, "focus-timer"), Some(Kind::Page { channels: true }));
-        assert_eq!(kind(&a, "usl-lab"), Some(Kind::Suite));
+        assert_eq!(kind(&a, "usl-lab"), Some(Kind::Suite { browser_only: false }));
+        assert_eq!(kind(&a, "loan-planner"), Some(Kind::Suite { browser_only: true }));
+        assert_eq!(kind(&a, "meeting-notes"), Some(Kind::Suite { browser_only: true }), "Claude is off without a server");
         assert_eq!(kind(&a, "nothing"), None);
         let runnable: Vec<&str> = names(&a).into_iter().filter(|n| kind(&a, n).is_some_and(Kind::runs_in_a_browser)).collect();
-        assert_eq!(runnable.len(), 7, "{runnable:?}");
+        assert_eq!(runnable.len(), 11, "{runnable:?}");
     }
 
     #[test]
@@ -220,6 +262,10 @@ mod tests {
                 Kind::Page { channels: false } => {
                     let page = manifest(&a, app)["page"].as_str().unwrap().to_string();
                     assert!(has(&format!("apps/{app}/{page}")) && b.contains(&format!("/apps/{app}/{page}")), "{app}");
+                }
+                Kind::Suite { browser_only: true } => {
+                    assert!(has(&format!("run/{app}/index.html")) && has(&format!("frame/{app}/index.html")) && has(&format!("apps/{app}/suite.json")), "{app}");
+                    assert!(b.contains(&format!("/run/{app}/")), "{app}");
                 }
                 _ => assert!(!b.contains("<iframe") && !has(&format!("apps/{app}/suite.json")), "{app} does not run on the website"),
             }

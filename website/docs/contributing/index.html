@@ -131,7 +131,7 @@ Claude and Bedrock where it needs them, and drives the pages in a real browser.<
 <tr><td><code>run-a11y-e2e.sh</code></td><td>The first-run setup appears once, and every control in the app list, Settings, Arrange and History has a name and works from the keyboard.</td></tr>
 <tr><td><code>run-load-e2e.sh</code></td><td>The app list and a suite load 200 times, and bursts of idle, slow and unread connections leave no request unanswered.</td></tr>
 <tr><td><code>run-examples-e2e.sh</code></td><td>Every example app in <code>apps/</code> opens with no fault: a module's functions, a page's text, every part of a suite.</td></tr>
-<tr><td><code>run-website-e2e.sh</code></td><td>The website, from a plain static server: each example that needs no server runs on its page, and every example's download is a zip.</td></tr>
+<tr><td><code>run-website-e2e.sh</code></td><td>The website, from a plain static server: each example that needs no server runs on its page, every part of each such suite starts with no fault, and every example's download is a zip.</td></tr>
 </tbody></table>
 <p>They need python3, curl and Node with the <code>playwright</code> package (<code>npm i -g playwright</code>). They launch
 Google Chrome. Set <code>WARDIAN_BROWSER=chromium</code> to use Playwright's own Chromium instead

@@ -1,0 +1,16 @@
+<div class="head"><h2>Reader</h2><span class="w-badge" data-variant="secondary" id="mode">Starting…</span></div>
+<p class="hint" id="about"></p>
+<div class="btnrow">
+  <button class="w-button" id="claude" type="button" hidden>Read with Claude</button>
+  <button class="w-button" data-variant="outline" id="local" type="button">Use the quick reader</button>
+</div>
+<wardian-progress id="bar" hidden></wardian-progress>
+<p class="status" id="status" role="status"></p>
+<details class="howto" id="howto" hidden>
+  <summary>How to turn on AI</summary>
+  <ol>
+    <li>Open Wardian’s <b>Settings</b>, then the <b>Claude</b> tab.</li>
+    <li>Add an Anthropic API key, or choose Amazon Bedrock and give its keys. Wardian tests them and keeps them on the server.</li>
+    <li>Reload this app. Press <b>Read with Claude</b>, then <b>Allow</b> when Wardian asks.</li>
+  </ol>
+</details>

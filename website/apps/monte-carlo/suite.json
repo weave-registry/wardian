@@ -1,0 +1,108 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json",
+  "format": 1,
+  "title": "Schedule risk (Monte Carlo)",
+  "description": "List a project's tasks with best, likely and worst estimates. A million simulated runs, in a background worker, show when it will really finish and which tasks decide it.",
+  "styles": [
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "ui/table.css",
+    "ui/badge.css",
+    "style.css"
+  ],
+  "scripts": [
+    "shared/fmt.js",
+    "shared/project.js",
+    "shared/simbar.js"
+  ],
+  "header": "header.html",
+  "columns": "minmax(440px, 520px) minmax(0, 1fr)",
+  "apps": [
+    {
+      "name": "sim",
+      "scripts": [
+        "apps/sim/engine.js"
+      ],
+      "listens": [
+        "project:changed"
+      ],
+      "emits": {
+        "sim:progress": {
+          "retain": true
+        },
+        "sim:result": {
+          "retain": true
+        }
+      },
+      "provides": [
+        "run",
+        "cancel"
+      ],
+      "caps": [
+        "worker",
+        "source"
+      ]
+    },
+    {
+      "name": "tasks",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\" aria-labelledby=\"tasksTitle\">",
+      "emits": {
+        "project:changed": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "sim:progress"
+      ],
+      "needs": [
+        "sim.run",
+        "sim.cancel"
+      ],
+      "caps": [
+        "storage"
+      ]
+    },
+    {
+      "name": "forecast",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "sim:result",
+        "sim:progress"
+      ],
+      "needs": [
+        "sim.cancel"
+      ]
+    },
+    {
+      "name": "histogram",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "sim:result"
+      ]
+    },
+    {
+      "name": "critical",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "sim:result"
+      ]
+    },
+    {
+      "name": "export",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "sim:result"
+      ],
+      "caps": [
+        "claude:downloads"
+      ]
+    }
+  ]
+}

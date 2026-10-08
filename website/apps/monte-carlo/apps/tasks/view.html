@@ -1,0 +1,48 @@
+<h2 id="tasksTitle">Tasks</h2>
+<p class="hint">Give each task three estimates: the best case, the most likely, and the worst case. Under <b>After</b>, list the task numbers it waits for, like <code>2, 3</code>.</p>
+<div class="w-table-wrap tasks-wrap">
+  <table class="w-table tasks" aria-labelledby="tasksTitle">
+    <thead><tr>
+      <th scope="col">#</th><th scope="col">Task</th>
+      <th scope="col" class="num" title="Optimistic: the best case">Best</th>
+      <th scope="col" class="num" title="The most likely duration">Likely</th>
+      <th scope="col" class="num" title="Pessimistic: the worst case">Worst</th>
+      <th scope="col" title="The numbers of the tasks that must finish first">After</th>
+      <th scope="col"><span class="w-sr">Remove</span></th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+<div class="btnrow">
+  <button class="w-button" data-size="sm" id="add" type="button">Add task</button>
+  <button class="w-button" data-variant="outline" data-size="sm" id="sample" type="button">Sample project</button>
+  <button class="w-button" data-variant="ghost" data-size="sm" id="clear" type="button">Clear</button>
+</div>
+<p class="problem" id="problem" role="alert"></p>
+
+<h3>Simulation</h3>
+<div class="two">
+  <div class="w-field"><label class="w-label" for="trials">Trials</label>
+    <select class="w-input" id="trials">
+      <option value="10000">10,000</option><option value="100000">100,000</option>
+      <option value="250000">250,000</option><option value="1000000">1,000,000</option>
+    </select></div>
+  <div class="w-field"><label class="w-label" for="dist">Shape of each estimate</label>
+    <select class="w-input" id="dist">
+      <option value="pert">PERT (beta)</option><option value="triangular">Triangular</option>
+    </select></div>
+  <div class="w-field"><label class="w-label" for="unit">Durations in</label>
+    <select class="w-input" id="unit"><option>days</option><option>weeks</option><option>hours</option></select></div>
+  <div class="w-field"><label class="w-label" for="start">Start date (optional)</label>
+    <input class="w-input" id="start" type="date"></div>
+</div>
+<div class="w-field"><label class="w-label" for="seed">Seed</label>
+  <div class="seedrow">
+    <input class="w-input" id="seed" type="number" min="1" max="2147483647" step="1" inputmode="numeric">
+    <button class="w-button" data-variant="outline" data-size="sm" id="newSeed" type="button">New seed</button>
+    <button class="w-button" data-size="sm" id="run" type="button">Run again</button>
+  </div>
+  <p class="w-hint">The same seed and tasks always give the same results.</p>
+</div>
+<wardian-progress id="bar" hidden></wardian-progress>
+<p class="w-hint">Saved in this browser for next time.</p>

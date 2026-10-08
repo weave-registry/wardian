@@ -133,7 +133,7 @@ chose to be graded by <code>hexa analyze</code>; their full reasoning lives in h
 <tr><td><a href="/docs/decisions/ADR-2610081501">ADR-2610081501</a></td><td>keys sealed at rest</td><td>2026-10-08</td><td>Every saved secret is sealed with AES-256-GCM under a master key kept in a file outside the data folder, so a copy of the data folder holds no readable key.</td></tr>
 <tr><td><a href="/docs/decisions/ADR-2610081600">ADR-2610081600</a></td><td>example apps are built in</td><td>2026-10-08</td><td>The example apps are built into the program, and each start adds the ones a working folder has not had, so every Wardian shows them.</td></tr>
 <tr><td><a href="/docs/decisions/ADR-2610081700">ADR-2610081700</a></td><td>back up the master key</td><td>2026-10-08</td><td><code>wardian key</code> says where the master key is; <code>export</code> backs it up into a private file, and <code>import</code> restores it, refusing a key that opens no saved key.</td></tr>
-<tr><td><a href="/docs/decisions/ADR-2610081900">ADR-2610081900</a></td><td>examples run on the website</td><td>2026-10-08</td><td>Each example's page on the website shows the app running when it needs no server, and links a zip of every example to import.</td></tr>
+<tr><td><a href="/docs/decisions/ADR-2610081900">ADR-2610081900</a></td><td>examples run on the website</td><td>2026-10-08</td><td>Each example's page on the website shows the app running when it needs no server (eleven of sixteen, suites included), and links a zip of every example to import.</td></tr>
 </tbody></table>
 <h2 id="gates">Gates<a class="anchor" href="#gates" aria-label="Link to this section">#</a></h2>
 <table><thead><tr><th>ADR</th><th>Gate</th></tr></thead><tbody>

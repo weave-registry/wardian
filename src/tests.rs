@@ -330,6 +330,9 @@ fn skills_refuse_a_missing_reference() {
         fn example_apps(&self) -> &'static [(&'static str, &'static [u8])] {
             Embedded.example_apps()
         }
+        fn host_file(&self, name: &str) -> Option<&'static str> {
+            Embedded.host_file(name)
+        }
         fn schema(&self, name: &str) -> Option<&'static str> {
             Embedded.schema(name)
         }

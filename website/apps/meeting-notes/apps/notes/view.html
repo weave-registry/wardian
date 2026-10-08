@@ -1,0 +1,18 @@
+<h2>Notes</h2>
+<div class="w-field">
+  <label class="w-label" for="title">Meeting</label>
+  <input class="w-input" id="title" maxlength="120" autocomplete="off" placeholder="For example: Weekly product sync">
+</div>
+<div class="w-field">
+  <label class="w-label" for="text">Notes or transcript</label>
+  <textarea class="w-input" id="text" rows="14" spellcheck="true" placeholder="Paste your notes here, or open a .txt or .md file."></textarea>
+  <p class="w-hint" id="count"></p>
+</div>
+<div class="btnrow">
+  <button class="w-button" data-variant="outline" data-size="sm" id="open" type="button">Open a file…</button>
+  <button class="w-button" data-variant="outline" data-size="sm" id="sample" type="button">Try the sample</button>
+  <button class="w-button" data-variant="ghost" data-size="sm" id="clear" type="button">Clear</button>
+  <input type="file" id="file" accept=".txt,.md,.markdown,.text,text/plain,text/markdown" hidden>
+</div>
+<p class="note" id="note" role="status"></p>
+<p class="w-hint">Saved in this Wardian as you type.</p>

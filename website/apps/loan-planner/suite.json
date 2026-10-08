@@ -1,0 +1,82 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json",
+  "format": 1,
+  "title": "Loan planner",
+  "description": "Plan a loan: monthly payment, total interest, a balance chart, and how much an extra payment saves.",
+  "styles": [
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "style.css"
+  ],
+  "scripts": [
+    "shared/format.js"
+  ],
+  "header": "header.html",
+  "apps": [
+    {
+      "name": "engine",
+      "provides": [
+        "schedule"
+      ],
+      "caps": [
+        "asset"
+      ]
+    },
+    {
+      "name": "planner",
+      "listens": [
+        "loan:changed"
+      ],
+      "needs": [
+        "engine.schedule"
+      ],
+      "emits": {
+        "plan:ready": {
+          "retain": true
+        }
+      }
+    },
+    {
+      "name": "inputs",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\">",
+      "emits": {
+        "loan:changed": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "storage"
+      ]
+    },
+    {
+      "name": "summary",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "plan:ready"
+      ]
+    },
+    {
+      "name": "chart",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "plan:ready"
+      ]
+    },
+    {
+      "name": "export",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "plan:ready"
+      ],
+      "caps": [
+        "claude:downloads"
+      ]
+    }
+  ]
+}

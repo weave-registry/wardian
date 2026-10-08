@@ -1,0 +1,15 @@
+<div class="head"><h2>Backup</h2><span class="sub" id="sub"></span></div>
+<p class="hint">Download every habit and check-in as one JSON file. Open that file here, in another browser or on another Wardian, to bring them back.</p>
+<div class="btnrow">
+  <button class="w-button" id="save" type="button" disabled>Download backup</button>
+  <button class="w-button" data-variant="outline" id="open" type="button">Restore from a file…</button>
+  <input type="file" id="file" accept=".json,application/json" hidden>
+</div>
+<div class="confirm-box" id="confirm" hidden>
+  <p id="what"></p>
+  <div class="btnrow">
+    <button class="w-button" data-variant="destructive" id="replace" type="button">Replace my data</button>
+    <button class="w-button" data-variant="outline" id="cancel" type="button">Cancel</button>
+  </div>
+</div>
+<p class="note" id="note" role="status"></p>

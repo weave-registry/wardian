@@ -38,6 +38,9 @@ pub trait Assets: Send + Sync {
     fn example_apps(&self) -> &'static [(&'static str, &'static [u8])];
     /// A complete example suite, as (path, text), for Claude to learn from.
     fn example_suite(&self) -> &'static [(&'static str, &'static str)];
+    /// Wardian's own suite host, as the website serves it (ADR-2610081900): "kernel.html", and the
+    /// scripts it loads, "state.js" and "channels.js".
+    fn host_file(&self, name: &str) -> Option<&'static str>;
     /// app.schema.json or suite.schema.json.
     fn schema(&self, name: &str) -> Option<&'static str>;
 }

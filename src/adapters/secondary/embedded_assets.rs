@@ -243,6 +243,14 @@ impl Assets for Embedded {
     fn example_apps(&self) -> &'static [(&'static str, &'static [u8])] {
         example_apps::EXAMPLE_APPS
     }
+    fn host_file(&self, name: &str) -> Option<&'static str> {
+        match name {
+            "kernel.html" => Some(include_str!("../../../static/kernel.html")),
+            "state.js" => Some(include_str!("../../../static/state.js")),
+            "channels.js" => Some(include_str!("../../../static/channels.js")),
+            _ => None,
+        }
+    }
     fn schema(&self, name: &str) -> Option<&'static str> {
         match name {
             "app.schema.json" => Some(APP_SCHEMA),

@@ -1,0 +1,886 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* Wardian UI theme: the tokens every component reads. Change these to restyle them all.
+   Dark mode follows the viewer's system; set data-theme="light" or "dark" on <html> to force one. */
+:root {
+  --w-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --w-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --w-text-sm: 13px; --w-text: 14px; --w-text-lg: 16px;
+  --w-space-1: 4px; --w-space-2: 8px; --w-space-3: 12px; --w-space-4: 16px; --w-space-5: 24px; --w-space-6: 32px;
+  --w-radius: 8px;
+  --w-bg: #ffffff; --w-fg: #09090b;
+  --w-muted: #71717a; --w-muted-bg: #f4f4f5;
+  --w-border: #e4e4e7;
+  --w-primary: #18181b; --w-primary-fg: #fafafa;
+  --w-secondary: #f4f4f5; --w-secondary-fg: #18181b;
+  --w-destructive: #dc2626; --w-destructive-fg: #ffffff;
+  --w-success: #15803d;
+  --w-ring: #a1a1aa;
+  --w-shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.08);
+  --w-speed: .15s;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --w-bg: #09090b; --w-fg: #fafafa; --w-muted: #a1a1aa; --w-muted-bg: #27272a; --w-border: #27272a;
+    --w-primary: #fafafa; --w-primary-fg: #18181b; --w-secondary: #27272a; --w-secondary-fg: #fafafa;
+    --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #52525b;
+    --w-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"] {
+  --w-bg: #09090b; --w-fg: #fafafa; --w-muted: #a1a1aa; --w-muted-bg: #27272a; --w-border: #27272a;
+  --w-primary: #fafafa; --w-primary-fg: #18181b; --w-secondary: #27272a; --w-secondary-fg: #fafafa;
+  --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #52525b;
+  --w-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+}
+@media (prefers-reduced-motion: reduce) { :root { --w-speed: 0s; } }
+/* Visually hidden, still read by screen readers. */
+.w-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* The built-in progress bar follows the theme too. */
+wardian-progress { --wardian-progress-color: var(--w-primary); --wardian-progress-track: var(--w-muted-bg); --wardian-progress-error: var(--w-destructive); }
+
+</style>
+<style>
+/* <button class="w-button" data-variant="default|secondary|outline|ghost|destructive" data-size="sm|lg|icon"> */
+.w-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--w-space-2); height: 36px;
+  padding: 0 var(--w-space-4); border: 1px solid transparent; border-radius: var(--w-radius); cursor: pointer;
+  font: 500 var(--w-text)/1 var(--w-font); white-space: nowrap; text-decoration: none;
+  background: var(--w-primary); color: var(--w-primary-fg); transition: background var(--w-speed), opacity var(--w-speed); }
+.w-button:hover { opacity: .9; }
+.w-button:focus-visible { outline: 2px solid var(--w-ring); outline-offset: 2px; }
+.w-button:disabled, .w-button[aria-disabled="true"] { opacity: .5; cursor: not-allowed; pointer-events: none; }
+.w-button[data-variant="secondary"] { background: var(--w-secondary); color: var(--w-secondary-fg); }
+.w-button[data-variant="outline"] { background: var(--w-bg); color: var(--w-fg); border-color: var(--w-border); }
+.w-button[data-variant="outline"]:hover, .w-button[data-variant="ghost"]:hover { background: var(--w-muted-bg); opacity: 1; }
+.w-button[data-variant="ghost"] { background: transparent; color: var(--w-fg); }
+.w-button[data-variant="destructive"] { background: var(--w-destructive); color: var(--w-destructive-fg); }
+.w-button[data-size="sm"] { height: 30px; padding: 0 var(--w-space-3); font-size: var(--w-text-sm); }
+.w-button[data-size="lg"] { height: 42px; padding: 0 var(--w-space-6); font-size: var(--w-text-lg); }
+.w-button[data-size="icon"] { width: 36px; padding: 0; }
+.w-button svg { width: 16px; height: 16px; flex: none; }
+
+</style>
+<style>
+/* <div class="w-field"><label class="w-label" for="x">Name</label><input class="w-input" id="x"><p class="w-hint">…</p></div>
+   .w-input works on <input>, <select> and <textarea>. aria-invalid="true" marks an error. */
+.w-field { display: grid; gap: 6px; margin-bottom: var(--w-space-4); }
+.w-label { font: 500 var(--w-text)/1.3 var(--w-font); color: var(--w-fg); }
+.w-hint { margin: 0; font: var(--w-text-sm)/1.4 var(--w-font); color: var(--w-muted); }
+.w-input { box-sizing: border-box; width: 100%; min-height: 36px; padding: 6px var(--w-space-3);
+  border: 1px solid var(--w-border); border-radius: var(--w-radius); background: var(--w-bg); color: var(--w-fg);
+  font: var(--w-text)/1.4 var(--w-font); transition: border-color var(--w-speed); }
+.w-input::placeholder { color: var(--w-muted); }
+.w-input:focus-visible { outline: 2px solid var(--w-ring); outline-offset: 1px; }
+.w-input:disabled { opacity: .5; cursor: not-allowed; }
+.w-input[aria-invalid="true"] { border-color: var(--w-destructive); }
+.w-input[aria-invalid="true"] ~ .w-hint { color: var(--w-destructive); }
+textarea.w-input { min-height: 80px; resize: vertical; }
+select.w-input { appearance: none; padding-right: 32px; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--w-muted) 50%), linear-gradient(135deg, var(--w-muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+
+</style>
+<style>
+/* <section class="w-card"><header class="w-card-header"><h3 class="w-card-title">…</h3><p class="w-card-description">…</p></header>
+     <div class="w-card-content">…</div><footer class="w-card-footer">…</footer></section> */
+.w-card { border: 1px solid var(--w-border); border-radius: calc(var(--w-radius) * 1.5); background: var(--w-bg); color: var(--w-fg);
+  box-shadow: 0 1px 2px rgba(0,0,0,.04); font-family: var(--w-font); }
+.w-card-header { padding: var(--w-space-5) var(--w-space-5) 0; display: grid; gap: 6px; }
+.w-card-title { margin: 0; font: 600 var(--w-text-lg)/1.25 var(--w-font); letter-spacing: -.01em; }
+.w-card-description { margin: 0; font-size: var(--w-text); color: var(--w-muted); }
+.w-card-content { padding: var(--w-space-5); }
+.w-card-footer { display: flex; gap: var(--w-space-2); align-items: center; padding: 0 var(--w-space-5) var(--w-space-5); }
+
+</style>
+<style>
+/* <div class="w-table-wrap"><table class="w-table"><caption>…</caption><thead>…</thead><tbody>…</tbody></table></div>
+   Give number cells class="num" so they line up on the right. */
+.w-table-wrap { overflow: auto; border: 1px solid var(--w-border); border-radius: var(--w-radius); }
+.w-table { width: 100%; border-collapse: collapse; font: var(--w-text)/1.4 var(--w-font); color: var(--w-fg); font-variant-numeric: tabular-nums; }
+.w-table caption { padding: var(--w-space-3); caption-side: bottom; color: var(--w-muted); font-size: var(--w-text-sm); }
+.w-table th, .w-table td { padding: 10px var(--w-space-3); text-align: left; border-bottom: 1px solid var(--w-border); }
+.w-table th { font-weight: 500; color: var(--w-muted); background: var(--w-bg); position: sticky; top: 0; }
+.w-table tbody tr:last-child td { border-bottom: 0; }
+.w-table tbody tr:hover { background: var(--w-muted-bg); }
+.w-table .num { text-align: right; }
+
+</style>
+<style>
+/* <span class="w-badge" data-variant="default|secondary|outline|destructive|success">New</span> */
+.w-badge { display: inline-flex; align-items: center; gap: var(--w-space-1); padding: 2px 10px; border: 1px solid transparent;
+  border-radius: 999px; font: 600 12px/1.5 var(--w-font); background: var(--w-primary); color: var(--w-primary-fg); white-space: nowrap; }
+.w-badge[data-variant="secondary"] { background: var(--w-secondary); color: var(--w-secondary-fg); }
+.w-badge[data-variant="outline"] { background: transparent; color: var(--w-fg); border-color: var(--w-border); }
+.w-badge[data-variant="destructive"] { background: var(--w-destructive); color: var(--w-destructive-fg); }
+.w-badge[data-variant="success"] { background: transparent; color: var(--w-success); border-color: currentColor; }
+
+</style>
+<style>
+/* Schedule risk: the Wardian component library (ui/) draws the controls, cards and tables; this file
+   lays them out and colours the charts from the same tokens. Every part's frame gets this file. */
+:root { color-scheme: light dark; --page: #f7f7f8;
+        --accent: #2f6db3; --accent-soft: rgba(47, 109, 179, .16); --mark: #b4531a; }
+@media (prefers-color-scheme: dark) {
+  :root { --page: #111113; --accent: #6fa8e8; --accent-soft: rgba(111, 168, 232, .18); --mark: #f0a46c; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
+h1 { margin: 0; font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.02em; }
+h2 { margin: 0; font: 600 var(--w-text-lg)/1.3 var(--w-font); }
+h3 { margin: var(--w-space-5) 0 var(--w-space-2); font: 600 var(--w-text)/1.3 var(--w-font); }
+.top { margin-bottom: var(--w-space-5); } .top p { color: var(--w-muted); margin: 6px 0 0; max-width: 70ch; }
+.panel { padding: var(--w-space-4) var(--w-space-5); }
+main .panel { margin-bottom: var(--w-space-4); }
+.head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin-bottom: var(--w-space-3); }
+.sub, .hint, .label, .when { color: var(--w-muted); font-size: var(--w-text-sm); }
+.hint { margin: var(--w-space-2) 0 var(--w-space-3); }
+.hint code { font: 12px var(--w-font-mono); }
+.btnrow { display: flex; flex-wrap: wrap; gap: var(--w-space-2); margin-top: var(--w-space-3); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--w-space-3); }
+.problem { color: var(--w-destructive); font-size: var(--w-text-sm); margin: var(--w-space-2) 0 0; }
+.problem:empty { display: none; }
+.status { color: var(--w-muted); font-size: var(--w-text-sm); min-height: 1.4em; margin: var(--w-space-3) 0 0; }
+.empty { color: var(--w-muted); font-size: var(--w-text-sm); padding: var(--w-space-3) 0; margin: 0; }
+[hidden] { display: none !important; }
+
+/* tasks: a compact editable table. */
+.tasks-wrap { max-height: 60vh; }
+.tasks th, .tasks td { padding: 4px 4px; }
+.tasks td.n { color: var(--w-muted); font-variant-numeric: tabular-nums; text-align: right; width: 1.8em; }
+.tasks .w-input { height: 30px; padding: 0 6px; font-size: var(--w-text-sm); }
+.tasks td.num .w-input { width: 48px; text-align: right; }
+.tasks td.after .w-input { width: 58px; }
+.tasks td.name .w-input { min-width: 90px; width: 100%; }
+.tasks tr.bad td { background: color-mix(in srgb, var(--w-destructive) 8%, transparent); }
+.tasks .w-input[aria-invalid="true"] { border-color: color-mix(in srgb, var(--w-destructive) 55%, var(--w-border)); }
+.tasks td.empty { text-align: center; }
+.seedrow { display: flex; gap: var(--w-space-2); align-items: center; }
+.seedrow .w-input { width: 120px; font-variant-numeric: tabular-nums; }
+
+/* forecast: four tiles. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--w-space-3); }
+.tile { border: 1px solid var(--w-border); border-radius: var(--w-radius); padding: 10px 12px; background: var(--w-bg); }
+.tile.key { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.tile .value { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; margin: 2px 0; }
+.story { margin: var(--w-space-3) 0 0; max-width: 75ch; }
+.story:empty { display: none; }
+
+/* histogram: bars above, S-curve below, one time axis. */
+.chart svg { display: block; width: 100%; height: auto; }
+.chart:focus-visible { outline: 2px solid var(--w-ring); outline-offset: 2px; border-radius: var(--w-radius); }
+.grid { stroke: var(--w-border); }
+.ax { fill: var(--w-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.bar { fill: var(--accent); }
+.band { fill: var(--w-muted-bg); }
+.curve { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.mark { stroke: var(--mark); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.dot { fill: var(--mark); stroke: var(--w-bg); stroke-width: 2; }
+.mlabel { fill: var(--w-fg); font-size: 11.5px; font-weight: 600; }
+.hair { stroke: var(--w-fg); stroke-opacity: .35; }
+.readout { min-height: 1.5em; margin: 8px 0 4px; font-variant-numeric: tabular-nums; font-size: var(--w-text); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--w-muted); font-size: var(--w-text-sm); margin: 0; }
+.sw { display: inline-block; vertical-align: middle; margin-right: 6px; }
+.sw.bar { width: 10px; height: 10px; border-radius: 2px; background: var(--accent); }
+.sw.line { width: 18px; border-top: 2px solid var(--accent); }
+.sw.mark { width: 18px; border-top: 1.2px dashed var(--mark); }
+
+/* critical: a meter per task. */
+.crit td.n { color: var(--w-muted); width: 2em; }
+.crit .idx { width: 45%; }
+.crit .idxbox { display: flex; align-items: center; gap: var(--w-space-2); min-width: 160px; }
+.meter { flex: 1; height: 8px; border-radius: 99px; background: var(--w-muted-bg); overflow: hidden; }
+.meter span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.crit .pct { width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+
+</style>
+<style>html,body{overflow-x:hidden} body{display:flow-root}</style>
+</head>
+<body>
+<main><i hidden></i><section data-app="export" class="w-card panel">
+<div class="head"><h2>Export</h2><span class="sub" id="sub"></span></div>
+<p class="hint">Percentiles: one row for each percentile from 0 (the fastest trial) to 100 (the slowest), with the date when a start date is set. Criticality: each task's criticality index and estimates. The file names carry the seed, so you can run the same numbers again.</p>
+<div class="btnrow">
+  <button class="w-button" data-size="sm" id="pct" type="button" disabled>Download percentiles (CSV)</button>
+  <button class="w-button" data-variant="outline" data-size="sm" id="crit" type="button" disabled>Download criticality (CSV)</button>
+</div>
+<p class="status" id="note" role="status"></p>
+</section></main>
+<script id="fmt-src">
+/* Fmt: numbers, durations and dates the same way in every part, and a small SVG helper. */
+const Fmt = (() => {
+  'use strict';
+  const UNITS = {days: ['day', 'days'], weeks: ['week', 'weeks'], hours: ['hour', 'hours']};
+  const num = (v, digits = 1) => Number(v).toLocaleString(undefined, {minimumFractionDigits: digits, maximumFractionDigits: digits});
+  const int = v => Math.round(Number(v)).toLocaleString();
+  const unitWord = (unit, v) => (UNITS[unit] || UNITS.days)[Math.abs(v - 1) < 1e-9 ? 0 : 1];
+  const dur = (v, unit, digits = 1) => num(v, digits) + ' ' + unitWord(unit, Number(num(v, digits).replace(/[^\d.-]/g, '')));
+
+  // The calendar date a duration lands on, counted from `start` (YYYY-MM-DD). Days and weeks are
+  // calendar days: weekends and holidays count. Hours have no date.
+  function date(start, v, unit, iso){
+    if (!start || unit === 'hours' || !/^\d{4}-\d{2}-\d{2}$/.test(start)) return '';
+    const days = Math.max(0, Math.ceil(unit === "weeks" ? v * 7 : v) - 1);       // a 1-day task ends on the start day
+    const [y, m, d] = start.split('-').map(Number);
+    const at = new Date(y, m - 1, d + days);
+    if (iso) return at.getFullYear() + '-' + String(at.getMonth() + 1).padStart(2, '0') + '-' + String(at.getDate()).padStart(2, '0');
+    return at.toLocaleDateString(undefined, {weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'});
+  }
+  const pct = (v, digits = 0) => (v * 100).toFixed(digits) + '%';
+  const seconds = ms => ms < 1000 ? Math.max(1, Math.round(ms)) + ' ms' : (ms / 1000).toFixed(1) + ' s';
+  const errText = e => String((e && e.message) || e || 'unknown error');
+
+  const NS = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs, text){
+    const n = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  return Object.freeze({num, int, dur, date, pct, seconds, errText, svg, unitWord});
+})();
+
+</script>
+<script id="project-src">
+/* Project: the task list, checked. Used by `tasks` (to show problems as you type) and by the
+   simulation, inside the worker too (so it has no DOM and no Kernel calls).
+   A task is {id, name, o, m, p, after: [ids]}: optimistic, most likely and pessimistic durations,
+   and the tasks that must finish before it starts. */
+const Project = (() => {
+  'use strict';
+  const MAX_TASKS = 200;
+
+  // A small software release. Durations in days.
+  const SAMPLE = [
+    ['Requirements', 3, 5, 10, []],
+    ['Design', 4, 6, 12, [1]],
+    ['Backend', 8, 12, 25, [2]],
+    ['Frontend', 6, 10, 20, [2]],
+    ['Data migration', 2, 4, 12, [2]],
+    ['Integration', 3, 5, 10, [3, 4, 5]],
+    ['Security review', 2, 3, 8, [3]],
+    ['Testing', 4, 6, 14, [6, 7]],
+    ['User guide', 2, 3, 6, [4]],
+    ['Launch', 1, 1, 3, [8, 9]],
+  ];
+  function sample(){
+    return SAMPLE.map(([name, o, m, p, after], i) => ({id: 't' + (i + 1), name, o, m, p, after: after.map(n => 't' + n)}));
+  }
+
+  /* Checks the list. Returns {ok, problem, rows: [message per task or ''], order: [task indexes,
+     every task after the tasks it waits for]}. */
+  function check(tasks){
+    const rows = tasks.map(() => '');
+    const index = new Map(tasks.map((t, i) => [t.id, i]));
+    if (!tasks.length) return {ok: false, problem: 'Add at least one task.', rows, order: []};
+    if (tasks.length > MAX_TASKS) return {ok: false, problem: 'Use at most ' + MAX_TASKS + ' tasks.', rows, order: []};
+    tasks.forEach((t, i) => {
+      const nums = [t.o, t.m, t.p];
+      if (!nums.every(v => typeof v === 'number' && isFinite(v))) rows[i] = 'Enter all three durations.';
+      else if (t.o < 0) rows[i] = 'Durations cannot be negative.';
+      else if (!(t.o <= t.m && t.m <= t.p)) rows[i] = 'Use optimistic ≤ likely ≤ pessimistic.';
+      else if (t.after.some(id => !index.has(id))) rows[i] = 'It waits for a task that is not in the list.';
+      else if (t.after.includes(t.id)) rows[i] = 'A task cannot wait for itself.';
+    });
+    // Topological order (Kahn). Tasks left over sit on a loop.
+    const waiting = tasks.map(t => t.after.filter(id => index.has(id) && id !== t.id).length);
+    const next = tasks.map(() => []);
+    tasks.forEach((t, i) => t.after.forEach(id => { if (index.has(id) && id !== t.id) next[index.get(id)].push(i); }));
+    const order = [], queue = [];
+    waiting.forEach((w, i) => { if (!w) queue.push(i); });
+    while (queue.length){
+      const i = queue.shift(); order.push(i);
+      for (const j of next[i]) if (--waiting[j] === 0) queue.push(j);
+    }
+    if (order.length < tasks.length){
+      tasks.forEach((t, i) => { if (waiting[i] > 0 && !rows[i]) rows[i] = 'This task is part of a loop: it ends up waiting for itself.'; });
+    }
+    const bad = rows.findIndex(r => r);
+    const problem = bad < 0 ? '' : 'Task ' + (bad + 1) + ' (' + (tasks[bad].name || 'no name') + '): ' + rows[bad];
+    return {ok: bad < 0, problem, rows, order};
+  }
+
+  /* Finish time of the whole project when every task takes `dur(task)`, in the given order. */
+  function finish(tasks, order, dur){
+    const index = new Map(tasks.map((t, i) => [t.id, i]));
+    const end = new Array(tasks.length).fill(0);
+    let last = 0;
+    for (const i of order){
+      let start = 0;
+      for (const id of tasks[i].after) start = Math.max(start, end[index.get(id)]);
+      end[i] = start + dur(tasks[i]);
+      last = Math.max(last, end[i]);
+    }
+    return last;
+  }
+
+  return Object.freeze({sample, check, finish, MAX_TASKS});
+})();
+
+</script>
+<script id="simbar-src">
+/* SimBar: shows the simulation's progress (the sim:progress topic) on a <wardian-progress> bar,
+   with a Stop button. Used by `tasks` and `forecast`, so either panel can stop a run.
+   SimBar.attach(ctx, bar) listens for the bar's Stop and calls sim.cancel; SimBar.show(bar, p)
+   draws one progress message. Where <wardian-progress> is not defined, the element stays plain. */
+const SimBar = (() => {
+  'use strict';
+  const where = p => p.mode === 'main' ? ' on the main thread (workers are blocked here)' : ' in a background worker';
+  function show(bar, p){
+    if (!bar || typeof bar.start !== 'function' || !p) return;
+    const trials = Number(p.trials) || 0, done = Number(p.done) || 0;
+    if (p.state === 'running'){
+      if (bar.hidden || bar.state !== 'running' || bar.dataset.seed !== String(p.seed) || bar.dataset.trials !== String(trials)){
+        bar.start('Simulating ' + Fmt.int(trials) + ' trials', {value: done, max: trials || 1, cancelable: true});
+        bar.dataset.seed = String(p.seed); bar.dataset.trials = String(trials);
+      }
+      bar.update({value: done, detail: Fmt.int(done) + ' of ' + Fmt.int(trials) + ' trials' + where(p) + ' · seed ' + p.seed});
+    } else if (p.state === 'done'){
+      if (bar.hidden) bar.start('', {});
+      bar.done(Fmt.int(trials) + ' trials in ' + Fmt.seconds(p.ms || 0));
+      bar.update({detail: 'Ran' + where(p) + ' · seed ' + p.seed});
+      bar.dataset.seed = '';
+    } else if (p.state === 'stopped'){
+      if (bar.hidden) bar.start('', {});
+      bar.done('Stopped after ' + Fmt.int(done) + ' of ' + Fmt.int(trials) + ' trials');
+      bar.update({detail: 'The results use the trials done so far. Run again for all of them.'});
+      bar.dataset.seed = '';
+    } else if (p.state === 'error'){
+      if (bar.hidden) bar.start('', {});
+      bar.fail('The simulation failed');
+      bar.update({detail: p.error || ''});
+      bar.dataset.seed = '';
+    } else bar.hidden = true;
+  }
+  function attach(ctx, bar, say){
+    if (!bar) return;
+    bar.addEventListener('cancel', () => {
+      ctx.call('sim', 'cancel', {}).catch(e => say && say('Could not stop the run: ' + Fmt.errText(e)));
+    });
+  }
+  return Object.freeze({show, attach});
+})();
+
+</script>
+<script>
+/* snapshot.js: the default rendering of a frame for "Save as web page" (ADR-2610080905).
+   It copies what the frame shows, as HTML and CSS: field values are written into the copy, a canvas
+   or an inline SVG becomes a data: image, and an image from a blob: or the package becomes a data:
+   image. Suite frames get it with the shim, page apps with the small script Wardian adds to them,
+   and Wardian's own page uses it for a module app's cards.
+   The result is not trusted: the host page cleans it before anything goes into the file. */
+const WardianSnapshot = (() => {
+  'use strict';
+  // Never in a copy: code, Arrange's own controls, and panels the viewer hid with Arrange.
+  const DROP = 'script, noscript, template, style, link, meta, iframe, .w-arrange-bar, .w-arrange-btn, .w-arrange-cover, [data-arrange-hidden]';
+  // What an SVG needs to look the same once it is an image and the page's CSS no longer reaches it.
+  const SVG_CSS = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap',
+    'stroke-linejoin', 'opacity', 'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline', 'visibility', 'display', 'color'];
+
+  const asDataUrl = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+  // An image read into a data: URL: by drawing it (works for blob: images in a frame with no
+  // network), else by fetching it (a page app may fetch its own files). null if neither works.
+  async function imageData(img){
+    try {
+      if (img.complete && img.naturalWidth){
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        return c.toDataURL('image/png');
+      }
+    } catch { /* a tainted canvas: try fetching instead */ }
+    try { const r = await fetch(img.currentSrc || img.src); if (r.ok) return await asDataUrl(await r.blob()); } catch { /* no network here */ }
+    return null;
+  }
+  function size(el){ const r = el.getBoundingClientRect(); return {w: Math.round(r.width), h: Math.round(r.height)}; }
+  function imageFor(src, el, alt){
+    const img = document.createElement('img');
+    const {w, h} = size(el);
+    img.src = src;
+    img.alt = alt || '';
+    if (el.getAttribute('class')) img.setAttribute('class', el.getAttribute('class'));
+    // A drawing as wide as its box stays as wide as its box, as the window that opens the file may
+    // be wider; a smaller one keeps its size.
+    const box = el.parentElement, full = box && w >= box.clientWidth - parseFloat(getComputedStyle(box).paddingLeft) - parseFloat(getComputedStyle(box).paddingRight) - 2;
+    img.setAttribute('style', `display:block;width:${full ? '100%' : w + 'px'};max-width:100%;height:auto`);
+    if (w) img.width = w;
+    if (h) img.height = h;
+    return img;
+  }
+  function svgImage(live, copy){
+    const lives = [live, ...live.querySelectorAll('*')], copies = [copy, ...copy.querySelectorAll('*')];
+    lives.forEach((l, i) => {
+      const cs = getComputedStyle(l);
+      copies[i].setAttribute('style', SVG_CSS.map(p => `${p}:${cs.getPropertyValue(p)}`).join(';'));
+    });
+    const {w, h} = size(live);
+    copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    if (w) copy.setAttribute('width', w);
+    if (h) copy.setAttribute('height', h);
+    const text = new XMLSerializer().serializeToString(copy);
+    return imageFor('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(text), live, live.getAttribute('aria-label') || '');
+  }
+
+  /** A copy of `root` with what the viewer sees written in. Resolves to the copied element. */
+  async function copy(root){
+    const out = root.cloneNode(true);
+    const lives = [...root.querySelectorAll('*')], copies = [...out.querySelectorAll('*')];
+    const later = [];
+    lives.forEach((l, i) => {
+      const c = copies[i], tag = l.localName;
+      if (tag === 'input'){
+        const t = (l.type || '').toLowerCase();
+        if (t === 'checkbox' || t === 'radio') c.toggleAttribute('checked', l.checked);
+        else if (t === 'password' || t === 'file') c.removeAttribute('value');
+        else c.setAttribute('value', l.value);
+      } else if (tag === 'textarea') c.textContent = l.value;
+      else if (tag === 'select') [...l.options].forEach((o, k) => c.options[k] && c.options[k].toggleAttribute('selected', o.selected));
+      else if (tag === 'details') c.toggleAttribute('open', l.open);
+      else if (tag === 'canvas'){
+        let src = null;
+        try { src = l.toDataURL('image/png'); } catch { /* drawn from another origin */ }
+        if (src) c.replaceWith(imageFor(src, l, l.getAttribute('aria-label') || ''));
+        else c.replaceWith(Object.assign(document.createElement('p'), {textContent: '(a drawing that could not be copied)'}));
+      } else if (tag === 'svg' && !(l.parentElement && l.parentElement.closest('svg'))){
+        if (!size(l).w) c.remove();
+        else later.push(() => c.replaceWith(svgImage(l, c)));
+      } else if (tag === 'img' && !/^data:image\//i.test(l.getAttribute('src') || '')){
+        later.push(async () => { const d = await imageData(l); if (d) { c.setAttribute('src', d); c.removeAttribute('srcset'); } else c.remove(); });
+      }
+    });
+    // SVGs read their live styles through `l`, so they are swapped after the walk above.
+    for (const fn of later) await fn();
+    out.querySelectorAll(DROP).forEach(e => e.remove());
+    return out;
+  }
+
+  /** The frame's CSS: each <style>, and each stylesheet it can read. Web fonts are left out. */
+  async function styles(){
+    const out = [];
+    for (const s of document.querySelectorAll('style, link[rel~=stylesheet]')){
+      if (s.localName === 'style'){ if (s.id !== 'w-arrange-css') out.push(s.textContent); continue; }
+      if (/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(s.href)) continue;
+      try { out.push([...s.sheet.cssRules].map(r => r.cssText).join('\n')); continue; } catch { /* another origin: fetch it */ }
+      try { const r = await fetch(s.href); if (r.ok) out.push(await r.text()); } catch { /* no network here */ }
+    }
+    return out.join('\n');
+  }
+
+  /** The answer for the host: {html, css}. `custom` is an app's own snapshot result, if any:
+      HTML text or an element, placed inside `root` in place of what it shows. */
+  async function answer(root, custom, withCss){
+    root = root || document.body;
+    let html;
+    if (custom !== null && custom !== undefined){
+      const inner = custom instanceof Element ? (await copy(custom)).outerHTML : String(custom);
+      // Keep the part's root and what is around it (its card, <main>), so its CSS still applies.
+      // Parsed in a <template>, so nothing in it loads or runs here.
+      const t = document.createElement('template');
+      t.innerHTML = inner;
+      let shell = root.cloneNode(false);
+      shell.append(t.content);
+      for (let p = root.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement){
+        const up = p.cloneNode(false); up.append(shell); shell = up;
+      }
+      html = root === document.body ? inner : shell.outerHTML;
+    } else {
+      html = (await copy(document.body)).innerHTML;
+    }
+    return {html, css: withCss ? await styles() : ''};
+  }
+
+  return Object.freeze({copy, styles, answer});
+})();
+
+/* Kernel shim: runs inside one sandboxed app frame and plays the single-file Kernel.
+   An app sees the same Kernel.register(def) and the same ctx as in the one-page build, but every
+   message, call and capability goes to the host kernel through postMessage, which copies the data.
+   The host enforces the contract from suite.json; the checks here only fail fast with a clear message.
+   The frame itself can reach nothing else: the browser blocks the network, the host page and storage. */
+const Kernel = (() => {
+  'use strict';
+  let def = null, contract = null, nextId = 1, root = null, booted = false, appCtx = null;
+  const pending = new Map(), handlers = new Map(), methods = new Map(), chans = new Map();
+  let saved = {};
+  const HOST_CAPS = ['splunk', 'db'];   // capabilities the host provides under their own name (not "claude:…")
+
+  const post = m => parent.postMessage(m, '*');
+  const fault = e => { post({k: 'fault', message: String(e && e.message || e)}); console.error(e); };
+  const safe = fn => { try { const r = fn(); if (r && r.catch) r.catch(fault); } catch (e) { fault(e); } };
+  // Errors outside the kernel's own calls (a typo in app.js, a broken event handler) are faults too.
+  // The browser's ResizeObserver loop notice is not a failure: it says some size notices moved to
+  // the next frame (ADR-2610071110). Every other error is the app's.
+  const NOTICE = /^ResizeObserver loop (completed with undelivered notifications|limit exceeded)/;
+  addEventListener('error', e => { if (!e.error && NOTICE.test(String(e.message || ''))) return; fault(e.error || e.message); });
+  addEventListener('unhandledrejection', e => fault(e.reason));
+  const request = m => new Promise((res, rej) => { const id = nextId++; pending.set(id, {res, rej}); post(Object.assign({id}, m)); });
+
+  function register(d){
+    if (!d || !d.name) throw new Error('app needs a name');
+    if (def) throw new Error('one app per frame');
+    def = d;
+  }
+
+  // The contract an app's code declares must match suite.json, so the two can never drift apart unseen.
+  const shape = c => JSON.stringify({
+    emits: Object.keys(c.emits || {}).sort().map(k => [k, !!(c.emits[k] && c.emits[k].retain)]),
+    listens: (c.listens || []).slice().sort(), provides: (c.provides || []).slice().sort(),
+    needs: (c.needs || []).slice().sort(), caps: (c.caps || []).slice().sort(),
+    channels: [((c.channels || {}).send || []).slice().sort(), ((c.channels || {}).receive || []).slice().sort()]
+  });
+
+  function makeCtx(){
+    const allow = cap => { if (!contract.caps.includes(cap)) throw new Error(def.name + ' did not declare capability "' + cap + '"'); };
+    function emit(topic, payload){
+      if (!Object.hasOwn(contract.emits, topic)) throw new Error(def.name + ' may not emit "' + topic + '" (not in its contract)');
+      post({k: 'emit', topic, payload});
+    }
+    function on(topic, fn){
+      if (!contract.listens.includes(topic)) throw new Error(def.name + ' may not listen to "' + topic + '" (not in its contract)');
+      if (!handlers.has(topic)) handlers.set(topic, []);
+      handlers.get(topic).push(fn);
+      post({k: 'on', topic});
+    }
+    function provide(map){
+      Object.keys(map).forEach(m => {
+        if (!contract.provides.includes(m)) throw new Error(def.name + ' may not provide "' + m + '" (not in its contract)');
+        methods.set(m, map[m]);
+      });
+      post({k: 'provide', methods: Object.keys(map)});
+    }
+    function call(app, method, args){
+      const key = app + '.' + method;
+      if (!contract.needs.includes(key)) return Promise.reject(new Error(def.name + ' may not call "' + key + '" (not in its contract)'));
+      return request({k: 'call', app, method, args});
+    }
+    const store = {
+      get(k){ allow('storage'); return Object.prototype.hasOwnProperty.call(saved, k) ? structuredClone(saved[k]) : null; },
+      set(k, v){ allow('storage'); saved[k] = structuredClone(v); post({k: 'store', key: k, value: v}); }
+    };
+    // Resolves to the capability, or null when this host cannot provide it (the app is told, not broken).
+    async function cap(name){
+      allow(HOST_CAPS.includes(name) ? name : 'claude:' + name);
+      const ops = await request({k: 'cap', name});
+      if (!ops) return null;
+      const out = {};
+      ops.forEach(op => { out[op] = args => request({k: 'capop', name, op, args}); });
+      return name === 'sample' ? sampler(out) : out;
+    }
+    // claude:sample has the Claude viewer's shape: sample(prompt, {signal, onText, modelTier}) resolves
+    // to {text, truncated}; sample.json(prompt, opts) to the parsed JSON. Errors carry e.code.
+    // There is no streaming here: onText is called once, with the whole answer.
+    function sampler(ops){
+      const coded = e => { const m = /^([a-z_]+): ([\s\S]*)$/.exec(String(e && e.message || e)); const err = new Error(m ? m[2] : String(e && e.message || e)); err.code = m ? m[1] : 'error'; return err; };
+      const run = (op, prompt, opts) => new Promise((res, rej) => {
+        const signal = opts && opts.signal;
+        if (signal && signal.aborted) return rej(Object.assign(new Error('cancelled'), {code: 'cancelled'}));
+        if (signal) signal.addEventListener('abort', () => rej(Object.assign(new Error('cancelled'), {code: 'cancelled'})), {once: true});
+        ops[op]({prompt: String(prompt), tier: opts && opts.modelTier === 'quick' ? 'quick' : ''}).then(res, e => rej(coded(e)));
+      });
+      const sample = (prompt, opts) => run('text', prompt, opts).then(r => {
+        if (opts && typeof opts.onText === 'function') try { opts.onText({text: r.text}); } catch (e) { fault(e); }
+        return {text: r.text, truncated: !!r.truncated};
+      });
+      sample.json = (prompt, opts) => run('json', prompt, opts);
+      return sample;
+    }
+    // A channel to other packages. The kernel asks the user the first time; send() and on()
+    // reject if the answer is no. on(fn) calls fn(data, {from, at}).
+    function channel(name){
+      const decl = contract.channels || {send: [], receive: []};
+      return Object.freeze({
+        send(data){
+          if (!decl.send.includes(name)) return Promise.reject(new Error(def.name + ' may not send on channel "' + name + '" (not in its contract)'));
+          return request({k: 'chsend', channel: name, data});
+        },
+        on(fn){
+          if (!decl.receive.includes(name)) return Promise.reject(new Error(def.name + ' may not receive on channel "' + name + '" (not in its contract)'));
+          if (!chans.has(name)) chans.set(name, []);
+          chans.get(name).push(fn);
+          return request({k: 'chon', channel: name});
+        },
+      });
+    }
+    // cb runs on the next animation frame, at most once per frame, so a redraw that changes the
+    // size cannot feed back into the same frame's notices.
+    function observe(el, cb){
+      if (typeof ResizeObserver === 'undefined') return;
+      let queued = false;
+      new ResizeObserver(entries => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; safe(() => cb(entries)); });
+      }).observe(el);
+    }
+    // The bytes of a file in this suite's package, fetched by the kernel (the frame itself has no network).
+    function asset(path){ allow('asset'); return request({k: 'asset', path}); }
+    function source(id){ allow('source'); const el = document.getElementById(id); return el ? el.textContent : ''; }
+    function spawn(code){
+      allow('worker');
+      try { return new Worker(URL.createObjectURL(new Blob([code], {type: 'text/javascript'}))); } catch (e) { return null; }
+    }
+    return Object.freeze({
+      name: def.name, root,
+      $: s => root.querySelector(s), $$: s => Array.from(root.querySelectorAll(s)),
+      el: tag => document.createElement(tag), text: s => document.createTextNode(s),
+      emit, on, provide, call, store, cap, asset, channel, observe, source, spawn
+    });
+  }
+
+  addEventListener('message', e => {
+    if (e.source !== parent) return;
+    const m = e.data || {};
+    if (m.k === 'boot' && !booted){
+      booted = true;
+      contract = m.contract; saved = m.store || {};
+      if (!def) return fault('no app registered in this frame');
+      if (shape(def) !== shape(contract)) return fault(def.name + ': the contract in app.js differs from suite.json, so the app was not started');
+      appCtx = makeCtx();
+      safe(() => def.init(appCtx));
+    } else if (m.k === 'msg'){
+      (handlers.get(m.topic) || []).forEach(fn => safe(() => fn(m.payload)));
+    } else if (m.k === 'invoke'){
+      const fn = methods.get(m.method);
+      Promise.resolve()
+        .then(() => { if (!fn) throw new Error(m.method + ' is not provided'); return fn(m.args); })
+        .then(value => post({k: 'result', id: m.id, ok: true, value}),
+              err => post({k: 'result', id: m.id, ok: false, error: String(err && err.message || err)}));
+    } else if (m.k === 'chmsg'){
+      (chans.get(m.channel) || []).forEach(fn => safe(() => fn(m.data, {from: m.from, at: m.at})));
+    } else if (m.k === 'snapshot'){
+      // Save as web page (ADR-2610080905): the app's own snapshot(ctx) if it has one, else a copy
+      // of what the frame shows. If its own fails, the copy is used instead.
+      (async () => {
+        let custom = null;
+        if (def && appCtx && typeof def.snapshot === 'function'){
+          try { custom = await def.snapshot(appCtx); } catch (e) { console.error(e); custom = null; }
+        }
+        const r = await WardianSnapshot.answer(root, custom, !!m.css);
+        post({k: 'snapshot', id: m.id, html: r.html, css: r.css});
+      })().catch(e => post({k: 'snapshot', id: m.id, error: String(e && e.message || e)}));
+    } else if (m.k === 'reply'){
+      const p = pending.get(m.id); if (!p) return;
+      pending.delete(m.id);
+      if (m.ok) p.res(m.value); else p.rej(new Error(m.error));
+    }
+  });
+
+  // The host sizes each frame to its content; a hidden root collapses the frame.
+  function reportSize(){
+    const h = root && root.hidden ? 0 : Math.ceil(document.body.getBoundingClientRect().height);
+    post({k: 'size', h, bg: getComputedStyle(document.body).backgroundColor});
+  }
+
+  function start(){
+    root = document.querySelector('[data-app]') || document.body;
+    new ResizeObserver(reportSize).observe(document.body);
+    new MutationObserver(reportSize).observe(root, {attributes: true, attributeFilter: ['hidden']});
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', reportSize);
+    post({k: 'hello', app: def ? def.name : null});
+  }
+  return Object.freeze({register, start});
+})();
+
+/* <wardian-progress>: the standard progress bar for Wardian apps.
+   Wardian puts it in every suite frame and in /sdk/wardian.js, so an app only writes the tag:
+
+     <wardian-progress label="Searching Splunk" elapsed></wardian-progress>
+
+   Without a value it shows work of unknown length (a moving stripe); with one it fills. From script:
+
+     const bar = ctx.$('wardian-progress');
+     bar.start('Searching Splunk');            // shows it, unknown length, starts the clock
+     bar.update({value: 2, max: 4, label: 'Step 2 of 4: reading fields'});
+     bar.done('8 rows');                        // or bar.fail('Search failed'); bar.hidden = true hides it
+
+   Attributes: label, detail, value, max (default 100), elapsed (show a running clock),
+   cancelable (show a Stop button; the element fires a "cancel" event), state (running|done|error).
+   Colours: set --wardian-progress-color, --wardian-progress-track, --wardian-progress-error on it or a parent.
+   It is a progressbar for screen readers, and it stops moving when the viewer asks for reduced motion. */
+(() => {
+  'use strict';
+  if (typeof customElements === 'undefined' || customElements.get('wardian-progress')) return;
+
+  const CSS = `
+    :host { display: block; margin: 10px 0; font-size: 13px; line-height: 1.4;
+      --c: var(--wardian-progress-color, #2f6f63); --t: var(--wardian-progress-track, rgba(127,127,127,.22));
+      --e: var(--wardian-progress-error, #b4531a); }
+    @media (prefers-color-scheme: dark) {
+      :host { --c: var(--wardian-progress-color, #6cbfad); --e: var(--wardian-progress-error, #f0a46c); } }
+    :host([hidden]) { display: none; }
+    .top { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; margin-bottom: 5px; }
+    .label { font-weight: 600; overflow-wrap: anywhere; }
+    .meta { opacity: .75; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .track { position: relative; height: 8px; border-radius: 99px; background: var(--t); overflow: hidden; }
+    .fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: var(--c); transition: width .25s ease; }
+    :host([data-unknown]) .fill { width: 35%; animation: slide 1.4s ease-in-out infinite; }
+    :host([state="done"]) .fill { width: 100%; animation: none; }
+    :host([state="error"]) .fill { width: 100%; animation: none; background: var(--e); }
+    :host([state="error"]) .label { color: var(--e); }
+    @keyframes slide { 0% { left: -35%; } 100% { left: 100%; } }
+    @media (prefers-reduced-motion: reduce) {
+      .fill { transition: none; }
+      :host([data-unknown]) .fill { animation: none; left: 0; width: 100%; opacity: .45; } }
+    .bottom { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-top: 5px; }
+    .detail { opacity: .75; overflow-wrap: anywhere; }
+    .detail:empty { display: none; }
+    button { font: inherit; font-size: 12px; cursor: pointer; border-radius: 6px; padding: 2px 10px; margin-left: auto;
+      border: 1px solid var(--t); background: transparent; color: inherit; }
+    button[hidden] { display: none; }
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }`;
+
+  const clock = ms => {
+    const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0');
+    return h ? h + ':' + String(m).padStart(2, '0') + ':' + ss : m + ':' + ss;
+  };
+  const num = v => v === null || v === undefined || v === '' ? null : (isFinite(Number(v)) ? Number(v) : null);
+
+  class WardianProgress extends HTMLElement {
+    static get observedAttributes(){ return ['label', 'detail', 'value', 'max', 'elapsed', 'cancelable', 'state']; }
+
+    constructor(){
+      super();
+      const root = this.attachShadow({mode: 'open'});
+      root.innerHTML = '<style>' + CSS + '</style>' +
+        '<div class="top"><span class="label" part="label"></span><span class="meta" part="meta"></span></div>' +
+        '<div class="track" part="track"><div class="fill" part="fill"></div></div>' +
+        '<div class="bottom"><span class="detail" part="detail"></span><button type="button" hidden>Stop</button></div>' +
+        '<span class="sr" aria-live="polite"></span>';
+      this._q = s => root.querySelector(s);
+      this._q('button').addEventListener('click', () => this.dispatchEvent(new Event('cancel', {bubbles: true})));
+      this._began = 0; this._timer = null;
+    }
+
+    connectedCallback(){
+      this.setAttribute('role', 'progressbar');
+      this.setAttribute('aria-valuemin', '0');
+      if (this.hasAttribute('elapsed') && !this._began && this.state === 'running') this._clock(true);
+      this._paint();
+    }
+    disconnectedCallback(){ this._clock(false); }
+    attributeChangedCallback(){ this._paint(); }
+
+    get label(){ return this.getAttribute('label') || ''; }
+    set label(v){ this.setAttribute('label', String(v)); }
+    get detail(){ return this.getAttribute('detail') || ''; }
+    set detail(v){ this.setAttribute('detail', String(v)); }
+    /** The amount done, from 0 to max, or null when the length of the work is unknown. */
+    get value(){ return num(this.getAttribute('value')); }
+    set value(v){ if (num(v) === null) this.removeAttribute('value'); else this.setAttribute('value', String(num(v))); }
+    get max(){ const m = num(this.getAttribute('max')); return m && m > 0 ? m : 100; }
+    set max(v){ this.setAttribute('max', String(v)); }
+    get state(){ const s = this.getAttribute('state'); return s === 'done' || s === 'error' ? s : 'running'; }
+    /** Seconds since start(), or since the element appeared with the elapsed attribute. */
+    get seconds(){ return this._began ? Math.round(((this._ended || Date.now()) - this._began) / 1000) : 0; }
+
+    /** Shows the bar, clears the old result, and starts the clock. */
+    start(label, opts){
+      const o = opts || {};
+      this.hidden = false;
+      this.removeAttribute('state');
+      if (label !== undefined) this.label = label;
+      this.detail = o.detail || '';
+      if (o.max !== undefined) this.max = o.max;
+      this.value = o.value === undefined ? null : o.value;
+      if (o.elapsed !== false) this.setAttribute('elapsed', '');
+      this.toggleAttribute('cancelable', !!o.cancelable);
+      this._clock(true);
+      return this;
+    }
+    /** Changes any of value, max, label, detail. A value of null means "length unknown". */
+    update(o){
+      if (!o || typeof o !== 'object') { this.value = o; return this; }
+      if (o.max !== undefined) this.max = o.max;
+      if (o.value !== undefined) this.value = o.value;
+      if (o.label !== undefined) this.label = o.label;
+      if (o.detail !== undefined) this.detail = o.detail;
+      return this;
+    }
+    done(label){ return this._finish('done', label); }
+    fail(label){ return this._finish('error', label); }
+
+    _finish(state, label){
+      this._clock(false, true);
+      this.removeAttribute('cancelable');
+      if (label !== undefined) this.label = label;
+      this.setAttribute('state', state);
+      this._q('.sr').textContent = this.label;       // announce the end, not every tick
+      return this;
+    }
+    _clock(on, keep){
+      clearInterval(this._timer); this._timer = null;
+      if (on){ this._began = Date.now(); this._ended = 0; this._timer = setInterval(() => this._paint(), 1000); }
+      else if (keep && this._began) this._ended = Date.now();
+    }
+    _paint(){
+      if (!this._q) return;
+      const v = this.value, max = this.max, unknown = v === null && this.state === 'running';
+      const pct = v === null ? null : Math.max(0, Math.min(100, v / max * 100));
+      this.toggleAttribute('data-unknown', unknown);
+      this._q('.fill').style.width = unknown || this.state !== 'running' ? '' : pct + '%';
+      this._q('.label').textContent = this.label;
+      this._q('.detail').textContent = this.detail;
+      this._q('button').hidden = !this.hasAttribute('cancelable') || this.state !== 'running';
+      const time = this.hasAttribute('elapsed') && this._began ? clock((this._ended || Date.now()) - this._began) : '';
+      const share = pct === null || this.state !== 'running' ? '' : Math.floor(pct) + '%';
+      this._q('.meta').textContent = [share, time].filter(Boolean).join(' · ');
+      this.setAttribute('aria-label', this.label || 'Progress');
+      this.setAttribute('aria-valuemax', String(max));
+      if (pct === null || this.state !== 'running') this.removeAttribute('aria-valuenow');
+      else this.setAttribute('aria-valuenow', String(Math.min(max, Math.max(0, v))));
+      this.setAttribute('aria-busy', String(this.state === 'running'));
+      this.setAttribute('aria-valuetext', [this.label, share, this.state === 'running' ? '' : this.state].filter(Boolean).join(', '));
+    }
+  }
+  customElements.define('wardian-progress', WardianProgress);
+})();
+
+</script>
+<script id="app-src">
+/* export: saves the latest result as CSV through the host's download capability: the
+   percentiles of the finish time, and each task's criticality index.
+   Listens: sim:result.  Capabilities: claude:downloads. */
+Kernel.register({
+  name: 'export',
+  listens: ['sim:result'],
+  caps: ['claude:downloads'],
+  init(ctx){
+    const $ = ctx.$, note = t => { $('#note').textContent = t; };
+    let r = null, downloads = null;
+    const cell = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const line = vs => vs.map(cell).join(',');
+    const round = v => Math.round(v * 1000) / 1000;
+    function sync(){
+      const ok = !!(r && r.ok && downloads);
+      $('#pct').disabled = !ok; $('#crit').disabled = !ok;
+      $('#sub').textContent = r && r.ok ? Fmt.int(r.done) + ' trials · seed ' + r.seed : '';
+      if (!downloads) note('Downloads are not available in this host.');
+    }
+    async function save(name, lines){
+      const filename = name + '-seed-' + r.seed + '-' + r.done + '-trials.csv';
+      try { await downloads.save({filename, data: lines.join('\n') + '\n'}); note('Saved ' + filename + '.'); }
+      catch (e){ note('Could not save the file: ' + Fmt.errText(e)); }
+    }
+    $('#pct').addEventListener('click', () => {
+      const dated = !!Fmt.date(r.start, 0, r.unit);
+      const lines = [line(['percentile', r.unit].concat(dated ? ['date'] : []))];
+      r.pct.forEach((v, q) => lines.push(line([q, round(v)].concat(dated ? [Fmt.date(r.start, v, r.unit, true)] : []))));
+      save('finish-percentiles', lines);
+    });
+    $('#crit').addEventListener('click', () => {
+      const lines = [line(['task', 'name', 'criticality_index', 'best_' + r.unit, 'likely_' + r.unit, 'worst_' + r.unit])];
+      r.crit.forEach(t => lines.push(line([t.num, t.name, round(t.index), t.o, t.m, t.p])));
+      save('criticality', lines);
+    });
+    ctx.cap('downloads').then(d => { downloads = d; sync(); }).catch(() => sync());
+    ctx.on('sim:result', p => { r = p; note(''); sync(); });
+  }
+});
+
+</script>
+<script>Kernel.start();</script>
+</body>
+</html>

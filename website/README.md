@@ -9,11 +9,11 @@ host or its app UI.
 | `docs/` | the documentation site | written by `wardian docs website` |
 | `schemas/` | the JSON Schemas for `app.json` and `suite.json` | written by `wardian docs website` |
 | `ui/` | the component gallery and its files | written by `wardian docs website` |
-| `apps/`, `docs/try/` | the example apps that run in the browser, and a form page for each module | written by `wardian docs website` |
+| `apps/`, `docs/try/`, `run/`, `frame/`, `state.js`, `channels.js` | the example apps that run in the browser: their files, a form page for each module, and each suite's kernel page and frames | written by `wardian docs website` |
 | `downloads/` | a zip of every example app, to import in Wardian | written by `wardian docs website` |
 | `vercel.json` | the headers sent with the apps: no request leaves the website | written by `wardian docs website` |
 
-Do not edit `docs/`, `schemas/`, `ui/`, `apps/`, `downloads/` or `vercel.json` by hand. Change the Markdown (`docs/site/*.md`, GUIDE.md,
+Do not edit `docs/`, `schemas/`, `ui/`, `apps/`, `run/`, `frame/`, `downloads/`, `state.js`, `channels.js` or `vercel.json` by hand. Change the Markdown (`docs/site/*.md`, GUIDE.md,
 SPEC.md, CHANGELOG.md) and run `wardian docs website` from the repository root. The test
 `docs_website_copy_is_fresh` fails when these folders are out of date (ADR-2610080903).
 

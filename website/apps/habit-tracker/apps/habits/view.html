@@ -1,0 +1,16 @@
+<h2>Your habits</h2>
+<ol class="habits" id="list" aria-label="Habits"></ol>
+<div class="empty" id="empty" hidden>
+  <p>No habits yet. Add one below.</p>
+  <button class="w-button" data-variant="outline" data-size="sm" id="examples" type="button">Add three examples</button>
+</div>
+<form id="add" class="add" novalidate>
+  <div class="w-field">
+    <label class="w-label" for="name">New habit</label>
+    <input class="w-input" id="name" maxlength="60" autocomplete="off" placeholder="For example: Read 20 pages">
+  </div>
+  <fieldset class="palette-field"><legend class="w-label">Colour</legend><div id="palette"></div></fieldset>
+  <button class="w-button" id="addBtn" type="submit">Add habit</button>
+</form>
+<p class="note" id="note" role="status"></p>
+<p class="w-hint">Saved in this Wardian. Use <b>Backup</b> to keep a copy of everything.</p>
