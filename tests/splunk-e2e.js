@@ -71,6 +71,7 @@ async function answer(page, re, yes, what) {
     const st = await c.evaluate(() => ({sub: (document.querySelector('#chartSub') || {}).textContent, chart: (document.querySelector('#chart') || {}).innerHTML?.slice(0, 200), width: (document.querySelector('#chart') || {}).clientWidth})).catch(e => ({error: String(e)}));
     console.log('    chart: ' + JSON.stringify(st));
     console.log('    lab said: ' + (labSaid.slice(-15).join(' | ') || 'nothing'));
+    console.log('    lab kernel: ' + JSON.stringify(await lab.evaluate(() => ({started: Kernel.started(), faults: Kernel.faults().slice(-5), visible: document.visibilityState})).catch(e => String(e))));
   };
 
   console.log('== the table app asks before it searches');
@@ -141,6 +142,7 @@ async function answer(page, re, yes, what) {
   ok(await inputs.locator('#colN').inputValue() === 'concurrency' && await inputs.locator('#colX').inputValue() === 'x' && await inputs.locator('#colR').inputValue() === 'r', 'the first three columns are suggested');
   await useTable(inputs);
   // Wait for the chart rather than a fixed time: Playwright's headless Chromium can take longer.
+  await lab.bringToFront();                           // a background tab may pause its frames on Linux
   // The lab's engine fits first: seconds here, up to a minute on GitHub's two-core runners.
   await frameOf(lab, 'chart').locator('#chart circle.pt').nth(7).waitFor({ timeout: 60000 }).catch(() => {});
   await sleep(500);
@@ -164,6 +166,7 @@ async function answer(page, re, yes, what) {
   ok(await inputs.locator('#colN').inputValue() === 'n' && await inputs.locator('#colR').inputValue() === 'r', 'the lab picks n, x, r');
   await useTable(inputs); await sleep(1500);
   ok(await inputs.locator('#nUnit').inputValue() === 'requests in progress', 'and the units');
+  await lab.bringToFront();
   await frameOf(lab, 'chart').locator('#about', { hasText: 'Requests in production' }).waitFor({ timeout: 60000 }).catch(() => {});
   aboutText = await frameOf(lab, 'chart').locator('#about').textContent();
   ok(/Requests in production/.test(aboutText) && /Little's Law/.test(aboutText) && /Last 7 days/.test(aboutText), 'the traffic data is labelled');
