@@ -11,10 +11,15 @@ services:
       # Optional: start on a Drive folder without using Settings.
       GDRIVE_FOLDER_ID: "${GDRIVE_FOLDER_ID:-}"
       REFRESH_SECS: "60"
+      # The master key that seals saved keys (ADR-2610081501), on its own volume: a copy of
+      # the data volume alone holds no readable key. Wardian makes it on the first start.
+      WARDIAN_MASTER_KEY_FILE: /keys/master.key
     volumes:
-      - data:/data            # saved settings and the uploaded key
+      - data:/data            # saved settings and the uploaded key, sealed
+      - keys:/keys            # the master key; back it up apart from data
     read_only: true
     mem_limit: 256m
 
 volumes:
   data:
+  keys:

@@ -2241,6 +2241,236 @@ fn keys_an_environment_key_is_not_removed_and_keeps_its_test() {
     let _ = fs::remove_dir_all(base);
 }
 
+/// On an address other machines can reach, a saved admin token cannot be removed, so the list
+/// does not offer to remove it.
+#[test]
+fn keys_a_public_admin_token_is_not_shown_as_removable() {
+    use crate::ports::service::Keys;
+    use crate::usecases::keys::{AdminGate, Keyring};
+    let base = tmp("keys-public-admin");
+    fs::create_dir_all(&base).unwrap();
+    let (secrets, checks) = key_stores(&base);
+    let admin = Arc::new(AdminGate::load(Arc::clone(&secrets), &base, None, true).unwrap());
+    let keyring = Keyring::new(Vec::new(), admin, checks, secrets);
+    keyring.set_admin_token(&serde_json::json!({ "token": "a".repeat(24) })).unwrap();
+    let list = keyring.list();
+    let entry = list["keys"].as_array().unwrap().iter().find(|k| k["id"] == "admin").unwrap().clone();
+    assert_eq!(entry["from"], "settings", "{entry}");
+    assert!(keyring.remove("admin").is_err(), "a public Wardian keeps its admin token");
+    assert_eq!(entry["removable"], false, "the list offers a remove that always fails: {entry}");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// A key owner whose saved key is removed and then a later step fails, as Drive's does when it
+/// cannot switch to the local apps.
+struct FailsAfterRemoving;
+
+impl crate::usecases::keys::KeyOwner for FailsAfterRemoving {
+    fn entries(&self) -> Vec<crate::usecases::keys::KeyEntry> {
+        vec![crate::usecases::keys::KeyEntry { id: "drive", name: "Google service account", from: None, detail: String::new(), error: None }]
+    }
+    fn retest(&self, id: &str) -> Option<Result<(), String>> { (id == "drive").then_some(Ok(())) }
+    fn forget(&self, id: &str) -> Option<Result<(), String>> {
+        (id == "drive").then(|| Err("switching to the local apps failed".into()))
+    }
+}
+
+/// The check record describes the key that is there now: when an owner's forget fails after it
+/// removed the saved key, the last test of that key goes too.
+#[test]
+fn keys_a_failed_forget_still_drops_the_removed_keys_test() {
+    use crate::ports::service::Keys;
+    use crate::usecases::keys::{AdminGate, Keyring};
+    let base = tmp("keys-forget-fails");
+    fs::create_dir_all(&base).unwrap();
+    let (secrets, checks) = key_stores(&base);
+    checks.record::<()>("drive", &Ok(()));
+    let admin = Arc::new(AdminGate::load(Arc::clone(&secrets), &base, None, false).unwrap());
+    let keyring = Keyring::new(vec![Arc::new(FailsAfterRemoving)], admin, Arc::clone(&checks), secrets);
+    let e = keyring.remove("drive").unwrap_err();
+    assert!(e.contains("local apps"), "{e}");
+    assert_eq!(checks.last("drive"), Value::Null, "the key is gone, so its test is gone");
+    assert_eq!(keyring.list()["keys"][0]["check"], Value::Null);
+    let _ = fs::remove_dir_all(base);
+}
+
+/// A key owner whose test pauses, after it starts, until the key is removed or 300 ms pass; then it
+/// records a pass.
+struct PausingTest {
+    checks: Arc<crate::usecases::keys::KeyChecks>,
+    started: std::sync::Mutex<std::sync::mpsc::Sender<()>>,
+    forgot: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+    forgetting: std::sync::Mutex<std::sync::mpsc::Sender<()>>,
+}
+
+impl crate::usecases::keys::KeyOwner for PausingTest {
+    fn entries(&self) -> Vec<crate::usecases::keys::KeyEntry> {
+        vec![crate::usecases::keys::KeyEntry { id: "splunk", name: "Splunk account", from: Some("settings"), detail: String::new(), error: None }]
+    }
+    fn retest(&self, id: &str) -> Option<Result<(), String>> {
+        (id == "splunk").then(|| {
+            let _ = self.started.lock().unwrap().send(());
+            let _ = self.forgot.lock().unwrap().recv_timeout(std::time::Duration::from_millis(300));
+            let out = Ok(());
+            self.checks.record("splunk", &out);
+            out
+        })
+    }
+    fn forget(&self, id: &str) -> Option<Result<(), String>> {
+        (id == "splunk").then(|| {
+            let _ = self.forgetting.lock().unwrap().send(());
+            Ok(())
+        })
+    }
+}
+
+/// A test that is still running when its key is removed leaves no last test, now or after a restart.
+#[test]
+fn keys_a_test_running_when_its_key_is_removed_leaves_no_test() {
+    use crate::ports::service::Keys;
+    use crate::usecases::keys::{AdminGate, KeyChecks, Keyring};
+    let base = tmp("keys-test-remove-race");
+    fs::create_dir_all(&base).unwrap();
+    let (secrets, checks) = key_stores(&base);
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (forgot_tx, forgot_rx) = std::sync::mpsc::channel();
+    let owner = Arc::new(PausingTest {
+        checks: Arc::clone(&checks),
+        started: std::sync::Mutex::new(started_tx),
+        forgot: std::sync::Mutex::new(forgot_rx),
+        forgetting: std::sync::Mutex::new(forgot_tx),
+    });
+    let admin = Arc::new(AdminGate::load(Arc::clone(&secrets), &base, None, false).unwrap());
+    let keyring = Arc::new(Keyring::new(vec![owner], admin, Arc::clone(&checks), secrets));
+    let test = {
+        let keyring = Arc::clone(&keyring);
+        std::thread::spawn(move || keyring.test("splunk").unwrap())
+    };
+    started_rx.recv().unwrap();
+    let remove = {
+        let keyring = Arc::clone(&keyring);
+        std::thread::spawn(move || keyring.remove("splunk").unwrap())
+    };
+    test.join().unwrap();
+    remove.join().unwrap();
+    assert_eq!(checks.last("splunk"), Value::Null, "the key is gone, so its test is gone");
+    assert_eq!(KeyChecks::new(Arc::new(LocalDisk), &base).last("splunk"), Value::Null, "and stays gone after a restart");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// A key-checks.json that cannot be read is moved aside, not written over by the next test.
+#[test]
+fn keys_an_unreadable_record_of_tests_is_kept() {
+    use crate::usecases::keys::KeyChecks;
+    let base = tmp("keys-checks-unreadable");
+    fs::create_dir_all(&base).unwrap();
+    let file = base.join("key-checks.json");
+    fs::write(&file, b"{\"splunk\": {\"ok\": true, ").unwrap();
+    let checks = KeyChecks::new(Arc::new(LocalDisk), &base);
+    checks.record::<()>("aws", &Ok(()));
+    assert_eq!(fs::read(base.join("key-checks.json.unreadable")).unwrap(), b"{\"splunk\": {\"ok\": true, ", "the old record is kept");
+    assert_eq!(KeyChecks::new(Arc::new(LocalDisk), &base).last("aws")["ok"], true, "and new tests are saved");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// Secrets kept in memory, where writing a token that starts with "a" pauses after the write until
+/// the next save is done, or 300 ms pass.
+struct PausingSecrets {
+    file: std::sync::Mutex<Option<Vec<u8>>>,
+    wrote: std::sync::Mutex<std::sync::mpsc::Sender<()>>,
+    next_done: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+}
+
+impl crate::ports::secrets::Secrets for PausingSecrets {
+    fn read(&self, _: &Path) -> Result<Option<Vec<u8>>, String> { Ok(self.file.lock().unwrap().clone()) }
+    fn write(&self, _: &Path, bytes: &[u8]) -> Result<(), String> {
+        *self.file.lock().unwrap() = Some(bytes.to_vec());
+        if bytes.starts_with(b"a") {
+            let _ = self.wrote.lock().unwrap().send(());
+            let _ = self.next_done.lock().unwrap().recv_timeout(std::time::Duration::from_millis(300));
+        }
+        Ok(())
+    }
+    fn remove(&self, _: &Path) { *self.file.lock().unwrap() = None; }
+    fn new_token(&self) -> String { unreachable!() }
+    fn describe(&self) -> Value { Value::Null }
+}
+
+/// Two admin tokens saved at once: the token Wardian accepts now is the one it accepts after a
+/// restart.
+#[test]
+fn keys_two_admin_tokens_saved_at_once_leave_one_token() {
+    use crate::ports::service::Keys;
+    use crate::usecases::keys::{AdminGate, Keyring};
+    let base = tmp("keys-admin-race");
+    fs::create_dir_all(&base).unwrap();
+    let (wrote_tx, wrote_rx) = std::sync::mpsc::channel();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let secrets = Arc::new(PausingSecrets {
+        file: std::sync::Mutex::new(None),
+        wrote: std::sync::Mutex::new(wrote_tx),
+        next_done: std::sync::Mutex::new(done_rx),
+    });
+    let (_, checks) = key_stores(&base);
+    let admin = Arc::new(AdminGate::load(secrets.clone(), &base, None, false).unwrap());
+    let keyring = Arc::new(Keyring::new(Vec::new(), admin, checks, secrets.clone()));
+    let (a, b) = ("a".repeat(24), "b".repeat(24));
+    let first = {
+        let (keyring, a) = (Arc::clone(&keyring), a.clone());
+        std::thread::spawn(move || keyring.set_admin_token(&serde_json::json!({ "token": a })).unwrap())
+    };
+    wrote_rx.recv().unwrap();
+    let second = {
+        let (keyring, b) = (Arc::clone(&keyring), b.clone());
+        std::thread::spawn(move || {
+            keyring.set_admin_token(&serde_json::json!({ "token": b })).unwrap();
+            let _ = done_tx.send(());
+        })
+    };
+    first.join().unwrap();
+    second.join().unwrap();
+    let on_disk = String::from_utf8(secrets.file.lock().unwrap().clone().unwrap()).unwrap();
+    assert_eq!(keyring.admin_token(), Some(on_disk), "the running token and the saved one differ");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// An admin token saved while it is removed: the token Wardian accepts now is the one it accepts
+/// after a restart, whichever finishes last.
+#[test]
+fn keys_admin_token_saved_while_removed_leaves_memory_and_file_the_same() {
+    use crate::ports::service::Keys;
+    use crate::usecases::keys::{AdminGate, Keyring};
+    let base = tmp("keys-admin-set-forget-race");
+    fs::create_dir_all(&base).unwrap();
+    let (wrote_tx, wrote_rx) = std::sync::mpsc::channel();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let secrets = Arc::new(PausingSecrets {
+        file: std::sync::Mutex::new(None),
+        wrote: std::sync::Mutex::new(wrote_tx),
+        next_done: std::sync::Mutex::new(done_rx),
+    });
+    let (_, checks) = key_stores(&base);
+    let admin = Arc::new(AdminGate::load(secrets.clone(), &base, None, false).unwrap());
+    let keyring = Arc::new(Keyring::new(Vec::new(), admin, checks, secrets.clone()));
+    let setter = {
+        let keyring = Arc::clone(&keyring);
+        std::thread::spawn(move || keyring.set_admin_token(&serde_json::json!({ "token": "a".repeat(24) })).unwrap())
+    };
+    wrote_rx.recv().unwrap();
+    let remover = {
+        let keyring = Arc::clone(&keyring);
+        std::thread::spawn(move || {
+            keyring.remove("admin").unwrap();
+            let _ = done_tx.send(());
+        })
+    };
+    setter.join().unwrap();
+    remover.join().unwrap();
+    let on_disk = secrets.file.lock().unwrap().clone().map(|b| String::from_utf8(b).unwrap());
+    assert_eq!(keyring.admin_token(), on_disk, "the running token and the saved one differ");
+    let _ = fs::remove_dir_all(base);
+}
+
 /// A Google that accepts any key and serves one empty folder, so Drive can be the app source.
 struct DriveWithFolder;
 
@@ -2290,5 +2520,49 @@ fn keys_removing_the_drive_key_while_serving_drive_serves_local_apps() {
     assert_eq!(Catalog::status(&hub)["source"], "local", "the source is local again");
     let saved: Value = serde_json::from_slice(&fs::read(data.join("config.json")).unwrap()).unwrap();
     assert_eq!(saved["source"], "local", "and the choice is saved, so a restart serves local apps too");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// An admin token file that is there but cannot be read stops startup: Wardian never starts with
+/// no admin token because the one it was given could not be read. A folder in its place cannot
+/// be read, even by root.
+#[test]
+fn keys_an_unreadable_admin_token_stops_startup() {
+    use crate::usecases::keys::AdminGate;
+    let base = tmp("keys-admin-unreadable");
+    fs::create_dir_all(base.join("admin-token")).unwrap();
+    let (secrets, _) = key_stores(&base);
+    let e = AdminGate::load(secrets, &base, None, false).err().expect("an unreadable admin token must stop startup");
+    assert!(e.contains("cannot be read"), "{e}");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// Secrets kept in memory whose remove leaves the file there, as an unlink refused by the disk does.
+struct StuckSecrets(std::sync::Mutex<Option<Vec<u8>>>);
+
+impl crate::ports::secrets::Secrets for StuckSecrets {
+    fn read(&self, _: &Path) -> Result<Option<Vec<u8>>, String> { Ok(self.0.lock().unwrap().clone()) }
+    fn write(&self, _: &Path, bytes: &[u8]) -> Result<(), String> { *self.0.lock().unwrap() = Some(bytes.to_vec()); Ok(()) }
+    fn remove(&self, _: &Path) {}
+    fn new_token(&self) -> String { unreachable!() }
+    fn describe(&self) -> Value { Value::Null }
+}
+
+/// An admin token whose file cannot be removed: Remove says so, and the token stays in force, as it
+/// will after a restart.
+#[test]
+fn keys_admin_token_that_cannot_be_removed_is_an_error() {
+    use crate::ports::service::Keys;
+    use crate::usecases::keys::{AdminGate, Keyring};
+    let base = tmp("keys-admin-stuck");
+    fs::create_dir_all(&base).unwrap();
+    let token = "a".repeat(24);
+    let secrets = Arc::new(StuckSecrets(std::sync::Mutex::new(Some(token.clone().into_bytes()))));
+    let (_, checks) = key_stores(&base);
+    let admin = Arc::new(AdminGate::load(secrets.clone(), &base, None, false).unwrap());
+    let keyring = Keyring::new(Vec::new(), admin, checks, secrets);
+    let e = keyring.remove("admin").err().expect("a token still on disk must not be reported as removed");
+    assert!(e.contains("admin token"), "{e}");
+    assert_eq!(keyring.admin_token(), Some(token), "the token on disk is the one in force");
     let _ = fs::remove_dir_all(base);
 }

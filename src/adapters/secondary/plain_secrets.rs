@@ -16,7 +16,11 @@ impl PlainSecrets {
 
 impl Secrets for PlainSecrets {
     fn read(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
-        Ok(self.fs.read(path))
+        match self.fs.read(path) {
+            Some(bytes) => Ok(Some(bytes)),
+            None if self.fs.exists(path) => Err("the file is there, but it cannot be opened".into()),
+            None => Ok(None),
+        }
     }
     fn write(&self, path: &Path, bytes: &[u8]) -> Result<(), String> {
         self.fs.write_private(path, bytes)

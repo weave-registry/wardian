@@ -80,6 +80,11 @@ fn example_apps(fs: &dyn FileSystem, here: &Path, program_dir: Option<&Path>) ->
     if is_checkout(fs, here) {
         return Some(here.join(SOURCE_APPS));
     }
+    // A build run from elsewhere: <checkout>/target/<profile>/wardian (or a deps/ test binary)
+    // finds the apps of the checkout it was built in.
+    if let Some(checkout) = program_dir?.ancestors().skip(1).take(3).find(|d| d.file_name().is_some() && is_checkout(fs, d)) {
+        return Some(checkout.join(SOURCE_APPS));
+    }
     let prefix = program_dir?.parent()?;
     [prefix.join("lib").join("wardian").join(SHARED_EXAMPLE_APPS), prefix.join("Resources").join(SOURCE_APPS)].into_iter().find(|p| fs.is_dir(p))
 }
@@ -374,6 +379,12 @@ mod tests {
         // A plain ./apps outside a checkout is not taken; in a checkout it comes first.
         fs::create_dir_all(here.join("apps")).unwrap();
         assert_eq!(example_apps(&LocalDisk, &here, None), None);
+        // A build in a checkout's target/ folder, started from another folder, finds that checkout's apps.
+        let repo = root.join("repo");
+        checkout(&repo, "wardian");
+        fs::create_dir_all(repo.join("target/release/deps")).unwrap();
+        assert_eq!(example_apps(&LocalDisk, &here, Some(&repo.join("target/release"))), Some(repo.join("apps")));
+        assert_eq!(example_apps(&LocalDisk, &here, Some(&repo.join("target/release/deps"))), Some(repo.join("apps")));
         checkout(&here, "wardian");
         assert_eq!(example_apps(&LocalDisk, &here, Some(&linux.join("bin"))), Some(here.join("apps")));
         let _ = fs::remove_dir_all(root);
