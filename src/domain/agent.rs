@@ -56,9 +56,12 @@ impl Default for AgentSettings {
 }
 
 /// 1 to 200 of `A-Z a-z 0-9 . _ : - /`: every Anthropic model name, Bedrock model id, inference
-/// profile and ARN, and nothing that could change a URL's meaning.
+/// profile and ARN, and nothing that could change a URL's meaning: no '/' part is only dots.
 fn valid_model(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 200 && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '-' | '/'))
+    !s.is_empty()
+        && s.len() <= 200
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '-' | '/'))
+        && s.split('/').all(|part| part.is_empty() || part.chars().any(|c| c != '.'))
 }
 
 impl AgentSettings {
@@ -191,7 +194,7 @@ mod tests {
         for good in ["claude-opus-5-5", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "arn:aws:bedrock:us-east-1:123:inference-profile/x"] {
             assert!(s.apply(&json!({ "models": { "bedrock": { "main": good } } })).is_ok(), "{good}");
         }
-        for bad in ["a b", "x?y", "../../v1/x#", &"m".repeat(201)] {
+        for bad in ["a b", "x?y", "../../v1/x#", &"m".repeat(201), ".", "..", "../../v1/x", "a/../b", "a/."] {
             assert!(s.apply(&json!({ "models": { "anthropic": { "main": bad } } })).is_err(), "{bad}");
         }
         assert!(s.apply(&json!({ "models": { "openai": { "main": "gpt" } } })).is_err());
