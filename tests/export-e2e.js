@@ -60,6 +60,10 @@ function unzip(buf) {
   ok(head.headers.get('content-type') === 'application/vnd.wardian+zip', 'served as application/vnd.wardian+zip');
 
   console.log('== B: preview, then import with its data');
+  // A new Wardian has the example apps built in (ADR-2610081600), splunk-table among them; remove
+  // it, so the import below installs the exported copy under its own name.
+  ok((await (await fetch(B + '/api/apps')).json()).includes('splunk-table'), 'B, a new Wardian, has the example apps');
+  await post(B, '/api/apps/remove', { name: 'splunk-table' });
   await page.goto(B + '/'); await sleep(800);
   await page.click('#settingsBtn'); await page.click('#setTab-import'); await sleep(300);
   await page.setInputFiles('#zipFile', file);

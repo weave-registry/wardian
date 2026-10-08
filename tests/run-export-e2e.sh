@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end test of exporting an app as a .wardian file and importing it into another Wardian
-# (ADR-2610071248). Two servers: A exports with its data, B starts empty and imports. B starts the
+# (ADR-2610071248). Two servers: A exports with its data, B starts new and imports. B starts the
 # way a new user would: in a folder of its own, with no DATA_DIR and no apps folder named, so it
 # keeps its data in the platform's folder (ADR-2610080915), under a throwaway HOME, never the real one.
 # Needs: Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
