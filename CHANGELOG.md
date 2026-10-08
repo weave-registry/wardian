@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.5] - 2026-10-08
+
 ### Added
 
 - **Folders in the app list** (ADR-2610081830): apps in no folder first, then folders that open and
