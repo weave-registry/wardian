@@ -18,6 +18,7 @@ mod domain {
     pub mod import_plan;
     pub mod jobs;
     pub mod package;
+    pub mod service;
     pub mod splunk;
     pub mod studio;
     pub mod suite;
@@ -32,12 +33,14 @@ mod ports {
     pub mod llm;
     pub mod secrets;
     pub mod service;
+    pub mod service_manager;
     pub mod splunk;
     pub mod storage;
     pub mod tools;
     pub mod web;
 }
 mod usecases {
+    pub mod background;
     pub mod catalog;
     pub mod check;
     pub mod db;
@@ -72,6 +75,7 @@ mod adapters {
         pub mod link_fetch;
         pub mod local_disk;
         pub mod sealed_secrets;
+        pub mod service_host;
         pub mod splunk_rest;
         pub mod sqlite_store;
         pub mod wardian_probe;
@@ -121,12 +125,45 @@ fn main() {
         let cfg = Settings::from_env(None, &*fs);
         Box::new(adapters::secondary::sealed_secrets::KeyBackup { fs: Arc::clone(&fs), place: key_place(&cfg, &fs), data_dir: cfg.data_dir })
     };
-    let (apps_folder, no_open) = match cli::run(&args, &tools, &docs, &config::data_dir(&*fs), &exports_for_cli, &key_for_cli) {
+    // `wardian start|stop|status` (ADR-2610081800): the service for this program and data folder.
+    let service_for_cli = || -> Box<dyn ports::service_manager::Background> { Box::new(background(&fs)) };
+    let (apps_folder, no_open) = match cli::run(&args, &tools, &docs, &config::data_dir(&*fs), &exports_for_cli, &key_for_cli, &service_for_cli) {
         cli::Command::Exit(code) => std::process::exit(code),
         cli::Command::Serve { folder, no_open } => (folder, no_open),
     };
 
     serve(Settings::from_env(apps_folder.as_deref(), &*fs), no_open);
+}
+
+/// The service `wardian start` runs (ADR-2610081800): this program, the data folder by
+/// ADR-2610080915's rule written in full (a service has no meaningful working folder), and the
+/// address. A WARDIAN_SERVICE_LABEL that is not Wardian's stops here.
+fn background(fs: &Arc<dyn FileSystem>) -> usecases::background::Service {
+    use adapters::secondary::service_host::ServiceHost;
+    let label = config::service_label().unwrap_or_else(|why| {
+        eprintln!("{why}");
+        std::process::exit(2);
+    });
+    let cfg = Settings::from_env(None, &**fs);
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let program = std::env::current_exe().unwrap_or_else(|_| "wardian".into());
+    let probe = |at: &str| wardian_probe::wardian_at(at).map(|w| ports::service_manager::Answer { version: w.version, local_root: w.local_root });
+    let setup = usecases::background::Setup {
+        os: std::env::consts::OS,
+        config_home: config::config_home().unwrap_or_else(|| home.join(".config")),
+        home,
+        label,
+        program,
+        data_dir: cwd.join(&cfg.data_dir),
+        data_dir_as_found: cfg.data_dir,
+        addr: cfg.addr,
+        addr_set: cfg.addr_set,
+        last_port: config::LAST_PORT,
+        version: env!("CARGO_PKG_VERSION").into(),
+        env: config::service_env(),
+    };
+    usecases::background::Service::new(Arc::new(ServiceHost { probe }), Arc::clone(fs), setup)
 }
 
 /// Where the server listens, decided before anything else starts (ADR-2610080930).

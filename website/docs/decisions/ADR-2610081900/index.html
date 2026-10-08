@@ -2,8 +2,8 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ADR-2610080903: a documentation site, and an example app for every capability · Wardian docs</title>
-<meta name="description" content="Wardian documentation: ADR-2610080903: a documentation site, and an example app for every capability">
+<title>ADR-2610081900: examples run on the website · Wardian docs</title>
+<meta name="description" content="Wardian documentation: ADR-2610081900: examples run on the website">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: light dark; --bg: #f6f5ef; --panel: #fbfaf6; --ink: #183e32; --text: #23302a; --muted: #5f6b62; --line: #d8ddd2; --code: #ecefe4; --accent: #2f6b50; --mark: #dce8a5; }
@@ -83,72 +83,57 @@
 <div class="wrap">
 <nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions" aria-current="page">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
 <main id="content">
-<h1 id="adr-2610080903-a-documentation-site-and-an-example-app-for-every-capability">ADR-2610080903: a documentation site, and an example app for every capability</h1>
+<h1 id="adr-2610081900-examples-run-on-the-website">ADR-2610081900: Examples run on the website</h1>
 <p><strong>Status:</strong> Accepted
 <strong>Date:</strong> 2026-10-08
-<strong>Drivers:</strong> The user asked for "way more application examples demonstrating the power of wardian
-and a full documentation site", and to build it with hexa.</p>
+<strong>Drivers:</strong> A visitor to the website could read about the sixteen example apps but not see one
+work without installing Wardian, and could not get one except from the repository.</p>
 <h2 id="context">Context<a class="anchor" href="#context" aria-label="Link to this section">#</a></h2>
-<p>Wardian's documentation is three long files: README.md (491 lines), GUIDE.md and SPEC.md. Wardian
-serves the last two at <code>/docs/guide</code> and <code>/docs/spec</code> (<code>src/usecases/docs.rs</code>), from copies built
-into the program. The website (<code>website/</code>) is one marketing page that links to GitHub for every
-document. Nothing explains channels, <code>db</code>, <code>claude:sample</code>, workers or Splunk except a README
-section or a SPEC table, and a reader cannot search any of it.</p>
-<p>There are five example apps: <code>adder</code> (module), <code>mandelbrot</code> (page), <code>loan-planner</code> and <code>usl-lab</code>
-(suites) and <code>splunk-table</code> (Splunk, <code>db</code>, channels, <code>claude:sample</code>). Most capabilities have no
-example that a reader can open and copy, and three of the five need WebAssembly knowledge to read.</p>
+<p>The website is static, served at the root of its domain (Vercel), written by <code>wardian docs website</code>
+(ADR-2610080903). The examples are built into the program (ADR-2610081600). Seven need nothing from a
+server: the modules <code>adder</code>, <code>number-lab</code> and <code>unit-converter</code>, and the pages <code>image-lab</code>, <code>life</code>,
+<code>mandelbrot</code> and <code>text-tools</code>. The suites need Wardian's kernel, which the server builds frame by
+frame, and <code>focus-timer</code> talks over channels, which need a Wardian.</p>
 <h2 id="decision">Decision<a class="anchor" href="#decision" aria-label="Link to this section">#</a></h2>
 <ol>
-<li><strong>One source, two outputs.</strong> The documentation site is Markdown in the repository: the pages in
-<code>docs/site/</code>, plus GUIDE.md, SPEC.md and CHANGELOG.md as they are. The program builds them in,
-as it does today, and lists them in one table (<code>DOCS</code> in <code>embedded_assets.rs</code>) with a group, a
-name and a title. Wardian serves the site at <code>/docs/&lt;name&gt;</code>, and <code>/docs</code> is its home page.
-<code>wardian docs FOLDER</code> writes the same pages as static files (<code>docs/</code>, <code>schemas/</code>, <code>ui/</code>) for the
-website, which keeps them in <code>website/</code>. No second docs tool, no build step for the website.</li>
-<li><strong>The site.</strong> Grouped navigation, the open page's sections under it, a search over every page's
-headings (an index in the page, so it works offline and inside Wardian), a link to each page's
-Markdown file, and previous/next links. System fonts only; light and dark; one column on a phone.</li>
-<li><strong>The static copy must not go stale.</strong> A test renders the site and compares it with <code>website/</code>;
-another checks that every <code>/docs/…</code> link on every page names a page that exists.</li>
-<li><strong>An example for every capability.</strong> Eleven new example apps, each with one clear lesson:
-two modules, three pages, four suites, and a page and a suite that talk on a channel. Together with
-the five that exist, every kind and every capability but <code>splunk</code> has an example that runs with
-no account. Each example has a README that explains it. Each passes <code>wardian check</code> and a
-browser test.</li>
-<li><strong>A browser test for every example.</strong> <code>tests/run-examples-e2e.sh</code> opens every package in <code>apps/</code>
-the way a user would and fails on any fault, so <code>tests/run-all.sh</code> and CI cover them.</li>
+<li><strong>Try it.</strong> On the website, each example's page starts with a <strong>Try it</strong> box. For the seven, it
+frames the app: a page app at <code>/apps/&lt;name&gt;/&lt;page&gt;</code>, the path Wardian uses, and a module at
+<code>/docs/try/&lt;name&gt;/</code>, a form page that does what Wardian's module form does. For the others, it
+says the app needs a Wardian.</li>
+<li><strong>Download.</strong> Every example's page links <code>/downloads/&lt;name&gt;.zip</code>, which Wardian imports
+(Settings → Import). Each zip is the same for the same files, so the website's copy changes only
+when an app does.</li>
+<li><strong>Isolation on the website.</strong> The frame is sandboxed with <code>allow-same-origin</code>, so the app loads its
+own files from a plain static host, which sends no CORS header. It runs on the website's origin,
+which holds no data. <code>vercel.json</code>, written with the rest, sends a Content-Security-Policy with
+the apps: no request may leave the website, no form may post, and only the website may frame
+them. This is weaker than in Wardian, where a page app runs on an opaque origin and may reach
+only its own package (ADR-2610081003). These are Wardian's own examples, not uploads.</li>
+<li>Inside Wardian, <code>/docs</code> shows the pages as before: the examples are already in the app list.</li>
 </ol>
 <h2 id="consequences">Consequences<a class="anchor" href="#consequences" aria-label="Link to this section">#</a></h2>
 <ul>
-<li>A reader finds every feature in one searchable place, in Wardian and on the website, and the two
-never differ.</li>
-<li>The binary grows by the size of the Markdown, about 200 KB.</li>
-<li>A change to any docs page needs <code>wardian docs website</code> before commit, or the test fails. That is
-the point: the website cannot drift.</li>
-<li>New users see sixteen example apps on the first start, not five.</li>
-<li>README.md keeps its sections for now. It repeats parts of the site; a later change may shorten it
-to point at the site.</li>
+<li>A visitor sees seven examples work, and can take any of the sixteen, without installing anything.</li>
+<li>The website grows by about 1.1 MB: the seven apps and sixteen zips.</li>
+<li>Suites stay out of the website until the kernel can run without a server.</li>
 </ul>
 <h2 id="implementation">Implementation<a class="anchor" href="#implementation" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><code>src/ports/assets.rs</code> (<code>DocPage</code>, <code>docs()</code>, <code>ui_names()</code>), <code>src/adapters/secondary/embedded_assets.rs</code>
-(<code>DOCS</code>), <code>src/usecases/docs.rs</code> (the site), <code>src/ports/service.rs</code> (<code>Pages::site</code>),
-<code>src/adapters/primary/http.rs</code> (<code>/docs</code>), <code>src/adapters/primary/cli.rs</code> (<code>wardian docs</code>).</li>
-<li><code>docs/site/*.md</code>; <code>website/docs/</code>, <code>website/schemas/</code>, <code>website/ui/</code>; the website's links point at them.</li>
-<li><code>apps/&lt;example&gt;/</code> for each new example, and the <code>.gitignore</code> list of tracked examples.</li>
-<li><code>src/tests.rs</code>: the freshness and link tests. <code>tests/run-examples-e2e.sh</code>.</li>
+<li><code>usecases/demos.rs</code>: kinds, the Try it box, the module form page, the zips, <code>vercel.json</code>.</li>
+<li><code>usecases/docs.rs</code>: <code>site</code> returns bytes and includes them; the example pages get the box.</li>
+<li><code>tests/run-website-e2e.sh</code>: the website from a plain static server, in a browser.</li>
 </ul>
 <h2 id="enforced-by-hexa-adr-gates-run-on-demand">Enforced-By: hexa adr gates (run on demand)<a class="anchor" href="#enforced-by-hexa-adr-gates-run-on-demand" aria-label="Link to this section">#</a></h2>
 <h2 id="gate">Gate<a class="anchor" href="#gate" aria-label="Link to this section">#</a></h2>
-<p><code>env CARGO_TARGET_DIR=target/verify cargo test --release docs_</code></p>
-<p>Rerun by <code>hexa adr gates</code>. <code>tests/run-examples-e2e.sh</code> covers the example apps in a browser.</p>
+<p><code>env CARGO_TARGET_DIR=target/verify cargo test --release demos_</code></p>
+<p>Rerun by <code>hexa adr gates</code>. It builds into <code>target/verify</code>, never into the copy of Wardian a user runs.
+<code>tests/run-website-e2e.sh</code> opens each example's page in a browser.</p>
 <h2 id="references">References<a class="anchor" href="#references" aria-label="Link to this section">#</a></h2>
 <ul>
-<li>ADR-2610080900 (a suite is made of small parts), ADR-2610071219 (<code>db</code>), ADR-2610072118 (background jobs)</li>
-<li>SPEC.md 6.6 (capabilities), 6.9 (channels)</li>
+<li>ADR-2610080903 (docs site), ADR-2610081600 (examples built in), ADR-2610081003 (page isolation)</li>
 </ul>
 
-<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/adrs/ADR-2610080903-a-docs-site-and-an-example-for-every-capability.md"><code>docs/adrs/ADR-2610080903-a-docs-site-and-an-example-for-every-capability.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
+<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/adrs/ADR-2610081900-examples-run-on-the-website.md"><code>docs/adrs/ADR-2610081900-examples-run-on-the-website.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
 <div class="pager"><a class="prev" href="/docs/decisions" rel="prev"><small>Back to</small>Decisions</a></div>
 </main>
 </div>

@@ -16,6 +16,25 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MAX_BYTES: u64 = 1024 * 1024;
 const STARTED: &str = "started";
 
+/// Whether standard error is the file at `path` itself.
+fn stderr_is(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsFd;
+        use std::os::unix::fs::MetadataExt;
+        let Ok(fd) = std::io::stderr().as_fd().try_clone_to_owned() else { return false };
+        match (fs::File::from(fd).metadata(), fs::metadata(path)) {
+            (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        false
+    }
+}
+
 #[derive(Clone)]
 pub struct StopLog {
     path: Arc<PathBuf>,
@@ -26,7 +45,10 @@ pub struct StopLog {
 
 impl StopLog {
     pub fn new(data_dir: &Path) -> StopLog {
-        StopLog { path: Arc::new(data_dir.join("wardian.log")), echo: true }
+        let path = data_dir.join("wardian.log");
+        // A service (ADR-2610081800) or a launcher sends stderr to this same file: once is enough.
+        let echo = !stderr_is(&path);
+        StopLog { path: Arc::new(path), echo }
     }
 
     /// The same log, writing records to the file only.
