@@ -2,8 +2,8 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Page apps in depth · Wardian docs</title>
-<meta name="description" content="Wardian documentation: Page apps in depth">
+<title>Keys and Claude settings · Wardian docs</title>
+<meta name="description" content="Wardian documentation: Keys and Claude settings">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: light dark; --bg: #f6f5ef; --panel: #fbfaf6; --ink: #183e32; --text: #23302a; --muted: #5f6b62; --line: #d8ddd2; --code: #ecefe4; --accent: #2f6b50; --mark: #dce8a5; }
@@ -77,130 +77,90 @@
   <div class="links"><a href="/">Home</a><a href="https://github.com/weave-registry/wardian">GitHub</a></div>
 </header>
 <div class="wrap">
-<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages" aria-current="page">Page apps in depth</a><ul class="toc"><li><a href="#how-the-page-is-found">How the page is found</a></li><li><a href="#the-sandbox">The sandbox</a></li><li><a href="#moving-data-through-webassembly-memory">Moving data through WebAssembly memory</a></li><li><a href="#talking-to-other-packages">Talking to other packages</a></li><li><a href="#standard-parts">Standard parts</a></li><li><a href="#save-as-web-page">Save as web page</a></li><li><a href="#without-a-page">Without a page</a></li></ul></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
+<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys" aria-current="page">Keys and Claude settings</a><ul class="toc"><li><a href="#the-key-list">The key list</a></li><li><a href="#the-admin-token">The admin token</a></li><li><a href="#models-and-limits">Models and limits</a></li><li><a href="#usage-and-caps">Usage and caps</a></li><li><a href="#the-files">The files</a></li></ul></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
 <main id="content">
-<h1 id="page-apps-in-depth">Page apps in depth</h1>
-<p>A page app is one tool with one job and your own interface. It is an HTML page in a sandboxed
-frame. It may use WebAssembly for the hard part, or plain JavaScript for all of it.</p>
-<p>Start one with <code>wardian new page apps/&lt;name&gt;</code>. The examples <a href="/docs/examples#text-tools"><code>text-tools</code></a>,
-<a href="/docs/examples#image-lab"><code>image-lab</code></a>, <a href="/docs/examples#life"><code>life</code></a>,
-<a href="/docs/examples#mandelbrot"><code>mandelbrot</code></a> and <a href="/docs/examples#focus-timer"><code>focus-timer</code></a> are page apps.</p>
-<h2 id="how-the-page-is-found">How the page is found<a class="anchor" href="#how-the-page-is-found" aria-label="Link to this section">#</a></h2>
-<p>The host shows <code>page</code> from <code>app.json</code>. Without it, the host uses the first of these that exists:
-<code>index.html</code>, <code>demo/index.html</code>, <code>www/index.html</code>, <code>web/index.html</code>.</p>
-<pre><code class="language-json">{ "format": 1, "title": "Text tools", "description": "Counts, hashes and changes text.", "page": "index.html" }
-</code></pre>
-<p>The host serves the package's folder tree as it is, at <code>/apps/&lt;name&gt;/&lt;path&gt;</code>. So the page loads its
-own files with relative links: <code>./app.wasm</code>, <code>../pkg/app.js</code>, <code>./ui/theme.css</code>.</p>
-<p>A page app still needs an <code>app.wasm</code> at its top, because that file marks the folder as a module
-app. A page that uses no WebAssembly can keep the empty module that <code>wardian new page</code> writes.</p>
-<h2 id="the-sandbox">The sandbox<a class="anchor" href="#the-sandbox" aria-label="Link to this section">#</a></h2>
-<p>Wardian sends every HTML and SVG file of a page app with a policy that starts
-<code>sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads</code>, and then allows
-requests only to the package's own folder, <code>/apps/&lt;name&gt;/</code>, and to Wardian's page library, <code>/sdk/</code>
-(ADR-2610081003). The browser gives the page a unique, throwaway origin.</p>
-<table><thead><tr><th>The page can</th><th>The page cannot</th></tr></thead><tbody>
-<tr><td>run scripts, use forms and dialogs</td><td>read Wardian's pages or settings</td></tr>
-<tr><td>start downloads</td><td>use cookies, <code>localStorage</code>, <code>sessionStorage</code> or IndexedDB</td></tr>
-<tr><td>fetch, and load scripts, styles, images and <code>.wasm</code>, from its own package</td><td>request any other address: the internet, Wardian's API, other apps</td></tr>
-<tr><td>load <code>/sdk/wardian.js</code> and Google Fonts</td><td>load anything else from outside</td></tr>
-<tr><td>open files the user picks (<code>&lt;input type="file"&gt;</code>, drag and drop)</td><td>read any file the user did not pick</td></tr>
-</tbody></table>
-<p>So a page app must ship every file it uses. A library from a CDN does not load: copy it into the
-package. To keep data, let the user download it and load it again, or build a suite, whose parts get
-<code>storage</code> and <code>db</code> from the kernel.</p>
-<p><code>tests/run-page-sandbox-e2e.sh</code> proves these limits against a hostile page. Three routes stay open,
-as in a suite: a pop-up after a click, navigating the frame away, and WebRTC
-(<a href="/docs/security#three-routes-stay-open">Security model</a>).</p>
-<h2 id="moving-data-through-webassembly-memory">Moving data through WebAssembly memory<a class="anchor" href="#moving-data-through-webassembly-memory" aria-label="Link to this section">#</a></h2>
-<p>A WebAssembly function takes and returns numbers only. To pass text, an image or a list, copy the
-bytes into the module's memory and pass the address and the length.</p>
-<ol>
-<li>Ask the module for space: <code>ptr = alloc(len)</code>.</li>
-<li>Copy the bytes in at <code>ptr</code>.</li>
-<li>Call the function with the address and the length.</li>
-<li>Read the result back.</li>
-<li>Free the space: <code>dealloc(ptr, len)</code>.</li>
-</ol>
-<p>The page template does this in <code>withText</code>:</p>
-<pre><code class="language-js">function withText(text, fn) {
-  const bytes = new TextEncoder().encode(text);
-  const ptr = wasm.alloc(bytes.length);
-  try {
-    new Uint8Array(wasm.memory.buffer, ptr, bytes.length).set(bytes);
-    const result = fn(ptr, bytes.length);
-    // Read memory.buffer again: a call can grow memory and replace the buffer.
-    const back = new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, ptr, bytes.length));
-    return [result, back];
-  } finally {
-    wasm.dealloc(ptr, bytes.length);
-  }
-}
-</code></pre>
-<p>And on the Rust side, from the template's <code>src/lib.rs</code>:</p>
-<pre><code class="language-rust">use std::alloc::{alloc as raw_alloc, dealloc as raw_dealloc, Layout};
-
-#[no_mangle]
-pub extern "C" fn alloc(len: usize) -&gt; *mut u8 {
-    if len == 0 {
-        return std::ptr::NonNull::dangling().as_ptr();
-    }
-    unsafe { raw_alloc(Layout::from_size_align_unchecked(len, 1)) }
-}
-
-#[no_mangle]
-pub extern "C" fn dealloc(ptr: *mut u8, len: usize) {
-    if len != 0 {
-        unsafe { raw_dealloc(ptr, Layout::from_size_align_unchecked(len, 1)) }
-    }
-}
-</code></pre>
-<p>The alignment is 1, which suits bytes. For numbers, use the alignment of the type:
-<code>loan-planner</code> aligns its buffers to 8 bytes so the page can read them as a <code>Float64Array</code>.</p>
-<p>Three rules prevent most bugs:</p>
+<h1 id="keys-and-claude-settings">Keys and Claude settings</h1>
+<p>Wardian holds up to five secrets: the Anthropic API key, the Amazon Bedrock keys, the Splunk
+account, the Google service account key and the admin token. <strong>Settings → Keys</strong> lists them all.
+<strong>Settings → Claude</strong> chooses the models and the limits, and <strong>Settings → Usage</strong> shows how much
+Claude was used and stops an app at its daily cap (ADR-2610081500).</p>
+<p>Every page here is for admins only.</p>
+<h2 id="the-key-list">The key list<a class="anchor" href="#the-key-list" aria-label="Link to this section">#</a></h2>
+<p>Each secret shows:</p>
 <ul>
-<li><strong>Read <code>memory.buffer</code> again after every call.</strong> A call that grows memory replaces the buffer,
-and an old view then reads zeros.</li>
-<li><strong>Reuse a large buffer.</strong> An image of 1600 × 1066 pixels is 6.8 MB. <code>mandelbrot</code> and <code>image-lab</code>
-allocate it once and keep it until the size changes.</li>
-<li><strong>Return structured results as JSON text.</strong> Write the JSON into memory in Rust, return its address
-and length, and call <code>JSON.parse</code> in the page. <code>text-tools</code> returns its word list this way.</li>
+<li><strong>Where it comes from.</strong> <em>Saved in Settings</em>, <em>from the environment</em> (such as
+<code>ANTHROPIC_API_KEY</code>), or <em>not set</em>. A secret saved in Settings wins over the environment's.</li>
+<li><strong>What it is</strong>, never the secret itself: the last four characters of an API key, the Bedrock
+region, the Splunk address and user, the service account's address.</li>
+<li><strong>Its last test</strong>: when, and whether the service accepted it. Wardian tests a secret before it
+saves it, when you press <strong>Test again</strong>, and records it when Claude refuses a key while an app
+uses it.</li>
 </ul>
-<h2 id="talking-to-other-packages">Talking to other packages<a class="anchor" href="#talking-to-other-packages" aria-label="Link to this section">#</a></h2>
-<p>A page can send and receive on channels to other packages, with the user's permission. Load the
-host's small library, declare the channels in <code>app.json</code>, and state <code>"format": 2</code>:</p>
-<pre><code class="language-html">&lt;script src="/sdk/wardian.js"&gt;&lt;/script&gt;
-&lt;script&gt;
-  wardian.channel('focus.session').send({ label: 'Writing', minutes: 25 })
-    .catch(e =&gt; showHint('Allow the channel, or open this app inside Wardian.'));
-&lt;/script&gt;
-</code></pre>
-<p><a href="/docs/channels">Apps that talk to each other</a> explains channels in full.</p>
-<h2 id="standard-parts">Standard parts<a class="anchor" href="#standard-parts" aria-label="Link to this section">#</a></h2>
-<p><code>/sdk/wardian.js</code> also defines <code>&lt;wardian-progress&gt;</code>, the standard progress bar. Use it for any work
-longer than a second. Copy the rest of the component library into the package with
-<code>wardian add button field card arrange apps/&lt;name&gt;</code>; <a href="/docs/components">Components and Arrange</a>
-lists them.</p>
-<p>A page offers <strong>Arrange</strong> when it marks its parts with <code>data-panel</code> and loads <code>ui/arrange.js</code>.
-<code>wardian check</code> warns about a page with no <code>data-panel</code>.</p>
-<h2 id="save-as-web-page">Save as web page<a class="anchor" href="#save-as-web-page" aria-label="Link to this section">#</a></h2>
-<p>When the viewer presses <strong>Save as web page</strong>, a small script that Wardian adds to the page copies
-what the page shows. To put more in the file than fits on screen, set a function:</p>
-<pre><code class="language-js">window.wardianSnapshot = () =&gt; `&lt;h2&gt;Every row&lt;/h2&gt;${tableHtml(allRows)}`;
-</code></pre>
-<p>It returns HTML text or an element, or a promise of either. Wardian cleans the answer by an
-allow-list before it writes the file (<a href="/docs/spec#7-distribution">Package format §7.4</a>).</p>
-<h2 id="without-a-page">Without a page<a class="anchor" href="#without-a-page" aria-label="Link to this section">#</a></h2>
-<p>A module with no page needs no HTML at all. Wardian draws one card per exported function, with one
-input per parameter. Parameters and results must be numbers: <code>i32</code>, <code>i64</code>, <code>u32</code>, <code>u64</code>, <code>f32</code> or
-<code>f64</code>. An <code>i64</code> arrives in JavaScript as a BigInt, so large whole numbers stay exact.
-<a href="/docs/examples#unit-converter"><code>unit-converter</code></a> and <a href="/docs/examples#number-lab"><code>number-lab</code></a>
-show this.</p>
-<p>The host provides one import, <code>env.log(value)</code>, which writes to the host's output log. Every
-other imported function becomes a stub that logs the call and returns 0.</p>
+<table><thead><tr><th>Button</th><th>What it does</th></tr></thead><tbody>
+<tr><td><strong>Test again</strong></td><td>Tests the saved secret with the service now, and records the answer.</td></tr>
+<tr><td><strong>Change</strong> / <strong>Set up</strong></td><td>Opens the section where the secret is typed: Claude, Splunk or App source.</td></tr>
+<tr><td><strong>Remove</strong></td><td>Removes the secret saved in Settings. Click twice. The environment's value, if any, then applies.</td></tr>
+</tbody></table>
+<p>Removing the Google service account key while Google Drive is the app source switches the source
+to the local apps folder.</p>
+<p>A secret that is saved but cannot be read shows <em>cannot be read</em>, with the reason. Wardian then acts
+as if it were not set: type it again, or remove it.</p>
+<h2 id="the-admin-token">The admin token<a class="anchor" href="#the-admin-token" aria-label="Link to this section">#</a></h2>
+<p>With an admin token, every change to Settings needs it, from every address, this machine included.
+Without one, every program and browser on this machine is an admin, and nobody else is
+(<a href="/docs/security#who-is-an-admin">Security model</a>).</p>
+<ul>
+<li><strong>Make one for me</strong> makes a token of 64 random hex digits and shows it once. Copy it.</li>
+<li><strong>Save this token</strong> saves one you type: 24 to 200 characters, no spaces.</li>
+<li>The browser tab that set it keeps it until the tab is closed. Another browser types it in
+<strong>Settings → Status → Unlock</strong>.</li>
+<li><code>ADMIN_TOKEN</code> wins. While it is set, Settings shows the token as set by the environment, and
+cannot change it.</li>
+<li>A saved token counts at start: Wardian may then listen on an address other machines can reach.
+While it does, the saved token cannot be removed, only replaced.</li>
+</ul>
+<p>If you lose the token, stop Wardian, remove <code>admin-token</code> from the data folder, and start it again.</p>
+<h2 id="models-and-limits">Models and limits<a class="anchor" href="#models-and-limits" aria-label="Link to this section">#</a></h2>
+<p><strong>Settings → Claude → Models and limits</strong> sets, for each provider, the main model and the quick
+model (<code>modelTier: 'quick'</code>). Leave a field empty to use Wardian's default, which the field shows
+in grey. Wardian tests a new model with the provider's saved keys before it saves it, so a typo
+never replaces a working model. A provider with no keys cannot test it: the model is saved, and the
+answer says it was not tested.</p>
+<table><thead><tr><th>Setting</th><th>Default</th><th>Allowed</th><th>What it limits</th></tr></thead><tbody>
+<tr><td>Steps in one turn</td><td>40</td><td>5 to 200</td><td>model requests <strong>Make an app</strong> makes for one message</td></tr>
+<tr><td>Tokens in one reply (Make an app)</td><td>16,000</td><td>1,000 to 64,000</td><td>the length of each of its replies</td></tr>
+<tr><td>Chats kept at once</td><td>20</td><td>1 to 100</td><td><strong>Make an app</strong> chats kept in memory</td></tr>
+<tr><td>Tokens per day (Make an app)</td><td>0, no cap</td><td>0 to 100,000,000</td><td>all of <strong>Make an app</strong>'s requests in a UTC day</td></tr>
+<tr><td>Tokens in one reply (apps)</td><td>4,000</td><td>256 to 16,000</td><td>each <code>claude:sample</code> answer</td></tr>
+<tr><td>Tokens per app per day</td><td>200,000</td><td>0 to 100,000,000</td><td>each app's <code>claude:sample</code> requests in a UTC day</td></tr>
+</tbody></table>
+<p>The settings are kept in <code>agent.json</code> in the data folder. They win over <code>WARDIAN_AI_MODEL</code>,
+<code>WARDIAN_BEDROCK_MODEL</code> and <code>WARDIAN_BEDROCK_QUICK_MODEL</code>, which stay the defaults.
+<strong>Back to the defaults</strong> clears every model and limit.</p>
+<h2 id="usage-and-caps">Usage and caps<a class="anchor" href="#usage-and-caps" aria-label="Link to this section">#</a></h2>
+<p><strong>Settings → Usage</strong> lists each app that used Claude, and <strong>Make an app</strong>: the tokens used today,
+over the last 31 days, the number of requests, and the daily cap. Wardian counts every token Claude
+read, cached or not, and every token it wrote, as the API reports them. It counts tokens, not
+money: prices differ between the Anthropic API and Amazon Bedrock.</p>
+<p>Change an app's cap in its row. <code>0</code> means no cap. An app's own cap replaces <strong>Tokens per app per
+day</strong> for that app.</p>
+<p>When an app reaches its cap, its next <code>claude:sample</code> request fails with <code>e.code === 'over_budget'</code>
+until the next UTC day, and no request is sent (<a href="/docs/ai#handle-every-error">Claude inside your app</a>).
+<strong>Make an app</strong> at its cap stops the turn with a message. A request already under way finishes, so
+a day can end a little over its cap.</p>
+<p>The counts are kept in <code>usage.json</code> in the data folder.</p>
+<h2 id="the-files">The files<a class="anchor" href="#the-files" aria-label="Link to this section">#</a></h2>
+<table><thead><tr><th>File</th><th>What it holds</th><th>Holds a secret</th></tr></thead><tbody>
+<tr><td><code>anthropic-key</code>, <code>bedrock.json</code>, <code>splunk.json</code>, <code>service-account.json</code>, <code>admin-token</code></td><td>the secrets</td><td>yes</td></tr>
+<tr><td><code>agent.json</code></td><td>models, limits and caps</td><td>no</td></tr>
+<tr><td><code>usage.json</code></td><td>tokens by day and app, for 31 days</td><td>no</td></tr>
+<tr><td><code>key-checks.json</code></td><td>the last test of each secret</td><td>no</td></tr>
+</tbody></table>
+<p>All are readable by their owner only. <a href="/docs/config#files-in-the-data-folder">Settings and environment</a>
+lists every file in the data folder.</p>
 
-<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/site/pages.md"><code>docs/site/pages.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
-<div class="pager"><a class="prev" href="/docs/guide" rel="prev"><small>Previous</small>Building Wardian apps</a><a class="next" href="/docs/suites" rel="next"><small>Next</small>Designing a suite</a></div>
+<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/site/keys.md"><code>docs/site/keys.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
+<div class="pager"><a class="prev" href="/docs/drive" rel="prev"><small>Previous</small>Serve apps from Google Drive</a><a class="next" href="/docs/operate" rel="next"><small>Next</small>Run Wardian for others</a></div>
 </main>
 </div>
 <script>

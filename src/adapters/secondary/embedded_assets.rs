@@ -72,6 +72,7 @@ const DOCS: &[DocPage] = &[
     doc!("Examples", "examples", "Example apps", "docs/site/examples.md"),
     doc!("Use Wardian", "sharing", "Share, import and remove apps", "docs/site/sharing.md"),
     doc!("Use Wardian", "drive", "Serve apps from Google Drive", "docs/site/drive.md"),
+    doc!("Use Wardian", "keys", "Keys and Claude settings", "docs/site/keys.md"),
     doc!("Use Wardian", "operate", "Run Wardian for others", "docs/site/operate.md"),
     doc!("Reference", "spec", "Package format", "SPEC.md"),
     doc!("Reference", "cli", "Command line", "docs/site/cli.md"),

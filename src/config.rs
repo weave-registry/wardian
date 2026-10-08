@@ -107,7 +107,7 @@ pub fn admins(addr: &str, token_set: bool) -> Result<String, String> {
     Err(format!(
         "Wardian will not listen on {addr} without ADMIN_TOKEN: other machines could reach it, and without a token \
          every program on this machine is an admin.\nSet ADMIN_TOKEN to a long random string (Settings then asks for it), \
-         or listen on this machine only, e.g. ADDR={ADDR_EXAMPLE}."
+         save a token in Settings → Keys first, or listen on this machine only, e.g. ADDR={ADDR_EXAMPLE}."
     ))
 }
 

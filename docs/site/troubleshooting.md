@@ -38,6 +38,8 @@ where others can reach it.
 **Fix.** Do one of these:
 
 - Set `ADMIN_TOKEN` to a long random string. Settings then asks for it.
+- Start Wardian on this machine only, save a token in **Settings → Keys**, then start it again on
+  the address.
 - Listen on this machine only: `ADDR=127.0.0.1:8000`.
 
 Docker always needs the token, because it listens on `0.0.0.0`. `docker compose` stops before it
@@ -212,6 +214,21 @@ Claude request and an app database all fail with this message.
 
 **Fix.** Open **Settings → Status** and enter the token. Wardian keeps it in that tab only, so a new
 tab asks again.
+
+## `claude:sample` fails with `over_budget`
+
+**Cause.** The app used its daily token cap: 200,000 tokens per UTC day unless an admin set another.
+
+**Fix.** Wait for the next UTC day, or, as an admin, raise the app's cap in **Settings → Usage**. `0`
+means no cap ([Keys and Claude settings](/docs/keys#usage-and-caps)).
+
+## A key fails in Settings → Keys
+
+**Cause.** The service refused the saved key the last time it was tested, or while an app used it:
+the key was revoked, expired, or lost access to the model.
+
+**Fix.** Make a new key at the service, then **Change** it. **Test again** checks the saved one
+without changing it.
 
 ## `claude:sample` is `null`
 

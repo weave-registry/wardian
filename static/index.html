@@ -172,6 +172,25 @@
   ul.trash { list-style: none; margin: 0 0 .5rem; padding: 0; }
   ul.trash li { display: flex; gap: .75rem; align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--line); }
   ul.trash li .name { font-weight: 600; flex: 1; }
+  /* Settings → Keys and Usage (ADR-2610081500). */
+  ul.keys { list-style: none; margin: 0 0 .5rem; padding: 0; }
+  ul.keys li { display: grid; grid-template-columns: 1fr auto; gap: .2rem .75rem; padding: .6rem 0; border-bottom: 1px solid var(--line); }
+  ul.keys .name { font-weight: 600; }
+  ul.keys .where { font-size: .8rem; padding: .05rem .45rem; border-radius: 999px; border: 1px solid var(--line); margin-left: .4rem; font-weight: 400; }
+  ul.keys .where.set { border-color: var(--ok); color: var(--ok); }
+  ul.keys .where.bad { border-color: var(--bad); color: var(--bad); }
+  ul.keys .detail, ul.keys .check { grid-column: 1; font-size: .85rem; }
+  ul.keys .check.bad { color: var(--bad); }
+  ul.keys .acts { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: .4rem; align-items: start; flex-wrap: wrap; justify-content: end; }
+  .limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .6rem 1rem; margin-bottom: .6rem; }
+  .limits label { display: grid; gap: .2rem; font-size: .85rem; }
+  .limits small { color: var(--muted); }
+  .usage-wrap { overflow-x: auto; }
+  table.usage { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  table.usage th, table.usage td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.usage td.num, table.usage th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.usage td.over { color: var(--bad); font-weight: 600; }
+  table.usage input { width: 8rem; }
   .suiteframe { height: 85vh !important; }
   .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 1rem; }
   details summary { cursor: pointer; font-weight: 600; margin-bottom: .5rem; }
@@ -292,8 +311,10 @@
   <div class="settings-nav">
     <div role="tablist" aria-label="Settings sections">
       <button role="tab" id="setTab-status">Status</button>
+      <button role="tab" id="setTab-keys">Keys</button>
       <button role="tab" id="setTab-source">App source</button>
       <button role="tab" id="setTab-claude">Claude</button>
+      <button role="tab" id="setTab-usage">Usage</button>
       <button role="tab" id="setTab-splunk">Splunk</button>
       <button role="tab" id="setTab-permissions">Permissions</button>
       <button role="tab" id="setTab-trash">Removed apps</button>
@@ -312,11 +333,36 @@
 
     <div class="card hidden" id="lockedCard">
       <h2>Settings are locked</h2>
-      <p class="muted">This server only accepts changes from a browser on the same machine, or with the admin token set by <code>ADMIN_TOKEN</code>.</p>
+      <p class="muted">This server accepts changes only with its admin token (set by <code>ADMIN_TOKEN</code> or in Settings → Keys), or, when it has none, only from a browser on the same machine.</p>
       <div class="row">
         <input type="password" id="tokenInput" placeholder="Admin token" aria-label="Admin token">
         <button id="tokenSave" class="primary">Unlock</button>
       </div>
+    </div>
+    </div>
+
+    <div role="tabpanel" data-section="keys" data-admin>
+    <p class="muted locked-note">Unlock Settings in Status to see the keys.</p>
+    <div class="card hidden" id="keysCard">
+      <h2>Keys</h2>
+      <p class="muted" style="font-size:.85rem" id="keysKept">Every key and account Wardian holds. Keys stay on this server and never come back to the browser; a key is shown by its last four characters at most.</p>
+      <ul id="keysList" class="keys"></ul>
+      <p id="keysMsg" role="status"></p>
+    </div>
+    <div class="card hidden" id="adminTokenCard">
+      <h2>Admin token</h2>
+      <p id="adminTokenState" class="muted"></p>
+      <div class="row" style="margin-bottom:.5rem">
+        <input type="password" id="adminTokenInput" style="flex:1;min-width:14rem" placeholder="New admin token, 24 characters or more" aria-label="New admin token" autocomplete="new-password">
+        <button id="adminTokenSave">Save this token</button>
+        <button id="adminTokenMake" class="primary">Make one for me</button>
+      </div>
+      <div id="adminTokenShown" class="hidden" style="margin-bottom:.5rem">
+        <p style="margin:.25rem 0">Your new admin token. Copy it now: Wardian does not show it again.</p>
+        <div class="row"><code id="adminTokenValue" style="word-break:break-all;flex:1"></code><button id="adminTokenCopy">Copy</button></div>
+      </div>
+      <p class="muted" style="font-size:.85rem">With a token, every change to Settings needs it, from every address, this machine included. This browser tab keeps it until you close the tab. If the token is lost, stop Wardian and remove <code>admin-token</code> from the data folder.</p>
+      <p id="adminTokenMsg" role="status"></p>
     </div>
     </div>
 
@@ -411,6 +457,34 @@
         <p class="muted" style="font-size:.85rem">Claude through your AWS account, billed by AWS, in the region you choose. The model must be enabled for the account in that region (Bedrock console → Model access). Wardian tests the settings with one tiny request before it saves them, keeps them on this server only, and never sends a key or secret back to the browser. Leave a key field empty to keep the saved one.</p>
       </div>
       <p id="aiKeyMsg" role="status"></p>
+    </div>
+    <div class="card hidden" id="agentCard">
+      <h2>Models and limits</h2>
+      <p class="muted" style="font-size:.85rem">Leave a model empty to use Wardian's default, shown in grey. Wardian tests a new model with your saved keys before it saves it.</p>
+      <div class="limits" id="agentModels"></div>
+      <h3>Make an app</h3>
+      <div class="limits" id="agentBuild"></div>
+      <h3>Apps that use Claude</h3>
+      <div class="limits" id="agentSample"></div>
+      <div class="row">
+        <button id="agentSave" class="primary">Test and save</button>
+        <button id="agentReset">Back to the defaults</button>
+      </div>
+      <p id="agentMsg" role="status"></p>
+    </div>
+    </div>
+
+    <div role="tabpanel" data-section="usage" data-admin>
+    <p class="muted locked-note">Unlock Settings in Status to see how much Claude was used.</p>
+    <div class="card hidden" id="usageCard">
+      <h2>Claude usage</h2>
+      <p class="muted" style="font-size:.85rem">The tokens Claude read and wrote for each app, by day in UTC, for the last 31 days. Wardian counts tokens, not money: prices differ between the Anthropic API and Amazon Bedrock. An app that reaches its cap gets the error <code>over_budget</code> until the next day.</p>
+      <p id="usageEmpty" class="muted">Claude has not been used yet.</p>
+      <div class="usage-wrap"><table class="usage hidden" id="usageTable">
+        <thead><tr><th>App</th><th class="num">Today</th><th class="num">Last 31 days</th><th class="num">Requests</th><th>Cap per day</th><th></th></tr></thead>
+        <tbody id="usageRows"></tbody>
+      </table></div>
+      <p id="usageMsg" role="status"></p>
     </div>
     </div>
 
@@ -568,6 +642,7 @@ function renderStatus() {
   $('sourceCard').classList.toggle('hidden', !s.admin);
   $('refreshNow').disabled = !s.admin;
   $('aiCard').classList.toggle('hidden', !s.admin);
+  for (const id of ['keysCard', 'adminTokenCard', 'agentCard', 'usageCard']) $(id).classList.toggle('hidden', !s.admin);
   $('aiBtn').classList.toggle('hidden', !s.admin);
   const ai = s.ai || {};
   const bd = ai.bedrock || {}, bds = bd.settings || null;
@@ -1376,7 +1451,8 @@ async function loadTrash() {
   } catch (e) { $('trashMsg').textContent = e.message; }
 }
 
-// Opens Settings, at one section when asked: status, source, claude, splunk, permissions, trash, import.
+// Opens Settings, at one section when asked: status, keys, source, claude, usage, splunk, permissions,
+// trash, import.
 async function openSettings(section) {
   await loadStatus();
   showTab(status.source === 'drive' ? 'drive' : 'local');
@@ -1388,6 +1464,7 @@ async function openSettings(section) {
   $('trashMsg').textContent = '';
   loadTrash();
   loadGrants();
+  if (status.admin) { loadKeys(); loadAgent(); loadUsage(); }
   if (status.admin && status.client_email && !folderStack.length) browse(null, 'Shared with the service account');
 }
 $('settingsBtn').onclick = () => openSettings();
@@ -2047,6 +2124,200 @@ async function testSuite(name, box) {
   for (const a of K.apps()) if (!started.has(a.name)) problems.push(`${a.name}: the app never started (its frame did not load or app.js failed).`);
   return [...new Set(problems)].slice(0, 12);
 }
+
+
+// ---------- Settings → Keys, Models and limits, Usage (ADR-2610081500) ----------
+const keysMsg = (text, bad = false) => { $('keysMsg').textContent = text; $('keysMsg').className = bad ? 'err' : 'muted'; };
+const agentMsg = (text, bad = false) => { $('agentMsg').textContent = text; $('agentMsg').className = bad ? 'err' : 'muted'; };
+const usageMsg = (text, bad = false) => { $('usageMsg').textContent = text; $('usageMsg').className = bad ? 'err' : 'muted'; };
+const adminTokenMsg = (text, bad = false) => { $('adminTokenMsg').textContent = text; $('adminTokenMsg').className = bad ? 'err' : 'muted'; };
+// Where each secret is changed.
+const keyHome = { anthropic: 'claude', bedrock: 'claude', splunk: 'splunk', drive: 'source' };
+
+function ago(at) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - at));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return new Date(at * 1000).toLocaleDateString();
+}
+
+// The list is drawn again only when it changed, so a keyboard user's place in it is kept.
+let keysShown = '';
+function renderKeys(v) {
+  const json = JSON.stringify([v.keys, v.kept]);
+  if (json === keysShown) return;
+  keysShown = json;
+  const items = (v.keys || []).map((k) => {
+    const where = k.error ? ['cannot be read', 'bad'] : k.from === 'settings' ? ['saved in Settings', 'set'] : k.from === 'environment' ? ['from the environment', 'set'] : ['not set', ''];
+    const check = k.check ? (k.check.ok ? `Tested ${ago(k.check.at)}: accepted.` : `Failed ${ago(k.check.at)}: ${k.check.said}`) : (k.set && k.testable ? 'Not tested yet.' : '');
+    const acts = [];
+    if (k.testable) acts.push(el('button', { textContent: 'Test again', ariaLabel: `Test the ${k.name} again`, onclick: () => testKey(k) }));
+    if (keyHome[k.id]) acts.push(el('button', { textContent: k.set ? 'Change' : 'Set up', ariaLabel: `${k.set ? 'Change' : 'Set up'} the ${k.name}`, onclick: () => $(`setTab-${keyHome[k.id]}`).click() }));
+    if (k.id === 'admin') acts.push(el('button', { textContent: k.set ? 'Replace' : 'Set', ariaLabel: `${k.set ? 'Replace' : 'Set'} the admin token`, onclick: () => $('adminTokenInput').focus() }));
+    if (k.removable) acts.push(el('button', { className: 'danger', textContent: 'Remove', ariaLabel: `Remove the ${k.name}`, onclick: (e) => removeKey(k, e.currentTarget) }));
+    const li = el('li', {},
+      el('div', {}, el('span', { className: 'name', textContent: k.name }), el('span', { className: `where ${where[1]}`, textContent: where[0] })),
+      el('div', { className: 'detail muted', textContent: k.error ? `The saved one cannot be read: ${k.error}` : k.detail }),
+      el('div', { className: `check ${k.check && !k.check.ok ? 'bad' : 'muted'}`, textContent: check }),
+      el('div', { className: 'acts' }, ...acts));
+    li.dataset.key = k.id;
+    return li;
+  });
+  $('keysList').replaceChildren(...items);
+  if (v.kept && v.kept.note) $('keysKept').textContent = `Every key and account Wardian holds, kept ${v.kept.note}. Keys never come back to the browser; a key is shown by its last four characters at most.`;
+  const admin = (v.keys || []).find((k) => k.id === 'admin') || {};
+  $('adminTokenState').textContent = admin.from === 'environment'
+    ? 'Set by ADMIN_TOKEN. It wins over a token saved here: change it where Wardian is started.'
+    : admin.from === 'settings' ? 'Set here. Every admin request must send it.' : `Not set: ${admin.detail || ''}.`;
+  for (const id of ['adminTokenInput', 'adminTokenSave', 'adminTokenMake']) $(id).disabled = admin.from === 'environment';
+}
+
+async function loadKeys() {
+  try { renderKeys(await api('/api/keys')); } catch (e) { keysMsg(e.message, true); }
+}
+
+async function testKey(k) {
+  keysMsg(`Testing the ${k.name}…`);
+  try {
+    const v = await api(`/api/keys/${k.id}/test`, {});
+    renderKeys(v);
+    keysMsg(v.tested.ok ? `The ${k.name} works.` : `The ${k.name} failed: ${v.tested.said}`, !v.tested.ok);
+  } catch (e) { keysMsg(e.message, true); }
+}
+
+// The first click asks; a second click within five seconds removes.
+async function removeKey(k, button) {
+  if (button.dataset.armed !== '1') {
+    button.dataset.armed = '1';
+    button.textContent = button.ariaLabel = `Click again to remove the ${k.name}`;
+    setTimeout(() => { if (button.isConnected) { button.dataset.armed = ''; button.textContent = 'Remove'; button.ariaLabel = `Remove the ${k.name}`; } }, 5000);
+    return;
+  }
+  try {
+    renderKeys(await api(`/api/keys/${k.id}/remove`, {}));
+    keysMsg(`Removed the ${k.name}.`);
+    await loadStatus();
+  } catch (e) { keysMsg(e.message, true); }
+}
+
+async function setAdminToken(body) {
+  try {
+    const v = await api('/api/keys/admin', body);
+    // This tab keeps the token, so it stays an admin.
+    token = v.token;
+    try { sessionStorage.setItem('adminToken', token); } catch {}
+    $('adminTokenInput').value = '';
+    $('adminTokenShown').classList.toggle('hidden', !v.generated);
+    $('adminTokenValue').textContent = v.generated ? v.token : '';
+    renderKeys(v);
+    adminTokenMsg(v.generated ? 'Saved. Every admin request needs this token from now on.' : 'Saved. Every admin request needs this token from now on. This tab keeps it.');
+  } catch (e) { adminTokenMsg(e.message, true); }
+}
+$('adminTokenSave').onclick = () => setAdminToken({ token: $('adminTokenInput').value.trim() });
+$('adminTokenMake').onclick = () => setAdminToken({ generate: true });
+$('adminTokenCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('adminTokenValue').textContent); adminTokenMsg('Copied.'); }
+  catch { adminTokenMsg('Select the token and copy it.', true); }
+};
+
+// Models and limits. Each number field shows its bounds; empty model fields mean the default.
+const limitLabels = {
+  max_steps: ['Steps in one turn', 'agentBuild'], max_tokens: ['Tokens in one reply', 'agentBuild'],
+  max_sessions: ['Chats kept at once', 'agentBuild'], build_daily_tokens: ['Tokens per day, 0 for no cap', 'agentBuild'],
+  sample_max_tokens: ['Tokens in one reply', 'agentSample'], sample_daily_tokens: ['Tokens per app per day, 0 for no cap', 'agentSample'],
+};
+let agentShown = null;
+
+function renderAgent(v) {
+  agentShown = v;
+  const field = (id, label, value, placeholder, hint, extra = {}) => el('label', {}, label,
+    el('input', { id, value: value ?? '', placeholder: placeholder ?? '', autocomplete: 'off', spellcheck: false, ...extra }),
+    hint ? el('small', { textContent: hint }) : '');
+  const models = [];
+  for (const [p, name] of [['anthropic', 'Anthropic API'], ['bedrock', 'Amazon Bedrock']]) {
+    for (const [tier, what] of [['main', 'model'], ['quick', 'quick model']]) {
+      const saved = v.settings.models[p][tier], dflt = v.models[p][`default_${tier}`];
+      models.push(field(`agentModel-${p}-${tier}`, `${name} ${what}`, saved, dflt, saved ? `Default: ${dflt}` : ''));
+    }
+  }
+  $('agentModels').replaceChildren(...models);
+  for (const box of ['agentBuild', 'agentSample']) $(box).replaceChildren();
+  for (const l of v.limits) {
+    const [label, box] = limitLabels[l.name] || [l.name, 'agentBuild'];
+    $(box).append(field(`agentLimit-${l.name}`, label, v.settings[l.name], String(l.default), `${l.min.toLocaleString()} to ${l.max.toLocaleString()}; default ${l.default.toLocaleString()}`,
+      { type: 'number', min: l.min, max: l.max, step: 1, inputMode: 'numeric' }));
+  }
+}
+
+async function loadAgent() {
+  try { renderAgent(await api('/api/agent')); } catch (e) { agentMsg(e.message, true); }
+}
+
+async function saveAgent(patch, done) {
+  agentMsg('Testing and saving…');
+  try {
+    const v = await api('/api/agent', patch);
+    renderAgent(v);
+    agentMsg(v.untested && v.untested.length ? `${done} Not tested, because that provider has no keys yet: ${v.untested.join(', ')}.` : done);
+    await loadStatus();
+    loadKeys();
+  } catch (e) { agentMsg(`Not saved: ${e.message}`, true); }
+}
+$('agentSave').onclick = () => {
+  if (!agentShown) return;
+  const patch = { models: { anthropic: {}, bedrock: {} } };
+  for (const p of ['anthropic', 'bedrock']) for (const t of ['main', 'quick']) patch.models[p][t] = $(`agentModel-${p}-${t}`).value.trim();
+  for (const l of agentShown.limits) {
+    const raw = $(`agentLimit-${l.name}`).value.trim();
+    const n = raw === '' ? l.default : Number(raw);
+    if (!Number.isInteger(n)) return agentMsg(`${(limitLabels[l.name] || [l.name])[0]}: type a whole number.`, true);
+    patch[l.name] = n;
+  }
+  saveAgent(patch, 'Saved.');
+};
+$('agentReset').onclick = () => {
+  if (!agentShown) return;
+  const patch = { models: { anthropic: { main: '', quick: '' }, bedrock: { main: '', quick: '' } } };
+  for (const l of agentShown.limits) patch[l.name] = l.default;
+  saveAgent(patch, 'Back to the defaults.');
+};
+
+// Usage: one row per app, and Make an app; each row's cap can be changed.
+function renderUsage(v) {
+  const fmt = (n) => Number(n || 0).toLocaleString();
+  const payers = Object.keys(v.totals || {}).sort((a, b) => (v.totals[b].total - v.totals[a].total));
+  $('usageEmpty').classList.toggle('hidden', payers.length > 0);
+  $('usageTable').classList.toggle('hidden', payers.length === 0);
+  $('usageRows').replaceChildren(...payers.map((p) => {
+    const today = (v.today_payers[p] || {}).total || 0, cap = v.caps[p];
+    const builder = p === 'Make an app';
+    const input = el('input', { type: 'number', min: 0, step: 1, value: cap ?? 0, ariaLabel: `Daily cap for ${p}`, inputMode: 'numeric' });
+    const save = el('button', { textContent: 'Save', ariaLabel: `Save the daily cap for ${p}`, onclick: async () => {
+      const n = Number(input.value);
+      if (!Number.isInteger(n) || n < 0) return usageMsg('A cap is a whole number of tokens, 0 for no cap.', true);
+      try {
+        await api('/api/agent', builder ? { build_daily_tokens: n } : { caps: { [p]: n } });
+        usageMsg(`Saved the cap for ${p}.`);
+        loadUsage(); loadAgent();
+      } catch (e) { usageMsg(e.message, true); }
+    } });
+    const tr = el('tr', {},
+      el('td', { textContent: p }),
+      el('td', { className: `num${cap && today >= cap ? ' over' : ''}`, textContent: fmt(today) }),
+      el('td', { className: 'num', textContent: fmt(v.totals[p].total) }),
+      el('td', { className: 'num', textContent: fmt(v.totals[p].requests) }),
+      el('td', {}, input), el('td', {}, save));
+    tr.dataset.payer = p;
+    return tr;
+  }));
+}
+
+async function loadUsage() {
+  try { renderUsage(await api('/api/usage')); } catch (e) { usageMsg(e.message, true); }
+}
+$('setTab-keys').addEventListener('click', () => status.admin && loadKeys());
+$('setTab-usage').addEventListener('click', () => status.admin && loadUsage());
 
 // Settings → Make apps with Claude
 function splunkMsg(text, bad = false) { $('splunkMsg').textContent = text; $('splunkMsg').className = bad ? 'err' : 'muted'; }

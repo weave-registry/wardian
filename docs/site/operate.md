@@ -22,6 +22,10 @@ ADMIN_TOKEN=$(openssl rand -hex 32) ADDR=0.0.0.0:8000 wardian
 Then whoever sends the token is an admin, and nobody else is, this machine included. Settings asks
 for the token, and **Unlock** opens it. At start, Wardian prints who counts as an admin.
 
+You can also save a token in **Settings → Keys** while Wardian listens on this machine only, then
+start it again on the other address. `ADMIN_TOKEN` wins over a saved token
+([Keys and Claude settings](/docs/keys#the-admin-token)).
+
 Everyone else can open the apps, but the server does less for them:
 
 | A viewer who is not an admin… | Because |

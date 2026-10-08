@@ -59,6 +59,7 @@ Errors carry `e.code`:
 | `refused` | Claude declined | show the reason; do not retry the same prompt |
 | `invalid_json` | `sample.json` got text that is not JSON | retry once with a firmer prompt, or fall back |
 | `prompt_too_large` | the prompt is over the limit | ask the user to shorten the input |
+| `over_budget` | this app used its tokens for today | say so; offer the fallback until tomorrow (UTC) |
 | `cancelled` | your `signal` aborted | do nothing |
 | `error` | anything else | show the message |
 
@@ -91,3 +92,8 @@ try {
 
 Each call uses credit on the key or the AWS account set up in Settings. Use `modelTier: 'quick'` for
 small jobs: classification, extraction, short summaries.
+
+Wardian counts each app's tokens per UTC day. Past its daily cap, 200,000 tokens unless an admin set
+another in **Settings → Usage**, every call fails with `over_budget` until the next day. An admin
+also chooses the models and the most tokens one answer may have ([Keys and Claude
+settings](/docs/keys)).

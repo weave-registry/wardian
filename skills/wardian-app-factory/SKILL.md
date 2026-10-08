@@ -119,7 +119,8 @@ still needs an `app.wasm` at its top (spec §3.2); keep the template's empty one
 - `claude:sample` (`references/ai.md`) works only when a Claude provider is set up and the user
   allows the package; `ctx.cap('sample')` can resolve to `null`, so the app must still work without
   it. The answer does **not** stream: `onText` is called once. Show `<wardian-progress cancelable>`
-  wired to an `AbortController`, and handle every `e.code`.
+  wired to an `AbortController`, and handle every `e.code`, including `over_budget`: the app used
+  its daily token cap, and Claude stays unavailable to it until the next UTC day.
 - Small settings go in `ctx.store` (capability `storage`). Data — rows to page, sort, filter or share —
   goes in the app's own SQLite database (capability `db`; `references/data.md`): `insertRows`,
   `page`, `query`. Show large tables a page at a time with `page({offset, limit: 100, orderBy,

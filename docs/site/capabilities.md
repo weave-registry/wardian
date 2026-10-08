@@ -64,7 +64,7 @@ const obj = await sample.json(prompt);
 ```
 
 Errors carry `e.code`: `not_granted`, `rate_limited`, `refused`, `invalid_json`,
-`prompt_too_large`, `cancelled` or `error`. An app must handle `null`. See
+`prompt_too_large`, `over_budget`, `cancelled` or `error`. An app must handle `null`. See
 [Claude inside your app](/docs/ai).
 
 ## `splunk`

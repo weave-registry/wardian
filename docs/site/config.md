@@ -40,6 +40,10 @@ Files marked *private* are written readable by their owner only (mode `600`).
 | `anthropic-workspace` | The Anthropic workspace ID, if you gave one. *Private.* |
 | `bedrock.json` | The Amazon Bedrock region and keys. *Private.* |
 | `ai-provider` | Which Claude provider Settings chose: `anthropic` or `bedrock`. *Private.* |
+| `agent.json` | Claude's models, the limits of **Make an app** and `claude:sample`, and the daily caps ([Keys and Claude settings](/docs/keys)). *Private.* |
+| `usage.json` | The tokens Claude used, by UTC day and by app, for the last 31 days. *Private.* |
+| `key-checks.json` | The last test of each key: when, and what the service said. No key. *Private.* |
+| `admin-token` | The admin token saved in **Settings → Keys**. *Private.* |
 | `splunk.json` | The Splunk address and account. *Private.* |
 | `grants.json` | Your answers to permission questions: channels, Splunk, Claude, reading another app's tables. *Private.* |
 | `state/` | Arrange layouts (`layouts.json`), each app's saved data (`apps/<app>.json`) and the latest message on each channel (`channels.json`). *Private.* |
@@ -59,20 +63,20 @@ the setup again and fills `apps/` from `./apps`.
 |---|---|---|
 | `ADDR` | `127.0.0.1:8000` | The address to listen on. Anything but `127.0.0.0/8`, `::1` or `localhost` needs `ADMIN_TOKEN`. Port `0` lets the system pick a free port. |
 | `DATA_DIR` | `data` | The data folder. |
-| `ADMIN_TOKEN` | none | Whoever sends it is an admin, and nobody else is. Required to listen on a non-loopback address. |
+| `ADMIN_TOKEN` | none | Whoever sends it is an admin, and nobody else is. It wins over a token saved in **Settings → Keys**. A non-loopback address needs one of the two. |
 | `REFRESH_SECS` | `60` | How often to read the Drive folder again. Values below `5` count as `5`. |
 | `GDRIVE_FOLDER_ID` | none | Start on this Drive folder. It wins over the folder saved in Settings. |
 | `GDRIVE_SA_KEY` | none | Path of a service account key file. Used only if no key was uploaded in Settings. |
 | `IMPORT_ALLOW_LAN` | off | `1` lets an import link point at the local network. Loopback and cloud metadata addresses stay blocked. |
 | `ANTHROPIC_API_KEY` | none | Anthropic API key. Used only if none is saved in Settings. |
 | `ANTHROPIC_WORKSPACE_ID` | none | Anthropic workspace ID, for a key that is not scoped to one workspace. Used only if none is saved. |
-| `WARDIAN_AI_MODEL` | `claude-opus-5-5` | The Anthropic model that writes apps. `RUSTLE_AI_MODEL` is read if this is not set. |
+| `WARDIAN_AI_MODEL` | `claude-opus-5-5` | The Anthropic model that writes apps. `RUSTLE_AI_MODEL` is read if this is not set. A model chosen in **Settings → Claude** wins. |
 | `WARDIAN_AI_PROVIDER` | `anthropic` | `bedrock` to use Amazon Bedrock. Used only if Settings has not chosen a provider. |
 | `AWS_REGION` | none | Bedrock region. `AWS_DEFAULT_REGION` is read if this is not set. |
 | `AWS_BEARER_TOKEN_BEDROCK` | none | Bedrock API key. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | none | AWS access keys for Bedrock, instead of an API key. The session token is for temporary keys. |
-| `WARDIAN_BEDROCK_MODEL` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` | The Bedrock model that writes apps. |
-| `WARDIAN_BEDROCK_QUICK_MODEL` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | The Bedrock model for quick requests. |
+| `WARDIAN_BEDROCK_MODEL` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` | The Bedrock model that writes apps. A model chosen in **Settings → Claude** wins. |
+| `WARDIAN_BEDROCK_QUICK_MODEL` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | The Bedrock model for quick requests. A model chosen in **Settings → Claude** wins. |
 | `SPLUNK_URL` | none | Splunk management address. Used only if none is saved in Settings. |
 | `SPLUNK_TOKEN` | none | Splunk token. Or set `SPLUNK_USERNAME` and `SPLUNK_PASSWORD`. |
 | `SPLUNK_INSECURE_TLS` | off | `1` or `true` accepts any certificate, such as Splunk's self-signed default. |
@@ -97,24 +101,28 @@ lists them.
 | Drive key | wins | `GDRIVE_SA_KEY` used if none was uploaded |
 | Anthropic key and workspace | win | used if none is saved |
 | Claude provider | wins | `WARDIAN_AI_PROVIDER` used if none was chosen |
+| Claude models | win | the `WARDIAN_*_MODEL` variables are the defaults |
 | Splunk account | wins | used if none is saved |
+| Admin token | used if `ADMIN_TOKEN` is not set | `ADMIN_TOKEN` wins |
 
 ## Settings in the browser
 
-Open **Settings** from the app list. It has seven sections.
+Open **Settings** from the app list. It has nine sections.
 
 | Section | What you can do | Needs admin |
 |---|---|---|
 | **Status** | See the app source, its folder, the number of apps and, for Drive, the last refresh and the last error. **Refresh now** reads the app source again. Enter the admin token here when Settings is locked. | to refresh |
+| **Keys** | See every key and account, where each comes from and its last test. Test one again, or remove it. Set or make the admin token ([Keys and Claude settings](/docs/keys)). | yes |
 | **App source** | Serve the local folder, or connect a Google Drive folder: upload a service account key, choose a folder, connect. | yes |
-| **Claude** | Choose the Anthropic API or Amazon Bedrock, and give its keys. Wardian tests them before it saves them. | yes |
+| **Claude** | Choose the Anthropic API or Amazon Bedrock, and give its keys. Wardian tests them before it saves them. Choose the models and the limits. | yes |
+| **Usage** | See the tokens Claude used for each app and for **Make an app**, today and over 31 days, and set each one's daily cap. | yes |
 | **Splunk** | Give the management address and a token, or a username and password. Allow a self-signed certificate. Wardian tests the account before it saves it. | yes |
 | **Permissions** | See every answer to a permission question. Revoke one, and the app asks again next time. | to revoke |
 | **Removed apps** | Restore an app you removed. | yes |
 | **Import** | Import a `.wardian` or `.zip` file, from your computer or from a link. | yes |
 
-Keys and passwords go to the server and never come back to the browser. Settings shows only whether
-one is saved.
+Keys and passwords go to the server and never come back to the browser. Settings shows whether one
+is saved, and an API key's last four characters at most.
 
 ### First start
 
@@ -127,10 +135,10 @@ changed later in Settings.
 Only an admin can change Settings, import and export apps, browse Drive, see an app's history, and
 use the server for Splunk searches, Claude requests and app databases. Wardian decides per request:
 
-- **`ADMIN_TOKEN` is set.** A request is from an admin only if it carries the token in the
-  `X-Admin-Token` header. This is true for every address, this machine included. Settings asks for
+- **An admin token is set**, by `ADMIN_TOKEN` or in **Settings → Keys**. A request is from an admin
+  only if it carries the token in the `X-Admin-Token` header. This is true for every address, this machine included. Settings asks for
   the token and keeps it in that browser tab only (`sessionStorage`), so a new tab asks again.
-- **`ADMIN_TOKEN` is not set.** A request is from an admin only if it comes from this machine
+- **No admin token is set.** A request is from an admin only if it comes from this machine
   (a loopback address) and its `Host` header names `localhost`, `127.0.0.1` or `::1`. Then every
   program and browser on this machine is an admin. That is why Wardian refuses to listen on any other
   address without a token.

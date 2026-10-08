@@ -180,17 +180,18 @@ Only an admin can change Settings, import or export apps, browse Drive, read an 
 a permission question, and use the server for Splunk, Claude and databases
 (`src/adapters/primary/http.rs`, `is_admin`).
 
-- **With `ADMIN_TOKEN`**, a request is from an admin only if its `X-Admin-Token` header equals the
-  token. Wardian compares every byte, so the time an answer takes does not show how much of a guess
+- **With an admin token**, set by `ADMIN_TOKEN` or saved in **Settings → Keys** (`ADMIN_TOKEN`
+  wins), a request is from an admin only if its `X-Admin-Token` header equals the token. Wardian compares every byte, so the time an answer takes does not show how much of a guess
   was right. This holds for every address, this machine included.
-- **Without `ADMIN_TOKEN`**, a request is from an admin only if it comes from a loopback address and
+- **Without a token**, a request is from an admin only if it comes from a loopback address and
   its `Host` header names `localhost`, `127.0.0.1` or `::1`. The `Host` check stops a hostile web page
   from reaching the API through DNS rebinding.
 
 Without a token, every program on this machine is an admin. That is fine for one person on a laptop
 and wrong for a shared server. So Wardian refuses to start on any address but `127.0.0.0/8`, `::1`
-or `localhost` unless `ADMIN_TOKEN` is set (`src/config.rs`, `admins`). It is refused, not warned
-about.
+or `localhost` unless an admin token is set (`src/config.rs`, `admins`). It is refused, not warned
+about. A token saved in Settings that cannot be read stops Wardian at start, so it never starts
+unlocked by mistake. While Wardian listens on such an address, the saved token cannot be removed.
 
 Other web sites cannot post to the API from your browser either. Every API call that changes
 something needs `Content-Type: application/json` (or `application/zip` for an upload). A browser must
@@ -198,17 +199,24 @@ ask the server first before it sends those across sites, and Wardian never says 
 
 ## Keys and secrets
 
+- Every secret is read and written through one port, `Secrets` (`src/ports/secrets.rs`,
+  ADR-2610081500), never directly.
 - Keys, passwords and tokens are saved in the data folder readable by their owner only (mode `600`):
-  `anthropic-key`, `anthropic-workspace`, `bedrock.json`, `service-account.json`, `splunk.json`. So
-  are `config.json`, `grants.json`, `state/` and each app's database
-  (`src/adapters/secondary/local_disk.rs`, `write_private`).
-- Settings sends a key to the server once. The server never sends it back: the browser sees only
-  whether one is saved.
+  `anthropic-key`, `anthropic-workspace`, `bedrock.json`, `service-account.json`, `splunk.json`,
+  `admin-token`. So are `config.json`, `grants.json`, `agent.json`, `usage.json`, `key-checks.json`,
+  `state/` and each app's database (`src/adapters/secondary/local_disk.rs`, `write_private`).
+- Settings sends a key to the server once. The server never sends it back: the browser sees whether
+  one is saved, where it came from, its last test, and an API key's last four characters at most
+  ([Keys and Claude settings](/docs/keys)).
+- An admin sees every secret on one list, can test each one again and remove each one saved in
+  Settings, without opening the data folder.
+- Each app's `claude:sample` use is capped per day: 200,000 tokens by default, set per app in
+  **Settings → Usage**. Past it, the app gets `over_budget` and no request is sent.
 - An exported `.wardian` file never holds keys, accounts, permission answers or history, even with
   data (`src/domain/export.rs`).
 - The test `secrets_never_leave_in_answers_exports_or_logs` (`src/tests.rs`) fills every key and
-  setting, then searches every API answer, an export, its import preview and the server's output for
-  them.
+  setting, then searches every API answer, the key list and its tests, an export, its import preview
+  and the server's output for them.
 
 ## Imports
 

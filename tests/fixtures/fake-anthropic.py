@@ -40,5 +40,6 @@ class H(BaseHTTPRequestHandler):
             text = '{"alphaFactor":0.5,"betaFactor":1,"lambdaFactor":1,"rationale":"Halving lock time halves contention."}'
         else:
             text = "## What the curve says\nThroughput peaks near 48 users.\n## Likely causes\n- a hypothesis"
-        self.reply(200, {"content": [{"type": "text", "text": text}], "stop_reason": "end_turn"})
+        # Usage as the real API reports it, so Wardian can count it (ADR-2610081500).
+        self.reply(200, {"content": [{"type": "text", "text": text}], "stop_reason": "end_turn", "usage": {"input_tokens": 120, "output_tokens": 40}})
 HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()

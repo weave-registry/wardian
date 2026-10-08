@@ -1689,22 +1689,28 @@ fn claim_keys_and_settings_are_private_files() {
     let up = fake_upstream();
     let base = tmp("claim-private");
     let (apps, data) = (base.join("apps"), base.join("data"));
-    tiny_suite(&apps, "s", &[("a", &["splunk"])]);
+    tiny_suite(&apps, "s", &[("a", &["splunk", "claude:sample"])]);
     let server = TestServer::start(&apps, &data, &[("ANTHROPIC_BASE_URL", up.as_str()), ("WARDIAN_BEDROCK_BASE_URL", up.as_str())]);
     let post = |path: &str, v: Value| {
         let (status, answer) = server.json("POST", path, Some(v), &[]);
         assert_eq!(status, 200, "{path}: {answer}");
     };
+    // keys.md (ADR-2610081500): Claude's settings, the usage counts, the key tests and the admin token.
+    post("/api/agent", json!({"max_steps": 41}));
     post("/api/ai/key", json!({"key": "sk-ant-PRIVATE", "workspace": "wrkspc_PRIVATE"}));
     post("/api/ai/provider", json!({"provider": "bedrock", "region": "us-east-1", "auth": "api-key", "token": "BEDROCK-PRIVATE"}));
     post("/api/splunk/config", json!({"url": up, "token": "SPLUNK-PRIVATE"}));
     post("/api/grants", json!({"app": "s", "channel": "splunk", "mode": "use", "decision": "allow"}));
     post("/api/source", json!({"kind": "local"}));
+    post("/api/grants", json!({"app": "s", "channel": "ai", "mode": "use", "decision": "allow"}));
+    post("/api/ai/sample", json!({"package": "s", "app": "a", "prompt": "hi"}));
+    post("/api/keys/admin", json!({"token": "a-saved-admin-token-0123456789"}));
     server.stop();
     // A Drive key is saved only after Google accepts it, so this one is accepted by a stand-in.
     hub_with_drive(&apps, &data, Arc::new(AnyDriveKey)).set_key("{}").unwrap();
     #[cfg(unix)]
-    for f in ["anthropic-key", "anthropic-workspace", "ai-provider", "bedrock.json", "splunk.json", "service-account.json", "grants.json", "config.json"] {
+    for f in ["anthropic-key", "anthropic-workspace", "ai-provider", "bedrock.json", "splunk.json", "service-account.json", "grants.json", "config.json",
+              "agent.json", "usage.json", "key-checks.json", "admin-token"] {
         use std::os::unix::fs::PermissionsExt;
         let mode = fs::metadata(data.join(f)).unwrap_or_else(|e| panic!("{f}: {e}")).permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "{f} is mode {mode:o}");
@@ -2201,5 +2207,57 @@ fn keys_admin_token_set_in_settings() {
     assert_eq!(st, 400, "{kept}");
     assert!(kept["error"].as_str().unwrap().contains("other machines can reach"), "{kept}");
     server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// A Google that accepts any key and serves one empty folder, so Drive can be the app source.
+struct DriveWithFolder;
+
+impl crate::ports::drive::DriveConnector for DriveWithFolder {
+    fn client(&self, _: &str) -> Result<Arc<dyn crate::ports::drive::DriveClient>, String> {
+        Ok(Arc::new(DriveWithFolder))
+    }
+}
+
+impl crate::ports::drive::DriveClient for DriveWithFolder {
+    fn client_email(&self) -> String { "w@example.iam.gserviceaccount.com".into() }
+    fn check(&self) -> Result<(), String> { Ok(()) }
+    fn browse(&self, _: Option<&str>) -> Result<Vec<crate::domain::package::Folder>, String> { Ok(Vec::new()) }
+    fn preview(&self, _: &str) -> Result<Vec<String>, String> { Ok(Vec::new()) }
+    fn download(&self, _: &str) -> Result<Vec<u8>, String> { Err("nothing here".into()) }
+    fn open_folder(self: Arc<Self>, _: &str, _: &str, _: std::time::Duration, _: bool) -> Result<Arc<dyn crate::ports::drive::DriveFolder>, String> {
+        Ok(self)
+    }
+}
+
+impl crate::ports::drive::DriveFolder for DriveWithFolder {
+    fn folder_id(&self) -> String { "1AbCdEfGhIjKlMnOpQrStUvWxYz".into() }
+    fn folder_name(&self) -> String { "Team apps".into() }
+    fn client_email(&self) -> String { "w@example.iam.gserviceaccount.com".into() }
+    fn status(&self) -> crate::domain::package::RefreshStatus { Default::default() }
+    fn refresh(&self) -> Result<(), String> { Ok(()) }
+    fn list_apps(&self) -> Vec<String> { Vec::new() }
+    fn has(&self, _: &str, _: &str) -> bool { false }
+    fn read(&self, _: &str, _: &str) -> Option<Vec<u8>> { None }
+}
+
+/// keys.md: removing the Google service account key while Drive is the app source switches the
+/// source to the local apps folder, and saves that choice.
+#[test]
+fn keys_removing_the_drive_key_while_serving_drive_serves_local_apps() {
+    use crate::ports::service::Catalog;
+    use crate::usecases::keys::KeyOwner;
+    let base = tmp("keys-drive-source");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    fs::create_dir_all(&apps).unwrap();
+    let hub = hub_with_drive(&apps, &data, Arc::new(DriveWithFolder));
+    hub.start(None, None);
+    hub.set_key("{}").unwrap();
+    Catalog::use_drive(&hub, "1AbCdEfGhIjKlMnOpQrStUvWxYz", "Team apps").unwrap();
+    assert_eq!(Catalog::status(&hub)["source"], "drive");
+    assert_eq!(hub.forget("drive"), Some(Ok(())));
+    assert_eq!(Catalog::status(&hub)["source"], "local", "the source is local again");
+    let saved: Value = serde_json::from_slice(&fs::read(data.join("config.json")).unwrap()).unwrap();
+    assert_eq!(saved["source"], "local", "and the choice is saved, so a restart serves local apps too");
     let _ = fs::remove_dir_all(base);
 }

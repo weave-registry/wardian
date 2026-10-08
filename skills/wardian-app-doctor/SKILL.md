@@ -45,6 +45,7 @@ Stop at the first step that shows a problem. Fix it, then start again from step 
 | WebAssembly reads zeros or garbage | an old view of `memory.buffer` after memory grew | take a new view after every call |
 | `ctx.cap(...)` is `null` | the host cannot provide it (no Claude provider, no Splunk) | the app must handle `null`; tell the user where in Settings to set it up |
 | `e.code === 'not_granted'`, a channel call rejects | the user said no, or closed the question | explain in the app; the user can change it in Settings → App permissions |
+| `e.code === 'over_budget'` from `claude:sample` | the app used its daily token cap | handle it like `null` until the next UTC day; an admin can raise the cap in Settings → Usage |
 | "settings are locked" | the viewer is not an admin of this Wardian | `db`, `splunk`, history and permission answers need an admin |
 | a `db` call rejects | `ATTACH`, a pragma that sets, an extension, a write in `page`, a name with other than letters, digits and `_`, or 10 seconds passed | change the SQL; put user values in `params` |
 | data gone after reload | the value was not JSON-compatible, or a page app tried `localStorage` | store plain JSON; a page cannot keep data, use a suite with `storage` or offer download |

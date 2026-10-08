@@ -44,8 +44,9 @@ Wardian drops it.
    (such as `region us-east-1, API key`), and the last test: when, whether it passed, and what the
    service said. `POST /api/keys/<id>/test` tests it again with the saved values.
    `POST /api/keys/<id>/remove` removes the saved one; the environment's value, if any, then
-   applies. Every test is recorded, including the test before a save and a refusal (401 or 403)
-   while an app runs, in `key-checks.json`, which holds no secret. The Drive key gets the removal
+   applies. Every test is recorded, including the test before a save and Claude's refusal (401 or
+   403) of a key while an app or Make an app uses it, in `key-checks.json`, which holds no secret.
+   An API key is described by its last four characters at most. The Drive key gets the removal
    it does not have; removing it while Drive is the app source switches the source to Local.
 3. **The admin token can be set in Settings.** `POST /api/keys/admin` saves a token of at least 24
    printable characters, or makes one (32 random bytes, base64url) and shows it once. From that
@@ -73,11 +74,12 @@ Wardian drops it.
    defaults. `Llm::test_key` takes the model it tests. The use case passes the model in each body;
    the adapters still own the default names (hexa rule `no-model-name-outside-inference`).
 5. **Usage is counted.** Every Messages reply's `usage` is added to `usage.json` under the UTC day
-   and the payer: the package for `claude:sample`, `make-an-app` for the builder. Wardian keeps 31
+   and the payer: the package for `claude:sample`, `Make an app` for the builder (a name no package
+   can have). Wardian keeps 31
    days. `GET /api/usage` returns the days, a total per payer and the caps. Settings shows today and
    the last 31 days per app.
-6. **Caps.** Before a `claude:sample` request, Wardian adds the package's input and output tokens
-   for today. At or over its cap, the request fails with the new code `over_budget`, which
+6. **Caps.** Before a `claude:sample` request, Wardian adds the package's tokens for today: every
+   token Claude read, cached or not, and every token it wrote. At or over its cap, the request fails with the new code `over_budget`, which
    `e.code` carries to the app. A cap per package (`caps: {package: tokens}` in `agent.json`)
    replaces `sample_daily_tokens` for that package. **Make an app** checks `build_daily_tokens`
    before each model request and stops the turn with a message. A request already under way

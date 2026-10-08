@@ -14,6 +14,13 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- **Keys and Claude settings in one place** (ADR-2610081500). **Settings → Keys** lists every
+  secret Wardian holds, where each comes from and its last test, with **Test again** and **Remove**;
+  the Google Drive key can now be removed. The admin token can be set or made there; `ADMIN_TOKEN`
+  still wins. **Settings → Claude** chooses each provider's models, tested before they are saved,
+  and the limits of **Make an app** and `claude:sample`. **Settings → Usage** counts each app's
+  tokens per day and sets its daily cap; past it, `claude:sample` fails with the new code
+  `over_budget`. Every secret goes through one port, `Secrets`.
 - **A documentation site** (ADR-2610080903) at `/docs`: grouped pages, search, a phone layout, and a
   page for every example and every decision, from the Markdown in the repository.
   `wardian docs FOLDER` writes it as a static site; the website keeps it in `website/`. Tests fail
