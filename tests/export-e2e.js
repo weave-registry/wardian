@@ -65,7 +65,7 @@ function unzip(buf) {
   await page.setInputFiles('#zipFile', file);
   await page.locator('#importPreview:not(.hidden)').waitFor({ timeout: 5000 });
   const prev = await page.locator('#importPreview').textContent();
-  ok(/Splunk table/.test(prev) && /It may use/.test(prev) && /table errors: 3 rows/.test(prev), 'the preview shows the app, what it may use and its data');
+  ok(/Splunk table/.test(prev) && /What it may do/.test(prev) && /Table errors: 3 rows/.test(prev) && /Runs Splunk searches/.test(prev), 'the preview shows the app, what it may use and its data');
   ok(!(await page.isChecked('#importData')), '"Also install its data" is off by default');
   await page.check('#importData');
   await page.click('#importGo');

@@ -266,6 +266,26 @@ fn first_run_marker_only_on_an_empty_data_folder() {
     let _ = fs::remove_dir_all(dir);
 }
 
+#[test]
+fn data_folder_is_checked_writable_at_start() {
+    use crate::usecases::workspace::check_writable;
+    let dir = tmp("writable");
+    let disk = LocalDisk;
+    let data = dir.join("data");
+    check_writable(&disk, &data).expect("a missing data folder is made and written");
+    assert!(disk.list_dir(&data).is_empty(), "the test file is removed again");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let locked = dir.join("locked");
+        fs::create_dir_all(&locked).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        assert!(check_writable(&disk, &locked).is_err(), "a folder Wardian cannot write is refused at start");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let _ = fs::remove_dir_all(dir);
+}
+
 // ---------- the working folder and each app's history (ADR-2610071122) ----------
 
 #[test]

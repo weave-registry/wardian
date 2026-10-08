@@ -38,6 +38,16 @@ pub fn seed(fs: &dyn FileSystem, source: &Path, working: &Path) -> Result<Option
     Ok(Some(apps))
 }
 
+/// Proves Wardian can write in `data_dir` by writing and removing a small file, before anything
+/// else uses the folder. A folder it cannot write would otherwise fail later, one save at a time.
+pub fn check_writable(fs: &dyn FileSystem, data_dir: &Path) -> Result<(), String> {
+    let probe = data_dir.join(".write-test");
+    fs.create_dir_all(data_dir)?;
+    fs.write(&probe, b"Wardian checks it can write here when it starts. Safe to delete.\n")?;
+    fs.remove_file(&probe);
+    Ok(())
+}
+
 /// The file in the data folder that says the first-run setup has not been seen (ADR-2610072033).
 pub const FIRST_RUN_MARKER: &str = "first-run";
 

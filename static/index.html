@@ -72,7 +72,13 @@
   #apps li button.active .kind { color: inherit; opacity: .8; }
   .badge { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; }
   .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); flex: none; }
-  #importPreview { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .8rem; margin: .5rem 0; }
+  /* What a file holds, before it is installed: part of the card, set off by a rule, not a box in a box. */
+  #importCard code { overflow-wrap: anywhere; }
+  #importPreview { border-top: 1px solid var(--line); padding-top: .75rem; margin-top: .75rem; }
+  #importPreview h3 { margin: .75rem 0 .25rem; font-size: .9rem; }
+  #importPreview ul { margin: 0 0 .5rem; padding-left: 1.2rem; }
+  #importPreview li { margin: .15rem 0; }
+  #importPreview .row:last-child { margin-top: .75rem; }
   .export-data { border: 1px solid var(--line); border-radius: 8px; padding: .4rem .8rem; margin: .5rem 0; }
   p.warn { color: var(--warn); }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
@@ -458,13 +464,14 @@
     <div role="tabpanel" data-section="import" data-admin>
     <p class="muted locked-note">Unlock Settings in Status to import apps.</p>
     <div class="card" id="importCard">
-      <h2>Import from a zip</h2>
-      <p class="muted" style="font-size:.85rem">Copies the apps in a zip into <code class="localRootName"></code>. The zip can hold an <code>app.wasm</code>, a single <code>.wasm</code> file, or one folder per app.</p>
+      <h2>Import a Wardian file</h2>
+      <p class="muted" style="font-size:.85rem">Adds the apps in a <code>.wardian</code> file to <code class="localRootName"></code>. Anyone makes one with <strong>Download</strong> on an app. A <code>.zip</code> of app folders works too.</p>
       <div class="row" style="margin-bottom:.5rem">
-        <input type="file" id="zipFile" accept=".zip,.wardian,.rustle,application/zip" aria-label="Zip file to import">
+        <label for="zipFile">Choose a file</label>
+        <input type="file" id="zipFile" accept=".wardian,.zip,.rustle,application/vnd.wardian+zip,application/zip">
       </div>
       <div class="row" style="margin-bottom:.5rem">
-        <input id="zipUrl" style="flex:1;min-width:14rem" placeholder="…or paste a link to a zip (Drive links work)" aria-label="Link to a zip file">
+        <input id="zipUrl" style="flex:1;min-width:14rem" placeholder="…or paste a link (Drive links work)" aria-label="Link to a .wardian file">
         <button id="zipUrlBtn">Import link</button>
       </div>
       <label class="row"><input type="checkbox" id="zipReplace"> Replace apps that already exist</label>
@@ -660,7 +667,8 @@ const appUrl = (name, rel) => `/apps/${encodeURIComponent(name)}/${rel.split('/'
 
 // What each capability lets an app do, in the words a user would use.
 const CAP_WORDS = {
-  storage: 'Keeps its own settings in this browser',
+  storage: 'Keeps its own saved data on this Wardian',
+  db: 'Keeps tables in its own database on this Wardian',
   asset: 'Reads files from its own package',
   worker: 'Runs background work in this browser',
   source: 'Reads text built into its own page',
@@ -1198,7 +1206,7 @@ $('useLocal').onclick = async () => {
   catch (e) { sourceMsg(e.message, true); }
 };
 
-// Import from a zip
+// Import a Wardian file (or a zip of app folders)
 function importMsg(text, bad = false, ...extra) {
   $('importMsg').replaceChildren(text, ...extra);
   $('importMsg').className = bad ? 'err' : 'muted';
@@ -1208,7 +1216,7 @@ async function imported(res) {
   const parts = [`Imported ${res.apps.length} app(s): ${res.apps.join(', ')}.`];
   if (res.skipped.length) parts.push(` Skipped: ${res.skipped.join('; ')}.`);
   if (res.data && res.data.installed) parts.push(` Its data was installed (${res.data.what.join(', ')}); permissions are asked again.`);
-  log(`imported from zip: ${res.apps.join(', ')}`, 'a');
+  log(`imported: ${res.apps.join(', ')}`, 'a');
   if (res.serving_local) {
     await loadApps();
     await loadStatus();
@@ -1244,17 +1252,19 @@ $('zipFile').onchange = async () => {
   try { p = await postZip('/api/import/preview', file); } catch (e) { p = null; }
   if (!p || !p.manifest) { box.classList.add('hidden'); return startImport(file, false); }
   const allows = p.allows || {};
-  const uses = [...(allows.caps || []).map((c) => CAP_WORDS[c] || c), ...(allows.send || []).map((c) => `sends on channel ${c}`), ...(allows.receive || []).map((c) => `reads channel ${c}`)];
-  const parts = [el('p', {}, 'This file holds ', el('strong', { textContent: p.title || p.package }), ` (${p.package}), exported from Wardian ${p.manifest.wardian_version || ''}.`),
-    el('p', { className: 'muted', textContent: uses.length ? `It may use: ${uses.join('; ')}. You are asked before it does.` : 'It is sealed: no network, no other apps, nothing outside itself.' })];
+  const uses = [...(allows.caps || []).map((c) => CAP_WORDS[c] || c), ...(allows.send || []).map((c) => `Sends messages on the channel ${c}`), ...(allows.receive || []).map((c) => `Reads messages on the channel ${c}`)];
+  const list = (items) => el('ul', {}, ...items.map((t) => el('li', { textContent: t })));
+  const parts = [el('p', {}, 'This file holds ', el('strong', { textContent: p.title || p.package }), ` (${p.package}), exported from Wardian ${p.manifest.wardian_version || ''}.`)];
+  if (uses.length) parts.push(el('h3', { textContent: 'What it may do (you are asked first)' }), list(uses));
+  else parts.push(el('p', { className: 'muted', textContent: 'It is sealed: no network, no other apps, nothing outside itself.' }));
   const install = el('input', { type: 'checkbox', id: 'importData' });
   if (p.data) {
     const items = [];
-    if (p.data.storage) items.push('what the app had saved');
-    if (p.data.layout) items.push('a layout');
-    for (const t of p.data.tables || []) items.push(`table ${t.name}: ${Number(t.rows).toLocaleString()} rows`);
-    parts.push(el('p', {}, el('strong', { textContent: 'It also holds data: ' }), items.join('; ') + '.'),
-      el('label', { className: 'row' }, install, ' Also install its data (it replaces this app\'s data here; the old data is kept in History)'));
+    if (p.data.storage) items.push('What the app had saved');
+    if (p.data.layout) items.push('Its panel layout');
+    for (const t of p.data.tables || []) items.push(`Table ${t.name}: ${Number(t.rows).toLocaleString()} ${Number(t.rows) === 1 ? 'row' : 'rows'}`);
+    parts.push(el('h3', { textContent: 'It also holds data' }), list(items),
+      el('label', { className: 'row' }, install, ' Also install its data. It replaces this app\'s data here; History keeps the old data.'));
   }
   parts.push(el('div', { className: 'row' },
     el('button', { className: 'primary', id: 'importGo', textContent: 'Import', onclick: () => { box.classList.add('hidden'); startImport(file, install.checked); } }),
@@ -1894,7 +1904,7 @@ function showHome() {
   renderApps();
   const acts = el('div', { className: 'row' });
   if (status.admin) acts.append(el('button', { className: 'primary', textContent: 'Make an app', onclick: () => $('aiBtn').click() }));
-  if (status.admin) acts.append(el('button', { textContent: 'Import a zip', onclick: () => openSettings('import') }));
+  if (status.admin) acts.append(el('button', { textContent: 'Import a Wardian file', onclick: () => openSettings('import') }));
   acts.append(el('a', { href: '/docs/guide', target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Build one yourself →' }));
   $('runner').replaceChildren(el('div', { className: 'home' },
     el('img', { src: '/logo.svg', alt: '' }),

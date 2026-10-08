@@ -125,6 +125,18 @@ fn serve(cfg: Settings) {
             std::process::exit(2);
         }
     }
+    // The data folder is relative to where Wardian starts, so name it in full, and stop at once
+    // if it cannot be written: everything Wardian keeps goes there.
+    let data_shown = std::env::current_dir().map(|d| d.join(&cfg.data_dir)).unwrap_or_else(|_| cfg.data_dir.clone());
+    if let Err(e) = usecases::workspace::check_writable(&*fs, &cfg.data_dir) {
+        eprintln!("Wardian cannot write its data folder, {}: {e}", data_shown.display());
+        if cfg!(target_os = "macos") && e.contains("os error 1") {
+            eprintln!("macOS blocked it. Allow your terminal app in System Settings → Privacy & Security → Files and Folders (Removable Volumes for an outside drive), or start Wardian from another folder.");
+        }
+        eprintln!("Wardian keeps its data in ./data under the folder it starts in, or in DATA_DIR if set.");
+        std::process::exit(2);
+    }
+    println!("data: {}", data_shown.display());
     // A first start with an empty data folder shows the first-run setup once (ADR-2610072033).
     if let Err(e) = usecases::workspace::mark_first_run(&*fs, &cfg.data_dir) {
         eprintln!("data: could not prepare {}: {e}", cfg.data_dir.display());
