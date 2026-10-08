@@ -437,6 +437,35 @@ fn data_folder_is_checked_writable_at_start() {
     let _ = fs::remove_dir_all(dir);
 }
 
+#[test]
+fn seeding_adds_new_examples_but_not_removed_ones() {
+    use crate::usecases::workspace::seed;
+    let dir = tmp("seed-new");
+    let disk = LocalDisk;
+    let (source, working) = (dir.join("examples"), dir.join("apps"));
+    let app = |root: &Path, name: &str| {
+        disk.write(&root.join(name).join("app.json"), br#"{"format":1,"title":"T","page":"index.html"}"#).unwrap();
+        disk.write(&root.join(name).join("index.html"), b"<p>hi</p>").unwrap();
+        disk.write(&root.join(name).join("app.wasm"), b"\0asm\x01\0\0\0").unwrap();
+    };
+    app(&source, "one");
+    app(&source, "two");
+    assert_eq!(seed(&disk, &source, &working).unwrap(), Some(2), "an empty folder gets every example");
+    // A later version ships three more; the user removed "two" to the trash and deleted "gone" for good.
+    app(&source, "three");
+    app(&source, "four");
+    app(&source, "gone");
+    disk.write(&working.join(".examples-seen"), b"one\ntwo\ngone\n").unwrap();
+    fs::create_dir_all(working.join(".trash")).unwrap();
+    fs::rename(working.join("two"), working.join(".trash/two--1791381188")).unwrap();
+    assert_eq!(seed(&disk, &source, &working).unwrap(), Some(2), "the two new examples are added");
+    assert!(disk.is_file(&working.join("three/app.wasm")) && disk.is_file(&working.join("four/app.wasm")));
+    assert!(!disk.exists(&working.join("two")), "an example in the trash stays removed");
+    assert!(!disk.exists(&working.join("gone")), "an example offered before and deleted stays deleted");
+    assert_eq!(seed(&disk, &source, &working).unwrap(), None, "nothing new, nothing added");
+    let _ = fs::remove_dir_all(dir);
+}
+
 // ---------- the working folder and each app's history (ADR-2610071122) ----------
 
 #[test]

@@ -245,8 +245,8 @@ fn serve(cfg: Settings, no_open: bool) {
     };
     let bound = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| cfg.addr.clone());
     stops.started(&format!("serving {} on {bound}", cfg.local_root.display()));
-    // The working folder (ADR-2610071122): filled from the example apps on the first start (found
-    // by ADR-2610080915's rule), which are never changed. A folder named on the command line is
+    // The working folder (ADR-2610071122): gets every example app it has never had (found by
+    // ADR-2610080915's rule); the example apps themselves are never changed. A folder named on the command line is
     // served as it is.
     let (mut added, mut git_note) = (None, None);
     if cfg.chosen_folder {
@@ -258,7 +258,7 @@ fn serve(cfg: Settings, no_open: bool) {
         match usecases::workspace::seed(&*fs, source, &cfg.local_root) {
             Ok(Some(n)) => {
                 added = Some(n);
-                detail(&format!("apps: copied {n} example app(s) from {} into {} (the working folder; {} is not changed)", source.display(), cfg.local_root.display(), source.display()));
+                detail(&format!("apps: added {n} example app(s) from {} to {} (the working folder; {} is not changed)", source.display(), cfg.local_root.display(), source.display()));
             }
             Ok(None) => {}
             Err(e) => eprintln!("apps: could not fill {} from {}: {e}", cfg.local_root.display(), source.display()),

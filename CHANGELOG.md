@@ -12,6 +12,12 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- Each start adds every example app the working folder has never had, so a new version's examples
+  reach existing users. An example the user removed stays removed: Wardian lists the examples it has
+  offered in `.examples-seen` in the working folder and skips any that are in the trash.
+
 ## [0.4.2] - 2026-10-08
 
 ### Added
