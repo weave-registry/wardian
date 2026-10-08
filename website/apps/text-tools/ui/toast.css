@@ -1,0 +1,14 @@
+/* Toasts from WardianUI.toast(text, {variant, title, ms}). */
+.w-toasts { position: fixed; right: var(--w-space-4); bottom: var(--w-space-4); z-index: 1000; display: grid; gap: var(--w-space-2);
+  width: min(360px, calc(100vw - 32px)); pointer-events: none; }
+.w-toast { pointer-events: auto; display: flex; gap: var(--w-space-3); align-items: flex-start; padding: var(--w-space-3) var(--w-space-4);
+  border: 1px solid var(--w-border); border-radius: var(--w-radius); background: var(--w-bg); color: var(--w-fg); box-shadow: var(--w-shadow);
+  font: var(--w-text)/1.4 var(--w-font); animation: w-toast-in var(--w-speed) ease-out; }
+.w-toast b { display: block; font-weight: 600; }
+.w-toast span { flex: 1; }
+.w-toast button { border: 0; background: none; color: var(--w-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px; border-radius: 4px; }
+.w-toast button:focus-visible { outline: 2px solid var(--w-ring); }
+.w-toast[data-variant="destructive"] { border-color: var(--w-destructive); background: var(--w-destructive); color: var(--w-destructive-fg); }
+.w-toast[data-variant="destructive"] button { color: inherit; }
+.w-toast[data-variant="success"] { border-left: 3px solid var(--w-success); }
+@keyframes w-toast-in { from { opacity: 0; transform: translateY(8px); } }

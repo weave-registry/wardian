@@ -18,6 +18,9 @@ Wardian 1.0") is done or written down there as left out.
   outside the data folder, `~/.config/wardian/master.key`, or where `WARDIAN_MASTER_KEY` or
   `WARDIAN_MASTER_KEY_FILE` says. Keys saved before are sealed on the first start. Docker keeps the
   key on a second volume, `keys`.
+- **The examples run on the website** (ADR-2610081900). Each example's page shows the app running
+  when it needs no server (seven of the sixteen), and links a zip of every example to import.
+  `wardian docs website` writes the apps, the zips and the headers that keep them off the network.
 - **`wardian key`** (ADR-2610081700) says where the master key is and how many saved keys it opens;
   `wardian key export FILE` backs it up into a private file, and `wardian key import FILE` restores
   it, refusing a key that opens none of the saved keys unless `--force`.

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot explorer</title>
+<!-- The Wardian component library (wardian add button field card arrange). -->
+<link rel="stylesheet" href="ui/theme.css">
+<link rel="stylesheet" href="ui/button.css">
+<link rel="stylesheet" href="ui/field.css">
+<link rel="stylesheet" href="ui/card.css">
+<style>
+  :root { color-scheme: light dark; --page: #f7f7f8; }
+  @media (prefers-color-scheme: dark) { :root { --page: #111113; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: var(--w-space-5) clamp(16px, 3vw, 32px); font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
+  .top { margin-bottom: var(--w-space-4); }
+  h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.02em; }
+  .top p { margin: 4px 0 0; color: var(--w-muted); }
+  h2 { margin: 0 0 var(--w-space-3); font: 600 var(--w-text-lg)/1.3 var(--w-font); }
+  /* Two columns that Arrange may swap, join, or fill differently. */
+  .layout { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: var(--w-space-4); align-items: start; }
+  .col { display: flex; flex-direction: column; gap: var(--w-space-4); min-width: 0; }
+  .col[hidden] { display: none; }
+  @media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .panel { padding: var(--w-space-4) var(--w-space-5); }
+  .panel.view { padding: var(--w-space-3); }
+  .btnrow { display: flex; flex-wrap: wrap; gap: var(--w-space-2); }
+  input[type=range] { width: 100%; accent-color: var(--w-primary); }
+  .range-row { display: flex; align-items: center; gap: var(--w-space-3); }
+  .range-row output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; color: var(--w-muted); font-size: var(--w-text-sm); }
+  .stage { position: relative; border-radius: var(--w-radius); overflow: hidden; background: #080a16; aspect-ratio: 3 / 2; max-height: 78vh; width: 100%; }
+  canvas { display: block; width: 100%; height: 100%; cursor: zoom-in; touch-action: manipulation; }
+  .status { display: grid; gap: 4px; color: var(--w-muted); font: 12.5px/1.5 var(--w-font-mono); overflow-wrap: anywhere; }
+  .help { margin: 0; padding-left: 1.1em; color: var(--w-muted); font-size: var(--w-text-sm); }
+  .help li + li { margin-top: 4px; }
+  kbd { font: 12px var(--w-font-mono); padding: 1px 5px; border: 1px solid var(--w-border); border-radius: 4px; background: var(--w-muted-bg); }
+</style>
+<header class="top">
+  <h1>Mandelbrot explorer</h1>
+  <p>WebAssembly draws every pixel. Click to zoom in.</p>
+</header>
+<main class="layout" data-arrange-grid>
+  <div class="col" data-arrange-column="side">
+    <section class="w-card panel" data-panel="controls" data-panel-label="Controls">
+      <h2>Controls</h2>
+      <div class="w-field">
+        <label class="w-label" for="iter">Detail</label>
+        <div class="range-row"><input id="iter" type="range" min="50" max="3000" step="50" value="400" aria-describedby="iterOut"><output id="iterOut" for="iter">400</output></div>
+        <p class="w-hint">More detail shows finer edges, and takes longer.</p>
+      </div>
+      <div class="btnrow">
+        <button class="w-button" data-variant="outline" id="out" type="button" title="Zoom out (−)">Zoom out</button>
+        <button class="w-button" data-variant="outline" id="reset" type="button" title="Reset (R)">Reset</button>
+        <button class="w-button" id="save" type="button">Save image</button>
+      </div>
+    </section>
+    <section class="w-card panel" data-panel="where" data-panel-label="Where you are">
+      <h2>Where you are</h2>
+      <div class="status" id="status" aria-live="polite"></div>
+    </section>
+    <section class="w-card panel" data-panel="help" data-panel-label="How to explore">
+      <h2>How to explore</h2>
+      <ul class="help">
+        <li>Click a point to zoom in ×4 on it.</li>
+        <li>Shift-click or right-click to zoom out.</li>
+        <li>Keys: <kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>R</kbd> reset.</li>
+      </ul>
+    </section>
+  </div>
+  <div class="col" data-arrange-column="main">
+    <section class="w-card panel view" data-panel="view" data-panel-label="The set">
+      <div class="stage"><canvas id="view" aria-label="The Mandelbrot set. Click to zoom in on a point."></canvas></div>
+    </section>
+  </div>
+</main>
+<script src="ui/arrange.js"></script>
+<script type="module" src="./app.js"></script>
+</html>

@@ -1,0 +1,7 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 1,
+  "title": "Mandelbrot explorer",
+  "description": "WebAssembly renders the Mandelbrot set into pixels; click anywhere to zoom in.",
+  "page": "index.html"
+}

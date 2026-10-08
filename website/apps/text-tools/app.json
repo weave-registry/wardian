@@ -1,0 +1,7 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 1,
+  "title": "Text tools",
+  "description": "Live word, sentence and character counts, reading time, top words, SHA-256 and case changes for any text you type, paste or open. WebAssembly does the work; nothing leaves your computer.",
+  "page": "index.html"
+}

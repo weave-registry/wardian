@@ -4,8 +4,9 @@
 # Example apps
 
 Sixteen working apps ship with Wardian. Each one teaches one thing well, and each one is a
-package you can open, read and copy. They are built into Wardian and in the app list from the first
-start, however you installed it, and in
+package you can open, read and copy. On the website, each one's page runs it in your browser when it
+needs no server, and every one can be downloaded and imported. They are built into Wardian and in the
+app list from the first start, however you installed it, and in
 [`apps/`](https://github.com/weave-registry/wardian/tree/main/apps) in the repository.
 
 Every example passes `wardian check` and a browser test (`tests/run-examples-e2e.sh`). Read an

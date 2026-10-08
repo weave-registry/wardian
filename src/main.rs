@@ -41,6 +41,7 @@ mod usecases {
     pub mod catalog;
     pub mod check;
     pub mod db;
+    pub mod demos;
     pub mod docs;
     pub mod export;
     pub mod history;

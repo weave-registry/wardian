@@ -1,0 +1,6 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 1,
+  "title": "Number lab",
+  "description": "Exact whole-number maths on 64-bit integers, up to 9223372036854775807: primes, factors, gcd and lcm, modular powers, Collatz, Fibonacci, factorials and binomials. A result of -1 means no answer: the input is out of range or the answer is too big. Yes/no functions return 1 or 0. Two- and three-input functions take their inputs in the order of their name: mod_pow is base, exponent, modulus."
+}

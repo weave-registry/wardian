@@ -119,7 +119,7 @@ pub trait Jobs: Send + Sync {
 pub trait Pages: Send + Sync {
     fn page(&self, name: &str) -> Option<String>;
     /// Every file of the static docs site, as (path, contents), for `wardian docs`.
-    fn site(&self) -> Vec<(String, String)>;
+    fn site(&self) -> Vec<(String, Vec<u8>)>;
     fn schema(&self, name: &str) -> Option<&'static str>;
     fn ui_file(&self, name: &str) -> Option<&'static str>;
     fn gallery(&self) -> &'static str;

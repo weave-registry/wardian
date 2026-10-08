@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>number-lab</title>
+<link rel="stylesheet" href="/ui/theme.css"><link rel="stylesheet" href="/ui/button.css"><link rel="stylesheet" href="/ui/field.css">
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: var(--w-bg, #fff); color: var(--w-fg, #111); }
+  .fn { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .5rem 0; border-bottom: 1px solid var(--w-border, #ddd); }
+  .fn code { min-width: 10rem; font-weight: 600; }
+  .fn input { width: 7rem; }
+  .out { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .err { color: #c8372d; }
+</style></head>
+<body><p id="msg">Loading the module…</p><div id="fns"></div>
+<script>
+// Wardian's module form: one row per exported function, an input per parameter. WebAssembly does
+// not say a parameter's type, so a number is tried first and a BigInt (for i64) after.
+const el = (t, p = {}, ...k) => { const n = Object.assign(document.createElement(t), p); n.append(...k); return n; };
+function call(fn, raw) {
+  const nums = raw.map((s) => (s.trim() === '' ? 0 : Number(s)));
+  if (nums.some(Number.isNaN)) throw new Error('every argument must be a number');
+  try { return fn(...nums); }
+  catch (e) { if (e instanceof TypeError && /BigInt/i.test(e.message)) return fn(...raw.map((s) => BigInt(s.trim() || '0'))); throw e; }
+}
+(async () => {
+  try {
+    const bytes = await (await fetch('/apps/number-lab/app.wasm')).arrayBuffer();
+    const mod = await WebAssembly.compile(bytes);
+    const imports = {};
+    for (const i of WebAssembly.Module.imports(mod)) { imports[i.module] ??= {}; if (i.kind === 'function') imports[i.module][i.name] = () => 0; }
+    const inst = await WebAssembly.instantiate(mod, imports);
+    const fns = Object.entries(inst.exports).filter(([k, v]) => typeof v === 'function' && !/^(alloc|dealloc|__)/.test(k));
+    document.getElementById('msg').textContent = fns.length + ' function(s). Type numbers and press Run.';
+    for (const [name, fn] of fns) {
+      const ins = Array.from({ length: fn.length }, (_, i) => el('input', { className: 'w-input', inputMode: 'decimal', ariaLabel: name + ' argument ' + (i + 1), value: '0' }));
+      const out = el('span', { className: 'out' });
+      const run = el('button', { className: 'w-button', textContent: 'Run', ariaLabel: 'Run ' + name, onclick: () => {
+        try { out.className = 'out'; out.textContent = '= ' + String(call(fn, ins.map((i) => i.value))); }
+        catch (e) { out.className = 'out err'; out.textContent = e.message; }
+      } });
+      document.getElementById('fns').append(el('div', { className: 'fn' }, el('code', { textContent: name }), ...ins, run, out));
+    }
+  } catch (e) { document.getElementById('msg').textContent = 'The module did not load: ' + e.message; }
+})();
+</script></body></html>

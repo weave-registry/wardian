@@ -150,7 +150,7 @@ fn read_key(file: &str) -> Result<String, String> {
 /// The website keeps them in website/ (`wardian docs website`).
 fn docs(args: &[String], pages: &dyn Pages) -> i32 {
     let [out] = args else {
-        eprintln!("usage: wardian docs <folder>\n\nexample: wardian docs website   (writes website/docs/, website/schemas/, website/ui/)");
+        eprintln!("usage: wardian docs <folder>\n\nexample: wardian docs website   (writes website/docs/, schemas/, ui/, apps/, downloads/ and vercel.json)");
         return 2;
     };
     let out = Path::new(out);
@@ -390,7 +390,7 @@ mod tests {
         fn page(&self, _: &str) -> Option<String> {
             None
         }
-        fn site(&self) -> Vec<(String, String)> {
+        fn site(&self) -> Vec<(String, Vec<u8>)> {
             Vec::new()
         }
         fn schema(&self, _: &str) -> Option<&'static str> {

@@ -59,6 +59,7 @@ All of them are **Accepted**.
 | [ADR-2610081501](/docs/decisions/ADR-2610081501) | keys sealed at rest | 2026-10-08 | Every saved secret is sealed with AES-256-GCM under a master key kept in a file outside the data folder, so a copy of the data folder holds no readable key. |
 | [ADR-2610081600](/docs/decisions/ADR-2610081600) | example apps are built in | 2026-10-08 | The example apps are built into the program, and each start adds the ones a working folder has not had, so every Wardian shows them. |
 | [ADR-2610081700](/docs/decisions/ADR-2610081700) | back up the master key | 2026-10-08 | `wardian key` says where the master key is; `export` backs it up into a private file, and `import` restores it, refusing a key that opens no saved key. |
+| [ADR-2610081900](/docs/decisions/ADR-2610081900) | examples run on the website | 2026-10-08 | Each example's page on the website shows the app running when it needs no server, and links a zip of every example to import. |
 
 ## Gates
 
@@ -85,5 +86,6 @@ All of them are **Accepted**.
 | ADR-2610081501 | `cargo test --release sealed_` |
 | ADR-2610081600 | `cargo test --release examples_` |
 | ADR-2610081700 | `cargo test --release key_` |
+| ADR-2610081900 | `cargo test --release demos_`; `tests/run-website-e2e.sh` in a browser |
 
 `hexa adr gates` runs each `cargo test` gate with `CARGO_TARGET_DIR=target/verify`.

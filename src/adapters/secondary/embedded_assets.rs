@@ -125,6 +125,7 @@ const DOCS: &[DocPage] = &[
     doc!("", "decisions/ADR-2610081041", "ADR-2610081041: every claim names its test", "docs/adrs/ADR-2610081041-every-claim-names-its-test.md"),
     doc!("", "decisions/ADR-2610081501", "ADR-2610081501: keys sealed at rest", "docs/adrs/ADR-2610081501-keys-sealed-at-rest.md"),
     doc!("", "decisions/ADR-2610081500", "ADR-2610081500: keys and Claude settings in one place", "docs/adrs/ADR-2610081500-keys-and-claude-settings-in-one-place.md"),
+    doc!("", "decisions/ADR-2610081900", "ADR-2610081900: examples run on the website", "docs/adrs/ADR-2610081900-examples-run-on-the-website.md"),
     doc!("", "decisions/ADR-2610081700", "ADR-2610081700: back up the master key", "docs/adrs/ADR-2610081700-back-up-the-master-key.md"),
     doc!("", "decisions/ADR-2610081600", "ADR-2610081600: example apps are built in", "docs/adrs/ADR-2610081600-example-apps-are-built-in.md"),
 ];

@@ -6,7 +6,7 @@ use crate::ports::{
     assets::{Assets, DocPage},
     service::Pages,
 };
-use crate::usecases::skills;
+use crate::usecases::{demos, skills};
 use pulldown_cmark::{html, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::sync::{Arc, OnceLock};
 
@@ -37,25 +37,27 @@ impl Docs {
         self.render_page(name, Site::Host)
     }
 
-    /// Every file of the static docs site, as (path, contents): the pages, the JSON Schemas and
-    /// the component gallery with its files, at the paths Wardian serves them from.
-    pub fn site(&self) -> Vec<(String, String)> {
+    /// Every file of the static docs site, as (path, contents): the pages, the JSON Schemas, the
+    /// component gallery with its files, at the paths Wardian serves them from, and the example
+    /// apps the website runs and offers for download (ADR-2610081900).
+    pub fn site(&self) -> Vec<(String, Vec<u8>)> {
         let mut out = Vec::new();
         for p in self.assets.docs() {
             let path = if p.name == "index" { "docs/index.html".to_string() } else { format!("docs/{}/index.html", p.name) };
-            out.push((path, self.render_page(p.name, Site::Static).unwrap_or_default()));
+            out.push((path, self.render_page(p.name, Site::Static).unwrap_or_default().into_bytes()));
         }
         for s in ["app.schema.json", "suite.schema.json"] {
             if let Some(body) = self.assets.schema(s) {
-                out.push((format!("schemas/{s}"), body.to_string()));
+                out.push((format!("schemas/{s}"), body.as_bytes().to_vec()));
             }
         }
-        out.push(("ui/index.html".to_string(), self.assets.gallery().to_string()));
+        out.push(("ui/index.html".to_string(), self.assets.gallery().as_bytes().to_vec()));
         for n in self.assets.ui_names() {
             if let Some(body) = self.assets.ui_file(n) {
-                out.push((format!("ui/{n}"), body.to_string()));
+                out.push((format!("ui/{n}"), body.as_bytes().to_vec()));
             }
         }
+        out.extend(demos::site_files(&*self.assets));
         out
     }
 
@@ -94,7 +96,13 @@ impl Docs {
         let pages = self.assets.docs();
         let at = pages.iter().position(|p| p.name == name)?;
         let page = &pages[at];
-        let (body, toc) = render(page.md);
+        let (mut body, toc) = render(page.md);
+        // On the website, an example's page shows the app running, and its download.
+        if let (Site::Static, Some(app)) = (site, name.strip_prefix("examples/")) {
+            if let (Some(boxed), Some(end)) = (demos::try_box(&*self.assets, app), body.find("</h1>")) {
+                body.insert_str(end + "</h1>".len(), &boxed);
+            }
+        }
         Some(layout(pages, at, &body, &toc, self.search_index(), site, page))
     }
 }
@@ -306,6 +314,10 @@ fn layout(pages: &[DocPage], at: usize, body: &str, toc: &[(u8, String, String)]
   .pager a:hover {{ border-color: var(--accent); }}
   .pager a small {{ display: block; color: var(--muted); font-size: .78rem; }}
   .pager .next {{ text-align: right; margin-left: auto; }}
+  .try {{ margin: 1rem 0 2rem; padding: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }}
+  .try h2 {{ margin-top: 0; padding-top: 0; border-top: 0; }}
+  .try-frame {{ width: 100%; height: 560px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }}
+  .try .muted {{ color: var(--muted); font-size: .88rem; }}
   @media (max-width: 900px) {{
     .wrap {{ grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: .5rem; }}
     nav.side {{ position: static; max-height: none; border-bottom: 1px solid var(--line); padding-bottom: .5rem; margin-bottom: 1rem; }}
@@ -385,7 +397,7 @@ impl Pages for Docs {
     fn page(&self, name: &str) -> Option<String> {
         Docs::page(self, name)
     }
-    fn site(&self) -> Vec<(String, String)> {
+    fn site(&self) -> Vec<(String, Vec<u8>)> {
         Docs::site(self)
     }
     fn schema(&self, name: &str) -> Option<&'static str> {

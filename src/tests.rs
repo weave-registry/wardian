@@ -262,7 +262,7 @@ fn docs_website_copy_is_fresh() {
     let stale: Vec<String> = docs
         .site()
         .into_iter()
-        .filter(|(rel, body)| fs::read_to_string(Path::new("website").join(rel)).ok().as_deref() != Some(body.as_str()))
+        .filter(|(rel, body)| fs::read(Path::new("website").join(rel)).ok().as_ref() != Some(body))
         .map(|(rel, _)| rel)
         .collect();
     assert!(stale.is_empty(), "website/ is out of date; run `wardian docs website` and commit. Stale: {}", stale.join(", "));
@@ -2801,5 +2801,24 @@ fn key_commands_back_up_and_restore_the_master_key() {
     assert!(!base.join("fresh.key").exists());
     assert_eq!(exit(&["key", "import"], "master.key"), 2);
     assert_eq!(exit(&["key", "--bogus"], "master.key"), 2);
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081900: each example's download on the website imports into Wardian as that app, and
+/// the imported app passes `wardian check`.
+#[test]
+fn demos_every_website_download_imports_into_wardian() {
+    use crate::usecases::import::import_zip;
+    let base = tmp("demo-downloads");
+    let site = Docs::new(Arc::new(Embedded)).site();
+    let zips: Vec<&(String, Vec<u8>)> = site.iter().filter(|(p, _)| p.starts_with("downloads/")).collect();
+    assert!(zips.len() >= 16);
+    for (path, bytes) in zips {
+        let app = path.trim_start_matches("downloads/").trim_end_matches(".zip");
+        let apps = base.join(app);
+        import_zip(&LocalDisk, bytes, &format!("{app}.zip"), &apps, false, &|_| {}).unwrap_or_else(|e| panic!("{app}: {e}"));
+        let (ok, report) = checker().check_dir(&apps.join(app), app);
+        assert!(ok, "{app} imported and checked: {report}");
+    }
     let _ = fs::remove_dir_all(base);
 }

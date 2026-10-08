@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text tools</title>
+<!-- The Wardian component library (wardian add button field card badge table tabs toast switch arrange). -->
+<link rel="stylesheet" href="ui/theme.css">
+<link rel="stylesheet" href="ui/button.css">
+<link rel="stylesheet" href="ui/field.css">
+<link rel="stylesheet" href="ui/card.css">
+<link rel="stylesheet" href="ui/badge.css">
+<link rel="stylesheet" href="ui/table.css">
+<link rel="stylesheet" href="ui/tabs.css">
+<link rel="stylesheet" href="ui/toast.css">
+<link rel="stylesheet" href="ui/switch.css">
+<style>
+  :root { color-scheme: light dark; --page: #f7f7f8; }
+  @media (prefers-color-scheme: dark) { :root { --page: #111113; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: var(--w-space-5) clamp(16px, 3vw, 32px); font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
+  .top { margin-bottom: var(--w-space-4); }
+  h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.02em; }
+  .top p { margin: 4px 0 0; color: var(--w-muted); }
+  h2 { margin: 0; font: 600 var(--w-text-lg)/1.3 var(--w-font); }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--w-space-2) var(--w-space-3); margin-bottom: var(--w-space-3); }
+  /* Two columns that Arrange may swap, join, or fill differently. */
+  .layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: var(--w-space-4); align-items: start; }
+  .col { display: flex; flex-direction: column; gap: var(--w-space-4); min-width: 0; }
+  .col[hidden] { display: none; }
+  @media (max-width: 820px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .panel { padding: var(--w-space-4) var(--w-space-5); }
+  .btnrow { display: flex; flex-wrap: wrap; gap: var(--w-space-2); align-items: center; }
+  .muted { color: var(--w-muted); font-size: var(--w-text-sm); }
+
+  /* Text */
+  #text { min-height: 340px; resize: vertical; font: var(--w-text-lg)/1.6 var(--w-font); }
+  .drop { position: relative; }
+  .drop.over::after { content: "Drop the file to open it"; position: absolute; inset: 0; display: grid; place-items: center;
+    border: 2px dashed var(--w-ring); border-radius: var(--w-radius); background: color-mix(in srgb, var(--w-bg) 85%, transparent);
+    font-weight: 600; pointer-events: none; }
+  .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  /* Counts */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: var(--w-space-2); margin: 0; }
+  .tile { padding: var(--w-space-2) var(--w-space-3); border: 1px solid var(--w-border); border-radius: var(--w-radius); background: var(--w-bg); min-width: 0; }
+  .tile dt { color: var(--w-muted); font-size: 12px; }
+  .tile dd { margin: 2px 0 0; font: 600 20px/1.25 var(--w-font); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tile.big dd { font-size: 26px; }
+  .tile.wide { grid-column: span 2; }
+  .tile.wide dd { font-size: var(--w-text-lg); }
+
+  /* Top words */
+  .w-table td.word { font-weight: 500; overflow-wrap: break-word; }
+  .w-table td.bar { width: 35%; min-width: 48px; }
+  .bar span { display: block; height: 8px; border-radius: 999px; background: var(--w-primary); opacity: .75; min-width: 2px; }
+  .w-table tbody td { padding-top: 6px; padding-bottom: 6px; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--w-space-3); margin-bottom: var(--w-space-3); }
+  .controls select { width: auto; }
+
+  /* Change case and hash */
+  .w-tabs [role="tablist"] { flex-wrap: wrap; }
+  .result { display: block; max-height: 260px; overflow: auto; margin-bottom: var(--w-space-3); padding: var(--w-space-3);
+    border: 1px solid var(--w-border); border-radius: var(--w-radius); background: var(--w-muted-bg);
+    white-space: pre-wrap; overflow-wrap: anywhere; font: var(--w-text)/1.55 var(--w-font); min-height: 3em; }
+  .hash { font: 15px/1.6 var(--w-font-mono); letter-spacing: .02em; overflow-wrap: anywhere; margin: 0 0 var(--w-space-2); user-select: all; }
+</style>
+<header class="top">
+  <h1>Text tools</h1>
+  <p>Type, paste or open a text file. WebAssembly counts it, ranks its words, hashes it and changes its case as you type.</p>
+</header>
+<main class="layout" data-arrange-grid>
+  <div class="col" data-arrange-column="side">
+    <section class="w-card panel" data-panel="text" data-panel-label="Text">
+      <div class="panel-head">
+        <h2><label for="text">Text</label></h2>
+        <span class="w-badge" data-variant="secondary" id="source">Typed text</span>
+      </div>
+      <div class="drop" id="drop">
+        <textarea class="w-input" id="text" spellcheck="false" aria-describedby="textHint"></textarea>
+      </div>
+      <p class="w-hint" id="textHint">Nothing leaves this computer. You can also drop a text file on the box.</p>
+      <div class="btnrow" style="margin-top: var(--w-space-3)">
+        <input type="file" id="file" class="file-input" tabindex="-1" aria-hidden="true">
+        <button class="w-button" id="open" type="button">Open file…</button>
+        <button class="w-button" data-variant="outline" id="sample" type="button">Sample text</button>
+        <button class="w-button" data-variant="ghost" id="clear" type="button">Clear</button>
+      </div>
+    </section>
+  </div>
+  <div class="col" data-arrange-column="main">
+    <section class="w-card panel" data-panel="counts" data-panel-label="Counts">
+      <div class="panel-head"><h2>Counts</h2><span class="muted" id="timing" aria-live="off"></span></div>
+      <dl class="tiles" id="tiles" aria-live="polite" aria-atomic="false"></dl>
+    </section>
+    <section class="w-card panel" data-panel="words" data-panel-label="Top words">
+      <div class="panel-head"><h2>Top words</h2></div>
+      <div class="controls">
+        <div class="w-field" style="margin:0; display:flex; align-items:center; gap:var(--w-space-2)">
+          <label class="w-label" for="limit">Show</label>
+          <select class="w-input" id="limit">
+            <option value="10" selected>10 words</option>
+            <option value="25">25 words</option>
+            <option value="50">50 words</option>
+            <option value="100">100 words</option>
+          </select>
+        </div>
+        <label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch" id="skip" checked> Skip common words</label>
+      </div>
+      <div class="w-table-wrap">
+        <table class="w-table">
+          <caption id="wordsCaption"></caption>
+          <thead><tr><th class="num" scope="col">#</th><th scope="col">Word</th><th class="num" scope="col">Times</th><th scope="col"><span class="muted">Share</span></th></tr></thead>
+          <tbody id="wordRows"></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="w-card panel" data-panel="case" data-panel-label="Change case">
+      <div class="panel-head"><h2>Change case</h2></div>
+      <div class="w-tabs" id="caseTabs">
+        <div role="tablist" aria-label="Case">
+          <button role="tab" aria-selected="true">UPPER</button>
+          <button role="tab">lower</button>
+          <button role="tab">Title Case</button>
+          <button role="tab">Sentence case</button>
+          <button role="tab">url-slug</button>
+        </div>
+        <div role="tabpanel"><output class="result"></output></div>
+        <div role="tabpanel"><output class="result"></output></div>
+        <div role="tabpanel"><output class="result"></output></div>
+        <div role="tabpanel"><output class="result"></output></div>
+        <div role="tabpanel"><output class="result"></output></div>
+      </div>
+      <div class="btnrow">
+        <button class="w-button" data-variant="outline" data-size="sm" id="copyCase" type="button">Copy</button>
+        <button class="w-button" data-variant="outline" data-size="sm" id="saveCase" type="button">Download .txt</button>
+      </div>
+    </section>
+    <section class="w-card panel" data-panel="hash" data-panel-label="SHA-256">
+      <div class="panel-head"><h2>SHA-256</h2><span class="w-badge" data-variant="outline" id="hashOf">of the text</span></div>
+      <p class="hash" id="hash" aria-live="polite"></p>
+      <p class="w-hint" id="hashHint"></p>
+      <div class="btnrow" style="margin-top: var(--w-space-3)">
+        <button class="w-button" data-variant="outline" data-size="sm" id="copyHash" type="button">Copy</button>
+      </div>
+    </section>
+  </div>
+</main>
+<script src="ui/tabs.js"></script>
+<script src="ui/toast.js"></script>
+<script src="ui/arrange.js"></script>
+<script type="module" src="./app.js"></script>
+</html>
