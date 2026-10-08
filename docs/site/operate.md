@@ -60,11 +60,14 @@ TLS, such as Caddy or nginx, and send the admin token only over HTTPS.
 ## Keep the data folder safe
 
 Everything Wardian knows is in `DATA_DIR` (by default `./data`): the apps, their history, their
-data, your permission answers and the keys for Claude, Splunk and Drive. Key files are written
-readable by their owner only.
+data, your permission answers and the keys for Claude, Splunk and Drive. Every file is readable by
+its owner only, and the keys are sealed under a master key kept outside it
+([Keys and Claude settings](/docs/keys#sealed-at-rest)).
 
 - **Back it up** like any folder. Stop Wardian first, or copy the SQLite files in `db/` with a tool
   that understands SQLite.
+- **Back up the master key apart from it**: `wardian key export FILE`. Without the key, a restored
+  data folder keeps its apps and data, but every saved key must be typed again.
 - **Do not commit it.** Git ignores it in the repository.
 - **Read `wardian.log`** after a surprise stop. It records every start and stop with the time in
   UTC. A start with no stop before it means the previous run was killed.

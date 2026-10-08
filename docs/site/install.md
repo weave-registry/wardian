@@ -107,6 +107,17 @@ When the data folder is empty, Wardian shows a short setup once. It asks where y
 from, offers to connect a Claude provider, and offers to set an admin token. You can skip every
 step and change it later in **Settings**.
 
+## Back up the master key
+
+Wardian seals the keys you save in Settings under a master key it makes on the first start, in
+`~/.config/wardian/master.key`. Keep a copy somewhere other than the data folder:
+
+```
+wardian key export ~/somewhere-safe/wardian.key
+```
+
+[Keys and Claude settings](/docs/keys#sealed-at-rest) explains how to restore it.
+
 ## Next
 
 - [Your first ten minutes](/docs/tour): open, arrange, share and remove an app.

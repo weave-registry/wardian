@@ -43,7 +43,7 @@ const items = await sample.json(
 
 ```js
 if (!sample) {
-  note.textContent = 'AI is off. To turn it on, open Settings → Make apps with Claude.';
+  note.textContent = 'AI is off. To turn it on, open Settings → Claude.';
   return extractByRules(notes);
 }
 ```

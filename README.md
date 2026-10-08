@@ -269,9 +269,26 @@ Press **Make an app**, and say in your own words what the app should do. Claude 
 app, wardian checks it, and the app appears in your list. To change an app later, open it and press
 **Change this app**.
 
-First add an Anthropic API key in **Settings → Make apps with Claude**. Wardian tests the key, then keeps it
-on the server. The key never goes back to the browser. Each app uses some API credit on that key.
+First add an Anthropic API key in **Settings → Claude**. Wardian tests the key, then keeps it
+on the server, sealed. The key never goes back to the browser. Each app uses some API credit on that key.
 If your key is not scoped to one workspace, also give the workspace ID (Console → Settings → Workspaces).
+
+**Settings → Claude → Models and limits** chooses the models and the limits of Make an app and of
+apps that use Claude. **Settings → Usage** shows the tokens each app used per day and sets its daily
+cap (200,000 by default); past it, the app's `claude:sample` fails with `over_budget`.
+
+## Keys
+
+**Settings → Keys** lists every key and account Wardian holds: the Anthropic key, Amazon Bedrock,
+Splunk, the Google Drive service account and the admin token. Each shows where it came from and its
+last test, with **Test again** and **Remove**. Wardian seals every saved key with AES-256-GCM under a
+master key kept outside the data folder, in `~/.config/wardian/master.key` (or where
+`WARDIAN_MASTER_KEY_FILE` says), so a copy of the data folder holds no readable key. Back the master
+key up apart from the data folder:
+
+    wardian key                              # where it is, and how many saved keys it opens
+    wardian key export ~/backup/wardian.key
+    wardian key import ~/backup/wardian.key  # refuses a key that opens none of them
 
 **Claude on Amazon Bedrock.** If you reach Claude through AWS, choose **Amazon Bedrock** in the same
 card (ADR-2610071106). Give the region and either a Bedrock API key or AWS access keys (with a session
@@ -418,24 +435,36 @@ Wardian then listens on this machine only: `ADDR` must be a loopback address (`1
 or `localhost`). Asked to listen anywhere else without a token, Wardian refuses to start and says
 to set `ADMIN_TOKEN`.
 
-Set `ADMIN_TOKEN` to a long random string to listen on other addresses. Then whoever sends the
-token is an admin, and nobody else is, this machine included. Settings asks for the token.
+Set `ADMIN_TOKEN` to a long random string to listen on other addresses, or save a token in
+**Settings → Keys** (`ADMIN_TOKEN` wins). Then whoever sends the token is an admin, and nobody else
+is, this machine included. Settings asks for the token.
 At start Wardian prints who counts as an admin.
 Docker needs the token, because it listens on `0.0.0.0` and its requests do not come from the
 same machine.
 
     ADMIN_TOKEN=<long random string> docker compose up -d --build
 
+Docker keeps the master key that seals saved keys on a second volume, `keys`. Back it up apart
+from `data`.
+
 ## Saved state
 
 Settings live in `DATA_DIR` (in a checkout `./data`, which git ignores; see Run for the rule).
 
 - `config.json` — the chosen source and Drive folder
-- `service-account.json` — the uploaded key, readable by its owner only
-- `anthropic-key` — the API key for **Make an app**, readable by its owner only
+- `service-account.json` — the uploaded key, sealed
+- `anthropic-key` — the API key for **Make an app**, sealed
+- `bedrock.json`, `admin-token` — the Bedrock keys and the admin token saved in Settings, sealed
+- `agent.json` — Claude's models, limits and daily caps
+- `usage.json` — the tokens Claude used, by day and app, for 31 days
+- `key-checks.json` — the last test of each key, without the key
 - `grants.json` — your answers to channel and Splunk permission questions
-- `splunk.json` — the Splunk address and account, readable by its owner only
-- `apps/` — the working folder: the apps Wardian serves and saves
+- `splunk.json` — the Splunk address and account, sealed
+- `apps/` — the working folder: the apps Wardian serves and saves; `apps/.examples-seen` lists the
+  example apps it has been given
+
+Every file is readable by its owner only. Sealed files open only with the master key, which is not
+in `DATA_DIR`.
 - `wardian.log` — every start and stop of the server, with the time in UTC: Ctrl-C, SIGTERM, a
   closed terminal (SIGHUP, caught only when stderr is a terminal), a panic, an address already in
   use. A start with no stop before it means the previous run was killed (SIGKILL, out of memory,
@@ -452,7 +481,9 @@ Settings live in `DATA_DIR` (in a checkout `./data`, which git ignores; see Run 
 | `WARDIAN_NO_OPEN` | unset | `1`: a start in a terminal does not open the browser (as `--no-open`) |
 | `NO_COLOR` | unset | Any value: no colour in the terminal output |
 | `DATA_DIR` | `data` in a checkout or where it exists, else the platform's folder (see Run) | Where settings, the working folder of apps and their history are kept |
-| `ADMIN_TOKEN` | none | Whoever sends it is an admin, and nobody else; required to listen on a non-loopback address |
+| `ADMIN_TOKEN` | none | Whoever sends it is an admin, and nobody else; wins over a token saved in Settings; a non-loopback address needs one of the two |
+| `WARDIAN_MASTER_KEY_FILE` | `~/.config/wardian/master.key` | The file holding the master key that seals saved keys; made on the first start |
+| `WARDIAN_MASTER_KEY` | none | The master key itself, 64 hex digits, instead of a file |
 | `REFRESH_SECS` | `60` | How often to re-read the Drive folder |
 | `GDRIVE_FOLDER_ID` | none | Start on this folder; wins over the saved one |
 | `GDRIVE_SA_KEY` | none | Key file path, used only if no key was uploaded |
@@ -462,7 +493,7 @@ Settings live in `DATA_DIR` (in a checkout `./data`, which git ignores; see Run 
 | `SPLUNK_TOKEN` | none | Splunk token (or set `SPLUNK_USERNAME` and `SPLUNK_PASSWORD`) |
 | `SPLUNK_INSECURE_TLS` | off | `1` accepts any certificate, such as Splunk's self-signed default |
 | `SPLUNK_CA_FILE` | none | PEM file of extra certificate authorities to trust for Splunk |
-| `WARDIAN_AI_MODEL` | `claude-opus-5-5` | The Claude model that writes apps |
+| `WARDIAN_AI_MODEL` | `claude-opus-5-5` | The Claude model that writes apps; one chosen in Settings wins |
 | `WARDIAN_AI_PROVIDER` | `anthropic` | `bedrock` to use Amazon Bedrock, used only if none is chosen in Settings |
 | `AWS_REGION` | none | Bedrock region (also `AWS_DEFAULT_REGION`) |
 | `AWS_BEARER_TOKEN_BEDROCK` | none | Bedrock API key; or `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` |

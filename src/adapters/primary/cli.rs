@@ -10,7 +10,7 @@ use std::sync::Arc;
 const USAGE: &str = "Wardian — runs WebAssembly apps and suites in the browser
 
 usage:
-  wardian [APPS_FOLDER]          serve the apps (default: DATA_DIR/apps, filled from ./apps on the first start);
+  wardian [APPS_FOLDER]          serve the apps (default: DATA_DIR/apps, with every example app added once);
                                  in a terminal it opens your browser, unless --no-open or WARDIAN_NO_OPEN=1
   wardian promote APP [FOLDER]   copy an app from DATA_DIR/apps into FOLDER (default: ./apps), to commit it
   wardian export APP [FILE] [--with-data]
@@ -29,8 +29,9 @@ usage:
   wardian --version
 
 settings come from environment variables; see README.md
-ADDR other than 127.0.0.1, ::1 or localhost needs ADMIN_TOKEN: without it every program on this
-machine is an admin, so Wardian refuses to listen where other machines can reach it";
+ADDR other than 127.0.0.1, ::1 or localhost needs an admin token (ADMIN_TOKEN, or one saved in
+Settings → Keys): without it every program on this machine is an admin, so Wardian refuses to listen
+where other machines can reach it";
 
 /// What the arguments ask for.
 pub enum Command {

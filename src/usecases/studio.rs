@@ -461,11 +461,11 @@ impl Studio {
         let provider = *self.provider.lock().unwrap();
         let (llm, auth) = if provider == Provider::Bedrock {
             let b = self.bedrock.lock().unwrap().as_ref().map(|(b, _)| b.clone());
-            let b = b.ok_or("Amazon Bedrock is not set up yet: Settings → Make apps with Claude")?;
+            let b = b.ok_or("Amazon Bedrock is not set up yet: Settings → Claude")?;
             (Arc::clone(&self.bedrock_llm), LlmAuth::Bedrock { region: b.region, auth: b.auth })
         } else {
             let key = self.key.lock().unwrap().as_ref().map(|(k, _)| k.clone());
-            let key = key.ok_or("no Anthropic API key yet: add one in Settings → Make apps with Claude")?;
+            let key = key.ok_or("no Anthropic API key yet: add one in Settings → Claude")?;
             (Arc::clone(&self.llm), LlmAuth::Anthropic { key, workspace: self.workspace.lock().unwrap().clone() })
         };
         let agent = self.agent.lock().unwrap();

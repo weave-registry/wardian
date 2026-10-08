@@ -7,7 +7,7 @@ open it and press **Change this app**.
 ## Set up a provider
 
 Wardian reaches Claude through one of two providers. Set it up once in
-**Settings → Make apps with Claude**.
+**Settings → Claude**.
 
 ### The Anthropic API
 
