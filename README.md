@@ -163,6 +163,16 @@ When you import a `.wardian` file, Wardian first shows what it holds: the app, w
 any data. Its data is installed only when you tick **Also install its data**; the data it replaces is
 kept in the app's history folder. Permissions are always asked again.
 
+## Save an app as a web page
+
+On an app's page, press **Save as web page**, then **Save**. Wardian saves what you see as one
+`.html` file, `<app>-<date>.html`, that opens in any browser, offline, with no Wardian: every panel
+you have not hidden with Arrange, in your layout, with what you typed, the results and each chart
+as a picture. It is a copy that does not update: sorting, paging and buttons do nothing in it.
+Everything on screen goes into the file, so check it before you send it. The file holds no script
+and makes no request, so it is safe to open. Anyone who can open the app can save it this way; an
+app may put more in the file than it shows, such as every row of a table (SPEC.md 6.4, 7.4).
+
 ## Import apps from a zip
 
 In **Settings → Import from a zip**, choose a zip on your computer or paste a link to one.

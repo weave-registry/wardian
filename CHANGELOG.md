@@ -13,6 +13,11 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- **Save as web page** (ADR-2610080905): one `.html` file of an app as the viewer sees it, in their
+  Arrange layout, that opens offline in any browser. It holds HTML and CSS only, cleaned by an
+  allow-list in the browser, under a policy that blocks any request. Each suite part and page app
+  renders itself; a suite app may add `snapshot(ctx)` to put more in the file than it shows. Files
+  over 25 MB are refused. `tests/run-snapshot-e2e.sh` checks it.
 - First use: a start with an empty data folder shows a short setup once (where apps come from, an
   optional Claude provider, an optional admin token). Settings is split into sections a reader can
   jump between; every control in the app list, Settings, Arrange and History has a name and works

@@ -252,6 +252,25 @@ does not matter. If they differ, the kernel reports a fault and does not start t
 kernel enforces the contract in `suite.json`, never the one in `app.js`.** The copy in
 `app.js` exists so the same code also runs in a single-page build.
 
+`register` MAY also take `snapshot(ctx)`, for **Save as web page** (7.4). It returns HTML text or
+an element, or a promise of either, and the saved page shows that inside the app's root (the
+element made from `wrap`) in place of what the frame shows. An element is copied the same way as
+the frame (below). Use it to put more in the file than fits on screen, such as every row of a
+table, and say so in the text when you cut. Without it, or when it returns `null`, throws or
+rejects, the host copies what the frame shows: field values written in, the chosen option marked
+`selected`, ticked boxes `checked`, each canvas and inline SVG as a `data:` image, and `blob:`
+images read into `data:` URLs. Hidden panels are left out. A part that does not answer within 10
+seconds is shown as "this part could not be saved". `snapshot` is not part of the contract.
+
+```js
+Kernel.register({
+  name: 'rows',
+  listens: ['table:ready'],
+  init(ctx) { /* ... */ },
+  snapshot(ctx) { return '<table>…every row…</table><p>All 2,410 rows.</p>'; }
+});
+```
+
 ### 6.5. `ctx`
 
 `init(ctx)` receives a frozen object with these members:
@@ -341,6 +360,7 @@ by its frame, never by the message's content.
 | `{k:'size', h, bg}` | The frame's content height and background color. |
 | `{k:'chsend', id, channel, data}`, `{k:'chon', id, channel}` | `ctx.channel(name).send` and `.on`. |
 | `{k:'fault', message}` | An error inside the app. |
+| `{k:'snapshot', id, html, css \| error}` | The answer to `snapshot`: the frame's rendering (7.4). |
 
 | From kernel | Meaning |
 |---|---|
@@ -349,6 +369,7 @@ by its frame, never by the message's content.
 | `{k:'invoke', id, method, args}` | Another app calls a provided method. |
 | `{k:'reply', id, ok, value \| error}` | The answer to `call`, `asset`, `cap`, `capop`, `chsend` or `chon`. |
 | `{k:'chmsg', channel, data, from, at}` | A message on a channel, for `ctx.channel(name).on`. |
+| `{k:'snapshot', id, css}` | Save as web page asks for a rendering; `css` asks for the frame's styles too. |
 
 ### 6.9. Channels between packages
 
@@ -488,10 +509,38 @@ importing, and MUST install the data only when the user asks; permissions are ne
 
    A package SHOULD NOT depend on these rules. Use the layout in 7.2.
 
-7.4. The importer unpacks into a hidden staging folder first, so a failed import changes
+7.4. **A saved web page** (ADR-2610080905). **Save as web page** saves the app as the viewer
+sees it now as one HTML file, `<app>-<yyyy-mm-dd>.html`, that opens in any browser with no Wardian
+and no network. It is a rendering, not a program: HTML and CSS only, every visible panel in the
+viewer's Arrange layout, the current values of fields, and each canvas and chart as a `data:` image,
+under a note with the app's title, when it was saved, and that it is a copy that does not update.
+
+Each frame renders itself, because only it can read its own document. A suite's kernel asks each
+visible panel's frame (6.4, 6.8); a page app is answered by a small script the host adds to the end
+of every page app's HTML it serves, which a page MAY steer by setting `window.wardianSnapshot` to a
+function that returns HTML text or an element (or a promise of one); a module app's cards are drawn
+by the host, so it copies them itself. The messages are `{wardian: 'snapshot', k: 'ask', id}` from
+the host and `{wardian: 'snapshot', k: 'answer', id, html, css}` (a suite's kernel answers with
+`parts: [{name, slot, html}]`, `css`, `mode` and `columns` instead).
+
+The answers are the app's own code, so the host MUST clean them in the browser, on inert parsed
+HTML, by an allow-list: no `script`, `iframe`, `frame`, `object`, `embed`, `link`, `meta`, `base`
+or `form` (a form becomes a plain box), no `on…` attribute, no `javascript:` or `vbscript:` URL, and
+no `src`, `href`, `srcset` or `xlink:href` but `data:image/…` sources and `#fragment` links. SVG is
+kept without `script`, `foreignObject` or animation. CSS loses `@import`, `@font-face`, `url()` to
+anything but a `data:` image, and `expression(`. Web fonts are left out. The file MUST start with
+
+```html
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+```
+
+so the browser blocks anything that gets through. A file over 25 MB is refused with a message that
+names the largest part.
+
+7.5. The importer unpacks into a hidden staging folder first, so a failed import changes
 nothing. It refuses a package whose name is already taken, unless asked to replace it.
 
-7.5. **Removing.** A host SHOULD move a removed package aside rather than delete it, so the
+7.6. **Removing.** A host SHOULD move a removed package aside rather than delete it, so the
 removal can be undone. Wardian moves it to `.trash/` inside the apps folder; hidden folders are
 never listed or served. A package a save replaces is not removed: its version stays in the history.
 

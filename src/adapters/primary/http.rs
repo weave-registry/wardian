@@ -34,6 +34,7 @@ const KERNEL_HTML: &str = include_str!("../../../static/kernel.html");
 const LOGO_SVG: &str = include_str!("../../../static/logo.svg");
 const CHANNELS_JS: &str = include_str!("../../../static/channels.js");
 const STATE_JS: &str = include_str!("../../../static/state.js");
+const SNAPSHOT_JS: &str = include_str!("../../../static/snapshot.js");
 /// Channels for page apps, and the standard components (the same ones suite frames get).
 const SDK_JS: &str = concat!(include_str!("../../../static/sdk.js"), "\n", include_str!("../../../static/ui/progress.js"));
 const MAX_BODY_BYTES: u64 = 64 * 1024;
@@ -98,6 +99,22 @@ fn with_probe(bytes: Vec<u8>) -> Vec<u8> {
     let html = String::from_utf8_lossy(&bytes).replace("<script src", "<script crossorigin src");
     let at = html.find("<head>").map(|i| i + 6).unwrap_or(0);
     format!("{}{PROBE}{}", &html[..at], &html[at..]).into_bytes()
+}
+
+/// The answer to "Save as web page" (ADR-2610080905), added to every page app's HTML: a page is
+/// sandboxed, so only its own script can copy what it shows. Appended at the end, so the page's
+/// doctype and head stay as they are; it only listens for a message from Wardian's page.
+const PAGE_SNAPSHOT: &str = concat!(
+    "\n<script>(() => {\n",
+    include_str!("../../../static/snapshot.js"),
+    include_str!("../../../static/page-snapshot.js"),
+    "})();</script>\n"
+);
+
+fn with_snapshot(bytes: Vec<u8>) -> Vec<u8> {
+    let mut out = bytes;
+    out.extend_from_slice(PAGE_SNAPSHOT.as_bytes());
+    out
 }
 
 fn req_header<'a>(req: &'a Request<'_>, name: &str) -> Option<&'a str> {
@@ -458,6 +475,11 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
             .with_header(header("Content-Type", "text/javascript"))
             .with_header(header("Cache-Control", "no-cache")),
         // The viewer's state, kept by the server: Wardian's own pages load it (ADR-2610071055).
+        // The default rendering for Save as web page (ADR-2610080905): Wardian's page copies a module
+        // app's cards with it.
+        (Method::Get, ["snapshot.js"]) => Response::from_string(SNAPSHOT_JS)
+            .with_header(header("Content-Type", "text/javascript"))
+            .with_header(header("Cache-Control", "no-cache")),
         (Method::Get, ["state.js"]) => Response::from_string(STATE_JS)
             .with_header(header("Content-Type", "text/javascript"))
             .with_header(header("Cache-Control", "no-cache")),
@@ -528,12 +550,29 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
             }
             let bytes = if safe_rel(&rel) { hub.read(name, &rel) } else { None };
             match bytes {
-                Some(bytes) if query(&url, "wardian-probe") == Some("1") && rel.ends_with(".html") => app_file(with_probe(bytes), &rel),
+                Some(bytes) if query(&url, "wardian-probe") == Some("1") && rel.ends_with(".html") => app_file(with_snapshot(with_probe(bytes)), &rel),
+                Some(bytes) if rel.ends_with(".html") => app_file(with_snapshot(bytes), &rel),
                 Some(bytes) => app_file(bytes, &rel),
                 None => Response::from_string("not found").with_status_code(404),
             }
         }
         (Method::Get, _) => Response::from_string("not found").with_status_code(404),
         _ => Response::from_string("method not allowed").with_status_code(405),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_page_gets_the_snapshot_answer_at_its_end() {
+        let page = b"<!doctype html>\n<title>x</title><p>hi</p>".to_vec();
+        let out = String::from_utf8(with_snapshot(page)).unwrap();
+        assert!(out.starts_with("<!doctype html>"), "the doctype stays first");
+        assert!(out.contains("wardian: 'snapshot'") && out.contains("WardianSnapshot"));
+        // One script, closed once: nothing inside it may end it early.
+        assert_eq!(PAGE_SNAPSHOT.matches("</script").count(), 1);
+        assert!(out.trim_end().ends_with("})();</script>"));
     }
 }

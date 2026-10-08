@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="/ui/badge.css">
 <script src="/ui/arrange.js" data-manual></script>
 <script src="/ui/tabs.js"></script>
+<script src="/snapshot.js"></script>
 <style>
   :root {
     color-scheme: light dark;
@@ -81,6 +82,7 @@
   #importPreview .row:last-child { margin-top: .75rem; }
   .export-data { border: 1px solid var(--line); border-radius: 8px; padding: .4rem .8rem; margin: .5rem 0; }
   p.warn { color: var(--warn); }
+  .savebar { margin: .25rem 0 .5rem; }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
   header .spacer { flex: 1; }
   .docslink { color: var(--muted); text-decoration: none; }
@@ -739,8 +741,12 @@ async function openApp(app) {
     if (!arrangeHost.open) $('runner').querySelector('iframe.appframe')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
   tools.prepend(arrangeTool);
+  // Save as web page: anyone who can open the app may keep a picture of what they see. It needs
+  // no server and nothing an admin guards, unlike Download, which reads the package from the server.
+  const saveBar = el('div', { id: 'saveWebBar', className: 'row savebar hidden' });
+  if (!app.error) tools.append(el('button', { id: 'saveWebBtn', textContent: 'Save as web page', title: 'Save what you see as one web page that opens in any browser, offline', onclick: () => askSaveWeb(app, saveBar) }));
   tools.append(removeControl(name));
-  const head = [el('div', { className: 'row apphead' }, el('h2', { textContent: app.title || name }), tools)];
+  const head = [el('div', { className: 'row apphead' }, el('h2', { textContent: app.title || name }), tools), saveBar];
   if (app.description) head.push(el('p', { className: 'muted', textContent: app.description }));
   head.push(sealedLabel(app));
   if (app.error) {
@@ -854,6 +860,245 @@ async function openExport(app) {
     go.disabled = false;
   };
   show();
+}
+
+// ---------- Save as web page (ADR-2610080905) ----------
+// One HTML file that shows the app as this viewer sees it now, in their Arrange layout, and opens in
+// any browser with no Wardian and no network. Each frame renders itself (the suite kernel asks each
+// panel's frame; a page app answers with the script Wardian adds to it); a module app's cards are
+// drawn here. Every answer is the app's own code, so it is cleaned here before it goes in the file:
+// HTML and CSS only, no script, no outside address, and a policy that blocks anything left over.
+const SAVE_LIMIT = 25 * 1024 * 1024;
+const SAVE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
+let snapId = 0;
+
+function askSaveWeb(app, bar) {
+  const msg = el('span', { className: 'muted', id: 'saveWebMsg' });
+  const go = el('button', { className: 'primary', id: 'saveWebGo', textContent: 'Save' });
+  const cancel = el('button', { textContent: 'Cancel', onclick: () => { bar.classList.add('hidden'); $('saveWebBtn')?.focus(); } });
+  go.onclick = async () => {
+    go.disabled = true; msg.className = 'muted'; msg.textContent = 'Copying what each part shows…';
+    try {
+      const r = await saveWebPage(app);
+      msg.textContent = `Saved ${r.file} (${kb(r.bytes)}).`;
+      log(`saved ${r.file} as a web page`, 'a');
+    } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
+    go.disabled = false;
+  };
+  bar.replaceChildren(el('span', { className: 'warn', textContent: 'Everything on screen goes into the file, such as what you typed and the results. ' }), go, cancel, msg);
+  bar.classList.remove('hidden');
+  go.focus();
+}
+
+// Ask a frame for its rendering and wait for the answer from that same frame.
+function askSnapshot(win, origin, ms) {
+  return new Promise((resolve, reject) => {
+    const id = `snap${++snapId}`;
+    const on = (e) => {
+      const m = e.data;
+      if (e.source !== win || !m || m.wardian !== 'snapshot' || m.k !== 'answer' || m.id !== id) return;
+      removeEventListener('message', on); clearTimeout(timer); resolve(m);
+    };
+    const timer = setTimeout(() => { removeEventListener('message', on); reject(new Error('the app did not answer')); }, ms);
+    addEventListener('message', on);
+    win.postMessage({ wardian: 'snapshot', k: 'ask', id }, origin);
+  });
+}
+
+async function hostCss(files) {
+  const texts = await Promise.all(files.map((f) => fetch(f).then((r) => (r.ok ? r.text() : '')).catch(() => '')));
+  return texts.join('\n');
+}
+
+// What the open app shows, as {kind, parts: [{name, slot, html | null}], css, mode, columns}.
+async function appRendering(app) {
+  const frame = $('runner').querySelector('iframe.appframe');
+  if (app.suite) {
+    if (!frame) throw new Error('the app is not open');
+    // The kernel is Wardian's own page, so only its origin may receive the answer.
+    try { return { kind: 'suite', ...(await askSnapshot(frame.contentWindow, location.origin, 15000)) }; }
+    catch { throw new Error('The app did not answer. Wait until it has loaded, then try again.'); }
+  }
+  if (app.page) {
+    if (!frame) throw new Error('the app is not open');
+    // A page has a throwaway origin, which a message cannot name; the answer is checked by its frame.
+    try {
+      const a = await askSnapshot(frame.contentWindow, '*', 10000);
+      return { kind: 'page', parts: [{ name: app.name, slot: 'main', html: typeof a.html === 'string' ? a.html : null }], css: typeof a.css === 'string' ? a.css : '' };
+    } catch { return { kind: 'page', parts: [{ name: app.name, slot: 'main', html: null }], css: '' }; }
+  }
+  // A module app: Wardian draws its cards, so it copies them itself, in the viewer's order.
+  const cards = $('runner').querySelector('.fn-cards');
+  const html = cards ? (await WardianSnapshot.copy(cards)).outerHTML : '<p>This app exports no functions.</p>';
+  const css = await hostCss(['/ui/theme.css', '/ui/card.css', '/ui/field.css', '/ui/button.css']);
+  return { kind: 'module', parts: [{ name: app.name, slot: 'main', html }], css: `${css}
+.fn-cards { display: grid; gap: 12px; margin-top: .5rem; }
+.fn-card .w-card-title code { font: 600 15px var(--w-font-mono); }
+.fn-card .fn-run { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fn-card .fn-run .w-input { width: 9rem; }
+.fn-card output { display: block; margin-top: 10px; font-family: var(--w-font-mono); word-break: break-all; min-height: 1.4em; }
+.fn-card output.err { color: var(--w-destructive); }` };
+}
+
+// ----- cleaning: an allow-list. What is not named here does not go in the file. -----
+const SVG_NS = 'http://www.w3.org/2000/svg', HTML_NS = 'http://www.w3.org/1999/xhtml';
+// Dropped with everything inside them.
+const DROP_TAGS = new Set(['script', 'style', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'link', 'meta', 'base',
+  'noscript', 'noembed', 'noframes', 'template', 'audio', 'video', 'source', 'track', 'title', 'head', 'canvas', 'param', 'portal', 'slot', 'xmp', 'plaintext']);
+// Kept. Any other element (an app's own custom element, say) is replaced by what is inside it.
+const HTML_TAGS = new Set(('div span p a b i u s em strong small sub sup mark code pre kbd samp var br hr h1 h2 h3 h4 h5 h6 ul ol li dl dt dd '
+  + 'table thead tbody tfoot tr th td caption colgroup col section article aside header footer main nav figure figcaption blockquote q '
+  + 'abbr time details summary img label input textarea select option optgroup button output progress meter fieldset legend address '
+  + 'cite dfn del ins wbr bdi bdo ruby rt rp form dialog center big').split(' '));
+const SVG_TAGS = new Set(('svg g path rect circle ellipse line polyline polygon text tspan defs use symbol title desc clipPath mask pattern '
+  + 'linearGradient radialGradient stop marker image').split(' '));
+const HTML_ATTRS = new Set(('class id title lang dir role hidden colspan rowspan headers scope abbr width height alt value checked selected '
+  + 'disabled readonly placeholder type name for open start reversed span datetime min max step maxlength minlength size rows cols '
+  + 'multiple label wrap align valign low high optimum translate').split(' '));
+const INPUT_TYPES = new Set('text search number email tel url date time datetime-local month week color range checkbox radio button hidden'.split(' '));
+const URL_ATTRS = new Set(['href', 'xlink:href', 'src', 'srcset', 'action', 'formaction', 'poster', 'background', 'ping', 'cite', 'longdesc', 'usemap', 'data', 'codebase', 'lowsrc', 'dynsrc', 'manifest', 'icon', 'archive', 'profile', 'classid']);
+const ANIMATION_ATTRS = new Set(['attributename', 'values', 'from', 'to', 'by']);
+const squash = (v) => String(v).replace(/[\x00-\x20\x7f-\xa0\u1680\u2000-\u200f\u2028\u2029\u202f\u205f\u3000\ufeff]+/g, '');
+const isDataImage = (v) => /^data:image\/[a-z0-9.+-]+[;,]/i.test(squash(v));
+
+function cleanCss(text) {
+  let t = String(text || '').replace(/\/\*[\s\S]*?\*\//g, '');
+  // Undo CSS escapes first, so "u\72l(" cannot hide a url(.
+  t = t.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, h) => { const c = parseInt(h, 16); return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : ''; })
+    .replace(/\\([^\n])/g, '$1');
+  t = t.replace(/@import[^;]*;?/gi, '').replace(/@font-face\s*\{[^}]*\}/gi, '');
+  t = t.replace(/url\s*\(\s*(['"]?)([^'")]*)\1\s*\)/gi, (all, q, u) => (isDataImage(u) ? all : 'none'));
+  t = t.replace(/url\s*\((?!\s*['"]?data:image\/)/gi, 'invalid(')
+    .replace(/(?:-webkit-)?image-set\s*\(|\bimage\s*\(|\bsrc\s*\(|expression\s*\(/gi, 'invalid(')
+    .replace(/(?:java|vb)script\s*:/gi, 'invalid:')
+    .replace(/-moz-binding|behavior\s*:/gi, 'invalid');
+  // The CSS goes inside <style>, which only "</style" could end.
+  return t.replace(/</g, '\\3C ');
+}
+
+function keepAttr(tag, svg, name, value) {
+  const n = name.toLowerCase(), v = squash(value).toLowerCase();
+  if (n.startsWith('on') || /(?:java|vb)script:/.test(v)) return false;
+  if (URL_ATTRS.has(n)) {
+    if (n === 'href' || n === 'xlink:href') return String(value).trim().startsWith('#') || (svg && tag === 'image' && isDataImage(value));
+    return n === 'src' && tag === 'img' && isDataImage(value);
+  }
+  if (n === 'style') return true;   // cleaned by the caller
+  if (svg) return !ANIMATION_ATTRS.has(n) && !/url\s*\((?!\s*['"]?#)/.test(v) && /^[a-z][\w:.-]*$/i.test(name);
+  return HTML_ATTRS.has(n) || /^(aria|data)-[\w.-]+$/.test(n);
+}
+
+function cleanHtml(html, cssOut) {
+  // An inert document: nothing in it loads or runs.
+  const doc = new DOMParser().parseFromString(`<!doctype html><body>${html}`, 'text/html');
+  const walk = (node) => {
+    for (const child of [...node.childNodes]) {
+      if (child.nodeType === Node.TEXT_NODE) continue;
+      if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); continue; }
+      const svg = child.namespaceURI === SVG_NS, tag = svg ? child.localName : child.localName.toLowerCase();
+      if (tag === 'style') { cssOut.push(child.textContent); child.remove(); continue; }
+      if (svg ? !SVG_TAGS.has(tag) : (child.namespaceURI !== HTML_NS || DROP_TAGS.has(tag))) { child.remove(); continue; }
+      if (!svg && !HTML_TAGS.has(tag)) { walk(child); child.replaceWith(...child.childNodes); continue; }
+      for (const a of [...child.attributes]) {
+        if (!keepAttr(tag, svg, a.name, a.value)) child.removeAttribute(a.name);
+        else if (a.name.toLowerCase() === 'style') child.setAttribute('style', cleanCss(a.value));
+      }
+      if (tag === 'img' && !child.hasAttribute('src')) { child.remove(); continue; }
+      if (tag === 'button') child.setAttribute('type', 'button');
+      if (tag === 'input' && !INPUT_TYPES.has((child.getAttribute('type') || 'text').toLowerCase())) child.setAttribute('type', 'text');
+      walk(child);
+      // A form could send something somewhere; a copy has nothing to send.
+      if (tag === 'form') {
+        const div = doc.createElement('div');
+        for (const a of child.attributes) div.setAttribute(a.name, a.value);
+        div.append(...child.childNodes);
+        child.replaceWith(div);
+      }
+    }
+  };
+  walk(doc.body);
+  return doc.body.innerHTML;
+}
+
+const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// The file itself. Exposed for the browser test as well.
+function buildWebPage(app, r, when = new Date()) {
+  const extra = [];
+  const parts = (r.parts || []).map((p) => ({
+    name: String(p.name || ''), slot: ['header', 'aside', 'main'].includes(p.slot) ? p.slot : 'main',
+    html: typeof p.html === 'string' ? cleanHtml(p.html, extra) : null,
+  }));
+  const css = [r.css, ...extra].map(cleanCss).join('\n');
+  const title = app.title || app.name;
+  const box = (p) => (p.html === null
+    ? `<div class="wardian-saved-missing">This part could not be saved: ${escHtml(p.name)}.</div>`
+    : `<div class="wardian-saved-part" data-part="${escHtml(p.name)}">${p.html}</div>`);
+  let body;
+  if (r.kind === 'suite') {
+    const mode = ['one', 'swap'].includes(r.mode) ? r.mode : 'two';
+    const cols = typeof r.columns === 'string' && /^[\w\s(),.%-]+$/.test(r.columns) ? r.columns : '';
+    const side = parts.filter((p) => p.slot === 'aside'), main = parts.filter((p) => p.slot === 'main');
+    const one = mode === 'one' || !side.length || !main.length;
+    body = `<div class="wardian-saved-grid${one ? ' one' : mode === 'swap' ? ' swap' : ''}"${cols && !one ? ` style="grid-template-columns: ${escHtml(cols)}"` : ''}>
+${parts.filter((p) => p.slot === 'header').map((p) => `<div class="wardian-saved-hdr">${box(p)}</div>`).join('\n')}
+${side.length ? `<div class="wardian-saved-col wardian-saved-aside">${side.map(box).join('\n')}</div>` : ''}
+${main.length ? `<div class="wardian-saved-col wardian-saved-main">${main.map(box).join('\n')}</div>` : ''}
+</div>`;
+  } else {
+    body = `<div class="wardian-saved-${r.kind === 'module' ? 'module' : 'page'}">${parts.map(box).join('\n')}</div>`;
+  }
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Security-Policy" content="${SAVE_POLICY}">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escHtml(title)} (saved ${ymd(when)})</title>
+<style>
+${css}
+</style>
+<style>
+/* Wardian's note and layout, after the app's CSS so they keep their look. */
+.wardian-saved-note { margin: 0; padding: 8px 16px; font: 13px/1.45 system-ui, sans-serif; background: #fff6dc; color: #4a3b00; border-bottom: 1px solid #e6d59c; }
+.wardian-saved-note strong { font-weight: 600; }
+@media (prefers-color-scheme: dark) { .wardian-saved-note { background: #2d2714; color: #f2e5b8; border-color: #5a4c1d; } }
+.wardian-saved-grid { max-width: 1280px; margin: 0 auto; padding: 28px clamp(16px, 3vw, 40px) 72px; display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 0 44px; }
+.wardian-saved-grid.one { grid-template-columns: minmax(0, 1fr); }
+.wardian-saved-grid.swap { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
+.wardian-saved-grid.swap .wardian-saved-aside { order: 2; }
+.wardian-saved-hdr { grid-column: 1 / -1; }
+.wardian-saved-col { display: flex; flex-direction: column; min-width: 0; }
+.wardian-saved-module { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+.wardian-saved-missing { margin: 10px 0; padding: 10px 14px; border: 1px dashed #b7791f; border-radius: 8px; font: 14px system-ui, sans-serif; color: #8a5a12; }
+@media (max-width: 960px) { .wardian-saved-grid, .wardian-saved-grid.swap { grid-template-columns: minmax(0, 1fr); } .wardian-saved-grid.swap .wardian-saved-aside { order: 0; } }
+</style>
+</head>
+<body>
+<p class="wardian-saved-note" role="note"><strong>${escHtml(title)}</strong> · saved ${escHtml(when.toLocaleString())} · A copy that does not update.</p>
+${body}
+</body>
+</html>
+`;
+  return { html, parts };
+}
+
+async function saveWebPage(app) {
+  const r = await appRendering(app);
+  const when = new Date();
+  const { html, parts } = buildWebPage(app, r, when);
+  const blob = new Blob([html], { type: 'text/html' });
+  if (blob.size > SAVE_LIMIT) {
+    const size = (p) => new Blob([p.html || '']).size;
+    const big = parts.reduce((a, b) => (size(b) > size(a) ? b : a), parts[0]);
+    throw new Error(`The page would be ${kb(blob.size)}, over the 25 MB limit. The largest part is ${big.name} (${kb(size(big))}). Hide it with Arrange, or show less in it, and try again.`);
+  }
+  const file = `${app.name}-${ymd(when)}.html`;
+  const a = el('a', { href: URL.createObjectURL(blob), download: file });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  return { file, bytes: blob.size };
 }
 
 async function openHistory(app) {
