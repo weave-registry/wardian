@@ -9,6 +9,9 @@ cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian
 BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_DIR
 
+# Waits until something listens on a port: the fakes start in the background, and on a slow
+# machine Wardian could otherwise call them before they are up.
+wait_port() { for _ in $(seq 100); do (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && return 0; sleep 0.1; done; echo "nothing listens on port $1" >&2; return 1; }
 TMP=$(mktemp -d)
 PIDS=()
 trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
@@ -27,6 +30,9 @@ if [ "${PROVIDER:-anthropic}" = bedrock ]; then
   python3 tests/fixtures/fake-bedrock.py "$BPORT" "http://127.0.0.1:$APORT" &
   PIDS+=($!)
 fi
+wait_port "$SPORT"
+wait_port "$APORT"
+[ "${PROVIDER:-anthropic}" = bedrock ] && wait_port "$BPORT"
 PORT=${PORT:-8767}
 WARDIAN_BEDROCK_BASE_URL="http://127.0.0.1:$BPORT" ANTHROPIC_BASE_URL="http://127.0.0.1:$APORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:$PORT" "$BIN" "$TMP/apps" >"$TMP/server.log" 2>&1 &
 PIDS+=($!)

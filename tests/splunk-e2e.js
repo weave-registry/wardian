@@ -376,7 +376,7 @@ async function answer(page, re, yes, what) {
   await useTable(inputs);
   // The lab may still be fitting the 50,000 rows of the step before; wait for the new labels.
   const labelsAt = Date.now();
-  await frameOf(lab, 'chart').locator('#about', { hasText: 'JMeter load test steps' }).waitFor({ timeout: 30000 }).catch(() => {});
+  await frameOf(lab, 'chart').locator('#about', { hasText: 'JMeter load test steps' }).waitFor({ timeout: 90000 }).catch(() => {});
   aboutText = await frameOf(lab, 'chart').locator('#about').textContent();
   ok(/JMeter load test steps/.test(aboutText) && /Claude wrote this search/.test(aboutText), 'Claude\'s labels reach the lab (after ' + (Date.now() - labelsAt) + ' ms)');
 
