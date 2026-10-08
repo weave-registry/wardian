@@ -130,8 +130,10 @@ pub const LAST_PORT: u16 = 8010;
 pub enum Port {
     /// Free, and now Wardian's.
     Free,
-    /// Taken by a Wardian, which answered `/api/status`.
+    /// Taken by this same Wardian: the same version, serving the same apps folder.
     Wardian,
+    /// Taken by another Wardian: an older or newer version, or one serving another folder.
+    OtherWardian,
     /// Taken by something else.
     Other,
 }
@@ -148,17 +150,30 @@ pub enum PortChoice {
 }
 
 /// The port rule, when ADDR is not set (ADR-2610080930): the ports from `first` to `last` in
-/// order; the first free one is used, unless a Wardian is found first, which is then opened.
+/// order; the first free one is used, unless this same Wardian is found first, which is then
+/// opened. Another Wardian is passed over like any other program.
 /// `ask` tries a port and says what it is; it is asked about each port at most once, in order.
 pub fn choose_port(first: u16, last: u16, mut ask: impl FnMut(u16) -> Port) -> PortChoice {
     for port in first..=last {
         match ask(port) {
             Port::Free => return PortChoice::Use(port),
             Port::Wardian => return PortChoice::Running(port),
-            Port::Other => {}
+            Port::OtherWardian | Port::Other => {}
         }
     }
     PortChoice::NoneFree
+}
+
+/// Whether a Wardian found on a port is this one: the same version, serving the same apps folder.
+/// One that reports no version is older than any that does.
+pub fn same_wardian(found_version: Option<&str>, found_root: &str, version: &str, root: &str) -> bool {
+    found_version == Some(version) && found_root == root
+}
+
+/// What the start block says about another Wardian on the usual port, and how to stop it.
+pub fn other_wardian_note(port: u16, found_version: Option<&str>, found_root: &str) -> String {
+    let which = found_version.map_or_else(|| "an older Wardian".to_string(), |v| format!("Wardian {v}"));
+    format!("{which} serving {found_root} holds port {port}. Stop it (Ctrl-C where it runs) to use {port}.")
 }
 
 /// `host:port` split at the last colon, for the port rule. None when there is no number.
@@ -405,8 +420,10 @@ mod tests {
     #[test]
     fn start_port_rule_uses_the_first_free_port_or_opens_a_running_wardian() {
         assert_eq!(rule(&[]), (PortChoice::Use(8000), vec![8000]));
-        // Another Wardian on the usual port: open it, try nothing else.
+        // This same Wardian on the usual port: open it, try nothing else.
         assert_eq!(rule(&[(8000, Port::Wardian)]), (PortChoice::Running(8000), vec![8000]));
+        // Another Wardian (older, or serving another folder): leave it, take the next free port.
+        assert_eq!(rule(&[(8000, Port::OtherWardian)]), (PortChoice::Use(8001), vec![8000, 8001]));
         // Something else holds it: the next free port.
         assert_eq!(rule(&[(8000, Port::Other)]), (PortChoice::Use(8001), vec![8000, 8001]));
         assert_eq!(rule(&[(8000, Port::Other), (8001, Port::Other)]), (PortChoice::Use(8002), vec![8000, 8001, 8002]));
@@ -415,6 +432,16 @@ mod tests {
         let all: Vec<(u16, Port)> = (8000..=8003).map(|p| (p, Port::Other)).collect();
         assert_eq!(rule(&all), (PortChoice::NoneFree, vec![8000, 8001, 8002, 8003]));
         assert_eq!(choose_port(u16::MAX, u16::MAX, |_| Port::Other), PortChoice::NoneFree);
+    }
+
+    #[test]
+    fn start_opens_only_the_same_wardian() {
+        assert!(same_wardian(Some("0.4.3"), "/w/apps", "0.4.3", "/w/apps"));
+        assert!(!same_wardian(Some("0.4.2"), "/w/apps", "0.4.3", "/w/apps"), "another version");
+        assert!(!same_wardian(None, "/w/apps", "0.4.3", "/w/apps"), "a Wardian too old to say its version");
+        assert!(!same_wardian(Some("0.4.3"), "/elsewhere/apps", "0.4.3", "/w/apps"), "another apps folder");
+        assert_eq!(other_wardian_note(8000, None, "data/apps"), "an older Wardian serving data/apps holds port 8000. Stop it (Ctrl-C where it runs) to use 8000.");
+        assert_eq!(other_wardian_note(8000, Some("0.4.2"), "/w/apps"), "Wardian 0.4.2 serving /w/apps holds port 8000. Stop it (Ctrl-C where it runs) to use 8000.");
     }
 
     #[test]

@@ -1357,8 +1357,9 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
 fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
     let held = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = held.local_addr().unwrap().port();
-    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5)) {
-        crate::Address::Ready(listener, busy) => {
+    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
+        crate::Address::Ready(listener, busy, other) => {
+            assert_eq!(other, None, "a plain listener is not named as a Wardian");
             let got = listener.local_addr().unwrap().port();
             assert!(got > port && got <= port.saturating_add(5), "took {got}, held {port}");
             assert_eq!(busy, Some(port));
@@ -1367,7 +1368,7 @@ fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
         crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
     }
     // With ADDR set, the same busy port is an error that says what to do.
-    match crate::take_address(&format!("127.0.0.1:{port}"), true, port.saturating_add(5)) {
+    match crate::take_address(&format!("127.0.0.1:{port}"), true, port.saturating_add(5), "apps") {
         crate::Address::Failed(what, todo) => {
             assert!(what.contains(&format!("cannot listen on 127.0.0.1:{port}")), "{what}");
             assert!(todo.contains("ADDR="), "{todo}");
@@ -1377,10 +1378,8 @@ fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
     drop(held);
 }
 
-/// ADR-2610080930: with ADDR unset, a Wardian answering /api/status on the port is reported as
-/// running, and nothing is taken.
-#[test]
-fn start_finds_a_wardian_already_running() {
+/// A fake Wardian on a free port that answers `/api/status` with `body` a few times.
+fn fake_wardian(body: &'static str) -> u16 {
     use std::io::{Read, Write};
     let fake = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = fake.local_addr().unwrap().port();
@@ -1388,14 +1387,44 @@ fn start_finds_a_wardian_already_running() {
         for mut stream in fake.incoming().flatten().take(4) {
             let mut buf = [0u8; 2048];
             let _ = stream.read(&mut buf);
-            let body = r#"{"source":"local","local_root":"apps","apps":5,"first_run":false,"admin":true}"#;
             let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         }
     });
-    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5)) {
+    port
+}
+
+/// ADR-2610080930: with ADDR unset, this same Wardian (version and apps folder) answering on the
+/// port is reported as running, and nothing is taken.
+#[test]
+fn start_finds_the_same_wardian_already_running() {
+    let body: &'static str = Box::leak(format!(r#"{{"source":"local","version":"{}","local_root":"apps","apps":5,"first_run":false,"admin":true}}"#, env!("CARGO_PKG_VERSION")).into_boxed_str());
+    let port = fake_wardian(body);
+    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
         crate::Address::Running(at) => assert_eq!(at, format!("127.0.0.1:{port}")),
-        crate::Address::Ready(l, _) => panic!("took {:?} although a Wardian runs on {port}", l.local_addr()),
+        crate::Address::Ready(l, _, _) => panic!("took {:?} although this Wardian runs on {port}", l.local_addr()),
         crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
+    }
+}
+
+/// An older Wardian on the port, or one serving another folder, is not opened: this one takes the
+/// next free port and says which Wardian holds the usual one.
+#[test]
+fn start_passes_over_another_wardian_and_names_it() {
+    for (body, says) in [
+        (r#"{"source":"local","local_root":"data/apps","apps":0,"first_run":false}"#, "an older Wardian serving data/apps holds port"),
+        (r#"{"source":"local","version":"0.0.1","local_root":"apps","apps":5,"first_run":false}"#, "Wardian 0.0.1 serving apps holds port"),
+    ] {
+        let port = fake_wardian(body);
+        match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
+            crate::Address::Ready(listener, busy, other) => {
+                assert!(listener.local_addr().unwrap().port() > port);
+                assert_eq!(busy, Some(port));
+                let other = other.expect("the other Wardian is named");
+                assert!(other.contains(says) && other.contains("Ctrl-C"), "{other}");
+            }
+            crate::Address::Running(at) => panic!("opened another Wardian at {at}"),
+            crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
+        }
     }
 }
 

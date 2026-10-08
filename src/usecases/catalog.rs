@@ -187,12 +187,14 @@ impl Hub {
         let mut status = match &*self.serving() {
             Serving::Local => json!({
                 "source": "local",
+                "version": env!("CARGO_PKG_VERSION"),
                 "local_root": self.local_root.display().to_string(),
                 "apps": apps,
                 "client_email": client_email,
             }),
             Serving::Drive(d) => json!({
                 "source": "drive",
+                "version": env!("CARGO_PKG_VERSION"),
                 "local_root": self.local_root.display().to_string(),
                 "folder_id": d.folder_id(),
                 "folder_name": d.folder_name(),

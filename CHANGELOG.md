@@ -12,6 +12,13 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- `wardian` opens a Wardian already on its port only when it is the same version serving the same
+  apps folder. Another Wardian, older or serving another folder, is left running: this one takes
+  the next free port and the start block names the other and how to stop it. `/api/status` reports
+  `version`.
+
 ## [0.4.3] - 2026-10-08
 
 ### Changed
