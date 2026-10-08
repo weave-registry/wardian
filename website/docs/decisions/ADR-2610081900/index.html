@@ -111,9 +111,10 @@ in the browser and that Claude is off.</li>
 <p>That is eleven of the sixteen. For the others, it says they need a Wardian.</p>
 </li>
 <li>
-<p><strong>Download.</strong> Every example's page links <code>/downloads/&lt;name&gt;.zip</code>, which Wardian imports
-(Settings → Import). Each zip is the same for the same files, so the website's copy changes only
-when an app does.</p>
+<p><strong>Download.</strong> Every example's page links <code>/downloads/&lt;name&gt;.wardian</code>, a <code>.wardian</code> file (SPEC.md
+7.2) with the manifest an export carries and no data, served as <code>application/vnd.wardian+zip</code>.
+Wardian's Import shows what it holds before installing it. Each file is the same for the same
+files and version, so the website's copy changes only when an app or the version does.</p>
 </li>
 <li>
 <p><strong>Isolation on the website.</strong> The frame is sandboxed with <code>allow-same-origin</code>, so the app loads its

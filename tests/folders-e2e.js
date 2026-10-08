@@ -19,7 +19,9 @@ const settled = (page) => page.waitForFunction(() => !foldersSaving, null, { tim
 
 (async () => {
   const browser = await chromium.launch(require('./browser')({ headless: true }));
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // Tall enough that the whole list, with every example open, fits: a test's mouse cannot scroll
+  // the list while it drags, as a person's can.
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1400 } });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));

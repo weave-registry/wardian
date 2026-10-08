@@ -26,9 +26,10 @@ to `null`, which every app must handle. `db`, `splunk` and channels need a Wardi
      in the browser and that Claude is off.
 
    That is eleven of the sixteen. For the others, it says they need a Wardian.
-2. **Download.** Every example's page links `/downloads/<name>.zip`, which Wardian imports
-   (Settings → Import). Each zip is the same for the same files, so the website's copy changes only
-   when an app does.
+2. **Download.** Every example's page links `/downloads/<name>.wardian`, a `.wardian` file (SPEC.md
+   7.2) with the manifest an export carries and no data, served as `application/vnd.wardian+zip`.
+   Wardian's Import shows what it holds before installing it. Each file is the same for the same
+   files and version, so the website's copy changes only when an app or the version does.
 3. **Isolation on the website.** The frame is sandboxed with `allow-same-origin`, so the app loads its
    own files from a plain static host, which sends no CORS header. It runs on the website's origin,
    which holds no data. `vercel.json`, written with the rest, sends a Content-Security-Policy with

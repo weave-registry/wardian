@@ -2852,9 +2852,9 @@ fn demos_every_website_download_imports_into_wardian() {
     let zips: Vec<&(String, Vec<u8>)> = site.iter().filter(|(p, _)| p.starts_with("downloads/")).collect();
     assert!(zips.len() >= 16);
     for (path, bytes) in zips {
-        let app = path.trim_start_matches("downloads/").trim_end_matches(".zip");
+        let app = path.trim_start_matches("downloads/").strip_suffix(".wardian").unwrap_or_else(|| panic!("{path} is a .wardian file"));
         let apps = base.join(app);
-        import_zip(&LocalDisk, bytes, &format!("{app}.zip"), &apps, false, &|_| {}).unwrap_or_else(|e| panic!("{app}: {e}"));
+        import_zip(&LocalDisk, bytes, &format!("{app}.wardian"), &apps, false, &|_| {}).unwrap_or_else(|e| panic!("{app}: {e}"));
         let (ok, report) = checker().check_dir(&apps.join(app), app);
         assert!(ok, "{app} imported and checked: {report}");
     }

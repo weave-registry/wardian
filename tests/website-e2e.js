@@ -39,7 +39,7 @@ const SERVER_ONLY = ['csv-explorer', 'focus-log', 'focus-timer', 'splunk-table',
       await row.getByRole('button').click();
       ok(/^= \d+/.test(await row.locator('.out').textContent()), `adder: Run gives ${await row.locator('.out').textContent()}`);
     }
-    ok(await page.locator(`a[href="/downloads/${app}.zip"]`).count() === 1, `${app}: the download is linked`);
+    ok(await page.locator(`a[href="/downloads/${app}.wardian"]`).count() === 1, `${app}: the download is linked`);
     ok(errors.length === 0, `${app}: no errors ${errors.join(' | ')}`);
     await page.close();
   }
@@ -69,8 +69,8 @@ const SERVER_ONLY = ['csv-explorer', 'focus-log', 'focus-timer', 'splunk-table',
     const page = await ctx.newPage();
     await page.goto(`${B}/docs/examples/${app}/`);
     ok(await page.locator('iframe.try-frame').count() === 0 && /needs? a Wardian/.test(await page.locator('section.try').innerText()), `${app}: says it needs a Wardian`);
-    const res = await page.request.get(`${B}/downloads/${app}.zip`);
-    ok(res.ok() && (await res.body()).slice(0, 2).toString() === 'PK', `${app}: the download is a zip`);
+    const res = await page.request.get(`${B}/downloads/${app}.wardian`);
+    ok(res.ok() && (await res.body()).slice(0, 2).toString() === 'PK', `${app}: the download is a .wardian file (a zip)`);
     await page.close();
   }
   await browser.close();

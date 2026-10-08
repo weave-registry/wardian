@@ -4,6 +4,7 @@
 //! each module app, each runnable suite's kernel page and frames (`/run/<name>/`, `/frame/<name>/`),
 //! a zip of each example, and the headers the website sends with them.
 
+use crate::domain::export;
 use crate::domain::suite::{self, FRAME_CSP};
 use crate::ports::assets::Assets;
 use std::io::{Cursor, Write};
@@ -80,7 +81,7 @@ fn try_src(assets: &dyn Assets, app: &str) -> Option<String> {
 pub fn try_box(assets: &dyn Assets, app: &str) -> Option<String> {
     let k = kind(assets, app)?;
     let download = format!(
-        "<p><a class=\"w-button\" href=\"/downloads/{app}.zip\" download>Download {app}</a> \
+        "<p><a class=\"w-button\" href=\"/downloads/{app}.wardian\" download>Download {app}.wardian</a> \
          <span class=\"muted\">Import it in Wardian: Settings → Import.</span></p>"
     );
     let body = match (try_src(assets, app), k) {
@@ -169,14 +170,16 @@ fn headers() -> String {
             { "key": "Content-Security-Policy", "value": FRAME_CSP },
             { "key": "X-Content-Type-Options", "value": "nosniff" } ] },
         { "source": "/downloads/(.*)", "headers": [
-            { "key": "Content-Disposition", "value": "attachment" } ] }
+            { "key": "Content-Disposition", "value": "attachment" },
+            { "key": "Content-Type", "value": export::MIME } ] }
     ] });
     serde_json::to_string_pretty(&v).unwrap_or_default() + "\n"
 }
 
-/// A zip of one example, the same every time for the same files, so the website's copy is
-/// unchanged unless the app is.
-fn zip_of(assets: &dyn Assets, app: &str) -> Vec<u8> {
+/// One example as a `.wardian` file (SPEC.md 7.2): the package folder and the manifest a Wardian
+/// export carries, with no data. The same every time for the same files and version, so the
+/// website's copy changes only when the app or Wardian's version does.
+fn wardian_file_of(assets: &dyn Assets, app: &str) -> Vec<u8> {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let opts = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
@@ -185,7 +188,19 @@ fn zip_of(assets: &dyn Assets, app: &str) -> Vec<u8> {
         zip.start_file(format!("{app}/{rel}"), opts).expect("a zip entry");
         zip.write_all(bytes).expect("a zip entry");
     }
+    let title = title(assets, app);
+    let manifest = export::manifest(app, title.as_deref(), 0, env!("CARGO_PKG_VERSION"), &export::DataIncluded::default());
+    zip.start_file(format!("{app}/.wardian/export.json"), opts).expect("a zip entry");
+    zip.write_all(serde_json::to_string_pretty(&manifest).unwrap_or_default().as_bytes()).expect("a zip entry");
     zip.finish().expect("a zip").into_inner()
+}
+
+/// The example's title, from its `suite.json` or `app.json`.
+fn title(assets: &dyn Assets, app: &str) -> Option<String> {
+    files_of(assets, app)
+        .find(|(rel, _)| *rel == "suite.json" || *rel == "app.json")
+        .and_then(|(_, b)| serde_json::from_slice::<serde_json::Value>(b).ok())
+        .and_then(|v| v["title"].as_str().map(str::to_string))
 }
 
 /// Every file the website needs for the examples, as (path, bytes).
@@ -202,7 +217,7 @@ pub fn site_files(assets: &dyn Assets) -> Vec<(String, Vec<u8>)> {
         if k == Some(Kind::Suite { browser_only: true }) {
             out.extend(suite_files(assets, app));
         }
-        out.push((format!("downloads/{app}.zip"), zip_of(assets, app)));
+        out.push((format!("downloads/{app}.wardian"), wardian_file_of(assets, app)));
     }
     for name in ["state.js", "channels.js"] {
         out.push((name.to_string(), assets.host_file(name).unwrap_or_default().as_bytes().to_vec()));
@@ -249,14 +264,30 @@ mod tests {
     }
 
     #[test]
+    fn demos_each_download_is_a_wardian_file_import_reads() {
+        let a = Embedded;
+        for app in names(&a) {
+            let bytes = wardian_file_of(&a, app);
+            let mut z = zip::ZipArchive::new(Cursor::new(bytes.as_slice())).expect("a zip");
+            let mut m = Vec::new();
+            std::io::Read::read_to_end(&mut z.by_name(&format!("{app}/.wardian/export.json")).expect("a manifest"), &mut m).unwrap();
+            let read = export::read_manifest(&m).expect("Wardian reads the manifest");
+            assert_eq!((read.package.as_str(), read.data), (app, false), "{app}: the app, without data");
+            assert_eq!(read.value["title"].as_str(), title(&a, app).as_deref(), "{app}: its title");
+            assert!(z.file_names().all(|n| n.starts_with(&format!("{app}/"))), "{app}: one package folder at the top");
+        }
+        assert!(headers().contains(export::MIME), "served as a .wardian file");
+    }
+
+    #[test]
     fn demos_every_example_has_a_download_and_each_runnable_one_its_files() {
         let a = Embedded;
         let files = site_files(&a);
         let has = |p: &str| files.iter().any(|(q, _)| q == p);
         for app in names(&a) {
-            assert!(has(&format!("downloads/{app}.zip")), "{app} has a download");
+            assert!(has(&format!("downloads/{app}.wardian")), "{app} has a download");
             let b = try_box(&a, app).unwrap();
-            assert!(b.contains(&format!("/downloads/{app}.zip")), "{app}'s page links its download");
+            assert!(b.contains(&format!("/downloads/{app}.wardian")), "{app}'s page links its download");
             match kind(&a, app).unwrap() {
                 Kind::Module => assert!(has(&format!("docs/try/{app}/index.html")) && has(&format!("apps/{app}/app.wasm")) && b.contains("<iframe")),
                 Kind::Page { channels: false } => {
@@ -276,7 +307,7 @@ mod tests {
     #[test]
     fn demos_a_download_is_the_same_each_time_and_holds_the_app() {
         let a = Embedded;
-        let (one, two) = (zip_of(&a, "life"), zip_of(&a, "life"));
+        let (one, two) = (wardian_file_of(&a, "life"), wardian_file_of(&a, "life"));
         assert_eq!(one, two, "the website's copy changes only when the app does");
         let mut z = zip::ZipArchive::new(Cursor::new(one)).unwrap();
         let names: Vec<String> = (0..z.len()).map(|i| z.by_index(i).unwrap().name().to_string()).collect();

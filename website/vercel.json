@@ -41,6 +41,10 @@
         {
           "key": "Content-Disposition",
           "value": "attachment"
+        },
+        {
+          "key": "Content-Type",
+          "value": "application/vnd.wardian+zip"
         }
       ]
     }
