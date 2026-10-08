@@ -136,6 +136,51 @@ mod tests {
         assert_eq!(doc["inputs"]["tableLink"], true);
     }
 
+    /// ADR-2610071055 ¶2 (#5): a layout may be 20 KB, as JSON, and not one byte more.
+    #[test]
+    fn claim_a_layout_is_at_most_20_kb() {
+        // {"x":"…"} is 8 bytes around the text.
+        let layout = |n: usize| json!({ "x": "a".repeat(n - 8) });
+        assert_eq!(json_len(&layout(20 * 1024)), 20 * 1024);
+        assert!(check_layout(&layout(20 * 1024)).is_ok());
+        assert!(check_layout(&layout(20 * 1024 + 1)).unwrap_err().contains("at most 20 KB"));
+    }
+
+    /// ADR-2610071055 ¶2 (#5): one package may keep 5 MB across its apps, as JSON.
+    #[test]
+    fn claim_a_package_keeps_at_most_5_mb() {
+        let mut doc = Map::new();
+        for i in 0..5 {
+            set_app_value(&mut doc, &format!("a{i}"), "k", json!("x".repeat(1_000_000))).unwrap();
+        }
+        set_app_value(&mut doc, "last", "k", json!("")).unwrap();
+        let room = 5 * 1024 * 1024 - json_len(&Value::Object(doc.clone()));
+        set_app_value(&mut doc, "last", "k", json!("x".repeat(room))).unwrap();
+        assert_eq!(json_len(&Value::Object(doc.clone())), 5 * 1024 * 1024, "exactly the limit is kept");
+        let e = set_app_value(&mut doc, "last", "k", json!("x".repeat(room + 1))).unwrap_err();
+        assert!(e.contains("at most 5 MB"), "{e}");
+    }
+
+    /// ADR-2610071055 ¶2, SPEC 6.9 (#5): a channel message may be 256 KB, as JSON.
+    #[test]
+    fn claim_a_channel_message_is_at_most_256_kb() {
+        let mut all = Map::new();
+        // A JSON string is 2 bytes more than its text.
+        assert!(set_channel(&mut all, "c", json!("m".repeat(256 * 1024 - 2))).is_ok());
+        assert!(set_channel(&mut all, "c", json!("m".repeat(256 * 1024 - 1))).unwrap_err().contains("at most 256 KB"));
+    }
+
+    /// ADR-2610071055 ¶2 (#5): at most 500 channels keep a latest message.
+    #[test]
+    fn claim_at_most_500_channels_are_kept() {
+        let mut all = Map::new();
+        for i in 0..500 {
+            set_channel(&mut all, &format!("c{i}"), json!(i)).unwrap();
+        }
+        assert!(set_channel(&mut all, "c500", json!(1)).unwrap_err().contains("at most 500 channels"));
+        assert!(set_channel(&mut all, "c7", json!("new")).is_ok(), "a kept channel may still change");
+    }
+
     #[test]
     fn layouts_and_channels_are_checked() {
         assert!(check_layout(&json!({"v": 1})).is_ok() && check_layout(&Value::Null).is_ok());

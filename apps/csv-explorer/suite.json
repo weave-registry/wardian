@@ -1,0 +1,93 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json",
+  "format": 2,
+  "title": "CSV explorer",
+  "description": "Open a CSV file and page, sort, filter, summarise, chart and export it. The rows live in the app's own database, so 100,000 rows stay fast and survive a reload.",
+  "styles": [
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "ui/table.css",
+    "ui/badge.css",
+    "style.css"
+  ],
+  "scripts": [
+    "shared/data.js",
+    "shared/csv.js",
+    "shared/filter.js"
+  ],
+  "header": "header.html",
+  "apps": [
+    {
+      "name": "importer",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\">",
+      "emits": {
+        "dataset:ready": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "db",
+        "asset"
+      ]
+    },
+    {
+      "name": "table",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "emits": {
+        "view:changed": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "dataset:ready"
+      ],
+      "caps": [
+        "db"
+      ]
+    },
+    {
+      "name": "stats",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "dataset:ready",
+        "view:changed"
+      ],
+      "caps": [
+        "db"
+      ]
+    },
+    {
+      "name": "chart",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "scripts": [
+        "apps/chart/draw.js"
+      ],
+      "listens": [
+        "dataset:ready",
+        "view:changed"
+      ],
+      "caps": [
+        "db"
+      ]
+    },
+    {
+      "name": "export",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "dataset:ready",
+        "view:changed"
+      ],
+      "caps": [
+        "db",
+        "claude:downloads"
+      ]
+    }
+  ]
+}

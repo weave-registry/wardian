@@ -1,3 +1,7 @@
 { "title": "Rogue", "apps": [
-  { "name": "probe", "slot": "main", "emits": { "probe:done": {} } },
-  { "name": "liar" } ] }
+  { "name": "probe", "slot": "main", "emits": { "probe:done": {}, "probe:data": {}, "probe:tick": {} },
+    "needs": ["late.ping", "mute.never", "liar.nothing"] },
+  { "name": "liar" },
+  { "name": "late", "provides": ["ping", "slow"], "listens": ["probe:data"] },
+  { "name": "mute", "provides": ["never"], "needs": ["late.slow"] },
+  { "name": "closer" } ] }

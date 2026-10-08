@@ -1,0 +1,15 @@
+<div class="head"><h2>Sessions coming in</h2><span class="w-badge" data-variant="secondary" id="state">Starting</span></div>
+<p id="explain" class="explain">This log fills up from the <b>Focus timer</b> app. Each time a focus session ends there, the timer sends it on the channel <code>focus.session</code>, and this log keeps it.</p>
+<div id="refused" class="refused" hidden>
+  <p><b>The log cannot hear the Focus timer yet.</b> Wardian asks you before one app may read what another sends. Without your yes, this log keeps the sessions it already has, but adds no new ones.</p>
+  <ol>
+    <li>If you pressed <b>Don't allow</b>, open Wardian's <b>Settings → App permissions</b> and press <b>Revoke</b> next to <code>focus-log</code>.</li>
+    <li>Press <b>Ask again</b> below, then <b>Allow</b>.</li>
+  </ol>
+  <button class="w-button" data-size="sm" id="retry" type="button">Ask again</button>
+</div>
+<dl class="facts" id="facts" hidden>
+  <dt>Last session</dt><dd id="last"></dd>
+  <dt>Since it opened</dt><dd id="count"></dd>
+</dl>
+<p class="status" id="status" role="status"></p>

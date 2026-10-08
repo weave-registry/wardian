@@ -8,6 +8,17 @@ service-account.json
 !/apps/mandelbrot/
 !/apps/loan-planner/
 !/apps/splunk-table/
+!/apps/unit-converter/
+!/apps/number-lab/
+!/apps/text-tools/
+!/apps/image-lab/
+!/apps/life/
+!/apps/csv-explorer/
+!/apps/habit-tracker/
+!/apps/meeting-notes/
+!/apps/monte-carlo/
+!/apps/focus-timer/
+!/apps/focus-log/
 /apps/*/target
 /apps/*/Cargo.lock
 /templates/*/target

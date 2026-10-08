@@ -1,0 +1,7 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 1,
+  "title": "Image lab",
+  "description": "Photo filters in WebAssembly: blur, sharpen, edges, tone and a live RGB histogram. Your picture never leaves this computer.",
+  "page": "index.html"
+}

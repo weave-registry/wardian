@@ -1,0 +1,109 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json",
+  "format": 1,
+  "title": "Habit tracker",
+  "description": "Tick off your daily habits, see a year of them as a heatmap, and keep your streaks. Your data stays in this Wardian.",
+  "styles": [
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "ui/table.css",
+    "style.css"
+  ],
+  "scripts": [
+    "shared/days.js",
+    "shared/model.js",
+    "shared/stats.js"
+  ],
+  "header": "header.html",
+  "apps": [
+    {
+      "name": "log",
+      "provides": [
+        "set",
+        "forget",
+        "restore"
+      ],
+      "emits": {
+        "log:changed": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "storage"
+      ]
+    },
+    {
+      "name": "habits",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\">",
+      "listens": [
+        "log:changed"
+      ],
+      "needs": [
+        "log.forget"
+      ],
+      "provides": [
+        "restore"
+      ],
+      "emits": {
+        "habits:changed": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "storage"
+      ]
+    },
+    {
+      "name": "today",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "habits:changed",
+        "log:changed"
+      ],
+      "needs": [
+        "log.set"
+      ]
+    },
+    {
+      "name": "streaks",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "habits:changed",
+        "log:changed"
+      ]
+    },
+    {
+      "name": "calendar",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "habits:changed",
+        "log:changed"
+      ],
+      "needs": [
+        "log.set"
+      ]
+    },
+    {
+      "name": "backup",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "habits:changed",
+        "log:changed"
+      ],
+      "needs": [
+        "habits.restore",
+        "log.restore"
+      ],
+      "caps": [
+        "claude:downloads"
+      ]
+    }
+  ]
+}

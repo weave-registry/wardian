@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Focus timer</title>
+<!-- The Wardian component library, copied into ui/. -->
+<link rel="stylesheet" href="ui/theme.css">
+<link rel="stylesheet" href="ui/button.css">
+<link rel="stylesheet" href="ui/field.css">
+<link rel="stylesheet" href="ui/card.css">
+<link rel="stylesheet" href="ui/badge.css">
+<link rel="stylesheet" href="ui/switch.css">
+<link rel="stylesheet" href="ui/toast.css">
+<link rel="stylesheet" href="style.css">
+<!-- Wardian's channels for page apps. Outside Wardian this file is missing, and the timer still works. -->
+<script src="/sdk/wardian.js"></script>
+<header class="top">
+  <h1>Focus timer</h1>
+  <p>Work in focused blocks with short breaks between them. Each focus session you finish goes to the <b>Focus log</b>, if you allow it.</p>
+</header>
+<main class="layout" data-arrange-grid>
+  <div class="col" data-arrange-column="main">
+    <section class="w-card panel timer" data-panel="timer" data-panel-label="Timer" id="timerCard">
+      <div class="phases" role="group" aria-label="Phase">
+        <span class="phase" data-phase="work">Focus</span>
+        <span class="phase" data-phase="short">Short break</span>
+        <span class="phase" data-phase="long">Long break</span>
+      </div>
+      <div class="dial">
+        <svg viewBox="0 0 200 200" aria-hidden="true"><circle class="track" cx="100" cy="100" r="88"/><circle class="arc" id="arc" cx="100" cy="100" r="88"/></svg>
+        <div class="clock">
+          <div class="time" id="time" role="timer" aria-live="off">25:00</div>
+          <div class="doing" id="what">Ready to focus</div>
+        </div>
+      </div>
+      <div class="rounds" id="rounds" aria-label="Focus sessions until the long break"></div>
+      <div class="controls">
+        <button class="w-button" data-size="lg" id="go" type="button">Start</button>
+        <button class="w-button" data-variant="outline" id="skip" type="button">Skip to break</button>
+        <button class="w-button" data-variant="ghost" id="reset" type="button">Reset</button>
+      </div>
+      <p class="w-hint center" id="hint">Space starts and pauses.</p>
+    </section>
+    <section class="w-card panel" data-panel="sent" data-panel-label="Sent to the log">
+      <div class="head"><h2>Sent to the log</h2><span class="sub" id="tally"></span></div>
+      <p class="note" id="channelNote" role="status"></p>
+      <ol class="sent" id="sent"><li class="empty">Nothing yet. Finish a focus session, or send a test session.</li></ol>
+    </section>
+  </div>
+  <div class="col" data-arrange-column="side">
+    <section class="w-card panel" data-panel="session" data-panel-label="What you are working on">
+      <h2>What you are working on</h2>
+      <div class="w-field"><label class="w-label" for="label">Label</label>
+        <input class="w-input" id="label" maxlength="80" placeholder="For example: Write the report" autocomplete="off" list="recent"></div>
+      <datalist id="recent"></datalist>
+      <p class="w-hint">The Focus log adds up your time per label.</p>
+    </section>
+    <section class="w-card panel" data-panel="settings" data-panel-label="Lengths and sound">
+      <h2>Lengths and sound</h2>
+      <div class="three">
+        <div class="w-field"><label class="w-label" for="work">Focus (min)</label><input class="w-input" id="work" type="number" min="1" max="180" value="25" inputmode="numeric"></div>
+        <div class="w-field"><label class="w-label" for="short">Short break</label><input class="w-input" id="short" type="number" min="1" max="60" value="5" inputmode="numeric"></div>
+        <div class="w-field"><label class="w-label" for="long">Long break</label><input class="w-input" id="long" type="number" min="1" max="90" value="15" inputmode="numeric"></div>
+      </div>
+      <div class="w-field"><label class="w-label" for="every">Long break after every</label>
+        <select class="w-input" id="every"><option value="2">2 focus sessions</option><option value="3">3 focus sessions</option><option value="4" selected>4 focus sessions</option><option value="5">5 focus sessions</option><option value="6">6 focus sessions</option></select></div>
+      <div class="switches">
+        <label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch" id="sound" checked> A soft chime when a phase ends</label>
+        <label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch" id="auto"> Start the next phase on its own</label>
+      </div>
+      <p class="w-hint">A change applies to the next phase. These settings last until you close the app: a sealed page cannot keep them.</p>
+    </section>
+    <section class="w-card panel" data-panel="demo" data-panel-label="Try the connection">
+      <h2>Try the connection</h2>
+      <p class="w-hint">Sends a finished focus session that ends now, with your label and focus length, so you can see it reach the Focus log without waiting.</p>
+      <button class="w-button" data-variant="secondary" id="test" type="button">Send a test session</button>
+    </section>
+  </div>
+</main>
+<script src="ui/toast.js"></script>
+<script src="ui/arrange.js"></script>
+<script src="app.js"></script>
+</html>

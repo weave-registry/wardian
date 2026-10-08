@@ -190,6 +190,11 @@ async function offline(browser, file, check) {
   ok(details.dot && details.svg && details.kept === 'kept', 'safe parts stay: a data: image, the SVG, the form\'s field');
   ok(!/fonts\.googleapis|@import|example\.com/.test(ev.html), 'no web font, @import or outside address anywhere');
   ok(/rgb\(1, 2, 3\)|rgb\(1,2,3\)/.test(ev.html), 'the suite\'s own CSS is in the file');
+  // ADR-2610080905 / security.md: the saved file holds no script and reaches nothing outside.
+  for (const [re, what] of [[/vbscript:/i, 'vbscript:'], [/srcset/i, 'srcset'], [/xlink:href/i, 'xlink:href'], [/<animate/i, '<animate>'],
+    [/<set\b/i, '<set>'], [/@font-face/i, '@font-face'], [/expression\s*\(/i, 'expression('], [/u\\72l\s*\(/i, 'an escaped u\\72l(']])
+    ok(!re.test(ev.html), `the cleaner removes ${what}`);
+  ok(/escaped/.test(er.text) && !!(await page.evaluate(h => new DOMParser().parseFromString(h, 'text/html').querySelector('#vb'), ev.html)), 'the elements around them stay');
   const eo = await offline(browser, ev.file, p => p.evaluate(() => window.ran === undefined));
   ok(eo.tried.length === 0 && eo.extra, 'opened from disk it runs nothing and makes no request ' + JSON.stringify(eo.tried));
 

@@ -35,6 +35,12 @@ pub fn safe_rel(rel: &str) -> bool {
     parts.len() <= MAX_DEPTH + 1 && parts.iter().all(|p| safe_segment(p))
 }
 
+/// A path the host may serve from an app (SPEC.md 3.3, 3.4): a safe path with no folder named like
+/// a build folder, in any case, since a disk that ignores case finds `Target/` as `target/`.
+pub fn servable_rel(rel: &str) -> bool {
+    safe_rel(rel) && !rel.split('/').any(|p| SKIP_DIRS.iter().any(|d| p.eq_ignore_ascii_case(d)))
+}
+
 pub fn unix_now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -170,4 +176,55 @@ pub fn random_u32() -> u32 {
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
     h.write_u128(SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
     u32::try_from(h.finish() & 0xffff_ffff).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// SPEC 3.3 (#161): a name matches `[A-Za-z0-9_-][A-Za-z0-9_.-]*`, and a path inside a package
+    /// is made of such names, at most 8 folders deep.
+    #[test]
+    fn claim_names_match_the_pattern() {
+        for ok in ["a", "A-b_c.d", "_x", "-x", "9", "app.wasm", "x.."] {
+            assert!(safe_segment(ok), "{ok}");
+        }
+        for bad in ["", ".", "..", ".env", ".trash", "a b", "a/b", "a\\b", "a%20b", "é", "a:b", "a\0b", "a?b"] {
+            assert!(!safe_segment(bad), "{bad:?}");
+        }
+        assert!(safe_rel("a/b/c.js") && safe_rel(&["d"; MAX_DEPTH + 1].join("/")));
+        assert!(!safe_rel(&["d"; MAX_DEPTH + 2].join("/")), "deeper than 8 folders");
+        for bad in ["", "a//b", "/a", "a/", "a/../b", "a/.git/x"] {
+            assert!(!safe_rel(bad), "{bad:?}");
+        }
+    }
+
+    /// SPEC 3.4 (#162): nothing inside a folder named `node_modules` or `target` is served, in any case.
+    #[test]
+    fn claim_build_folders_are_never_servable() {
+        for ok in ["index.html", "pkg/app.js", "targets/a", "my_target/a", "node_modules.txt"] {
+            assert!(servable_rel(ok), "{ok}");
+        }
+        for never in ["target/a", "node_modules/a.js", "sub/target/a", "a/b/node_modules/c.js", "TARGET/a", "Node_Modules/a.js", ".env", "a/.git/x"] {
+            assert!(!servable_rel(never), "{never}");
+        }
+    }
+
+    /// SPEC 5.3 (#166): the page is app.json's `page`, or else the first of the guesses that exists.
+    #[test]
+    fn claim_the_page_is_named_or_guessed() {
+        let info = |manifest: &str, files: &[&str]| {
+            let manifest = manifest.as_bytes().to_vec();
+            let has = |rel: &str| files.contains(&rel);
+            app_info("x".into(), &|rel| (rel == "app.json").then(|| manifest.clone()), &has).page
+        };
+        assert_eq!(PAGE_GUESSES, ["index.html", "demo/index.html", "www/index.html", "web/index.html"]);
+        for (i, guess) in PAGE_GUESSES.iter().enumerate() {
+            assert_eq!(info("{}", &PAGE_GUESSES[i..]).as_deref(), Some(*guess), "the first that exists wins");
+        }
+        assert_eq!(info("{}", &["other/index.html"]), None);
+        assert_eq!(info(r#"{"page": "ui/main.html"}"#, &["ui/main.html", "index.html"]).as_deref(), Some("ui/main.html"));
+        assert_eq!(info(r#"{"page": "missing.html"}"#, &["www/index.html"]).as_deref(), Some("www/index.html"), "a named page that is missing falls back");
+        assert_eq!(info(r#"{"page": "../x.html"}"#, &["../x.html"]), None, "a named page must be a safe path");
+    }
 }

@@ -1,0 +1,6 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 1,
+  "title": "Unit converter",
+  "description": "Everyday conversions: temperature, length, mass, US volume, speed, fuel use, pressure, power, food energy and BMI. Each name says what goes in and what comes out: km_to_miles takes kilometres. Two-input functions name both, in order: bmi_kg_m takes weight in kg, then height in m. Results are rounded to 4 decimal places."
+}

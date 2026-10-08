@@ -3,8 +3,9 @@
 **Small apps, sealed. On your machine.**
 
 Wardian keeps the small tools you make, often with AI, on a computer you control. It serves them
-to your browser from a local folder or straight from Google Drive. Each app runs sealed: the
-browser blocks its network, and it cannot see your files or your other apps unless you allow it.
+to your browser from a local folder or straight from Google Drive. Each app runs sealed: it cannot
+see your files or your other apps unless you allow it, and the browser blocks its requests to
+anywhere but its own package (three narrow routes stay open; `/docs/security` lists them). The full documentation is at `/docs` on a running Wardian.
 
 ## Install
 
@@ -76,8 +77,9 @@ For a zip, see "Import apps from a zip" below.
 A suite is a folder with a `suite.json`. It holds several small apps that share one screen and
 talk to each other, like the USL lab in `apps/usl-lab`. The host kernel runs it:
 
-- Each app runs in its own sandboxed frame. The browser blocks all network access, storage and
-  any reach into the host page or other apps.
+- Each app runs in its own sandboxed frame. The browser blocks every request it makes, its storage
+  and any reach into the host page or other apps; a pop-up, navigating away and WebRTC stay open
+  (`tests/run-page-sandbox-e2e.sh` proves both).
 - Apps talk only through the kernel. Every message and call is copied, never shared.
 - The kernel enforces the contract in `suite.json`, not the contract in the app's code. An app
   whose code declares a different contract is not started.

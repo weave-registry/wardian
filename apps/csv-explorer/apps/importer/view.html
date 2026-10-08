@@ -1,0 +1,14 @@
+<h2>Data</h2>
+<div class="drop" id="drop">
+  <p class="drop-title">Drop a CSV file here</p>
+  <p class="drop-or">or</p>
+  <div class="btnrow">
+    <button class="w-button" type="button" id="choose">Choose a file</button>
+    <button class="w-button" data-variant="outline" type="button" id="sample">Load sample</button>
+  </div>
+  <input type="file" id="file" accept=".csv,.tsv,.tab,.txt,text/csv,text/tab-separated-values" hidden>
+</div>
+<p class="w-hint">Values may be separated by commas, semicolons, tabs or bars. The first line names the columns. The file stays on this computer, in this app's own database.</p>
+<wardian-progress id="bar" hidden></wardian-progress>
+<p class="status" id="status" role="status"></p>
+<div id="current"></div>

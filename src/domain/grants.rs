@@ -66,3 +66,22 @@ pub fn granted(list: &[Value], app: &str, channel: &str, mode: &str) -> bool {
 pub fn declares_cap(suite: &Value, app: &str, cap: &str) -> bool {
     suite["apps"].as_array().is_some_and(|apps| apps.iter().any(|a| a["name"] == app && a["caps"].as_array().is_some_and(|c| c.iter().any(|c| c == cap))))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// security.md Permissions (#126): the server accepts a "use" answer only for `splunk`, `ai`
+    /// and `tables.<package>`.
+    #[test]
+    fn claim_use_is_granted_only_for_splunk_ai_and_tables() {
+        let answer = |channel| Answer { app: "pkg", channel, mode: "use", decision: "allow" };
+        for ok in ["splunk", "ai", "tables.other-pkg"] {
+            let list = apply(Vec::new(), &answer(ok), 1).unwrap_or_else(|e| panic!("{ok}: {e}"));
+            assert!(granted(&list, "pkg", ok, "use"), "{ok}");
+        }
+        for refused in ["network", "db", "storage", "claude:sample", "tables.", "tables..hidden", "tables.a.b/c", "splunk2", "fetch"] {
+            assert!(apply(Vec::new(), &answer(refused), 1).is_err(), "{refused} must not be grantable");
+        }
+    }
+}

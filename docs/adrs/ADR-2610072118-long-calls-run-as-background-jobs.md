@@ -32,8 +32,8 @@ on the server, the page polls, and a badge shows its state (`aiWatch`).
    connection at once. The same permission checks run when a job starts, and a job is shown only to
    the package that started it, or to the admin.
 3. **Apps keep the same calls.** `ctx.cap('splunk').search(...)`, `loadInto(...)` and
-   `claude:sample` still return a promise; the kernel starts a job and polls it (every second at
-   first, then every two). New, for apps that want them: `ctx.cap('splunk').jobs()` lists this
+   `claude:sample` still return a promise; the kernel starts a job and polls it (the first after 250 ms, then every second for 10 seconds,
+   then every two; ADR-2610081041). New, for apps that want them: `ctx.cap('splunk').jobs()` lists this
    package's recent jobs, `wait(id)` resumes waiting on one, and `cancel(id)`. The Splunk table app
    uses them: opening it while a load is running shows the progress, and a finished load shows its
    table.

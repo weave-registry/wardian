@@ -44,6 +44,7 @@ mod usecases {
     pub mod import;
     pub mod jobs;
     pub mod scaffold;
+    pub mod skills;
     pub mod splunk;
     pub mod studio;
     pub mod viewer_state;
@@ -105,7 +106,8 @@ fn main() {
         let history = Arc::new(History::new(Arc::clone(&fs), &data_dir, &apps));
         Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), db, state, history, &apps, &data_dir))
     };
-    let (apps_folder, no_open) = match cli::run(&args, &tools, &config::data_dir(&*fs), &exports_for_cli) {
+    let docs = Docs::new(Arc::clone(&assets));
+    let (apps_folder, no_open) = match cli::run(&args, &tools, &docs, &config::data_dir(&*fs), &exports_for_cli) {
         cli::Command::Exit(code) => std::process::exit(code),
         cli::Command::Serve { folder, no_open } => (folder, no_open),
     };

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 2,
+  "title": "Focus timer",
+  "description": "A Pomodoro timer: focus, short break, long break. Each finished focus session goes to the Focus log on the channel focus.session, once you allow it.",
+  "page": "index.html",
+  "channels": {
+    "send": [
+      "focus.session"
+    ]
+  }
+}

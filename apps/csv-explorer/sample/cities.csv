@@ -1,0 +1,321 @@
+id,city,country,continent,population,area_km2,density_per_km2,elevation_m,founded,climate,rainfall_mm,has_metro,notes
+1,Istmar,Tamsin,Asia,3401453,136.8,24864,328,1965-12-23,Oceanic,2218,yes,University town
+2,Calia,Ostmark,Europe,3208583,216.2,14841,4,1210-01-01,Continental,869,yes,
+3,Halfield,Senhai,Asia,326754,589.4,554,35,1361-02-11,Humid subtropical,443,no,"Known for ""old town"" markets"
+4,Hallis,Vestria,Europe,458076,745,615,37,1952-05-19,Arid,2147,no,"Port city, river delta"
+5,Wesville,Lusitane,Europe,3027042,75.2,40253,22,1880-06-03,Humid subtropical,695,yes,"Port city, river delta"
+6,Falsund,Andessa,South America,38914,321.4,121,24,1153-12-04,Tropical,960,no,"Known for ""old town"" markets"
+7,Lunby,Riobranca,South America,715154,260.5,2745,1532,1575-12-18,Subarctic,1776,yes,
+8,Zenport,Vestria,Europe,72432,167.9,431,1428,1091-01-13,Mediterranean,1650,no,"Tech hub, fast-growing"
+9,Falville,Tamsin,Asia,27795,369.7,75,2080,1929-09-25,Subarctic,828,no,
+10,Bramburg,Tasmaro,Oceania,86176,787.9,109,961,1113-06-12,Mediterranean,1628,no,
+11,Yarfield,Kirath,Asia,221801,817.1,271,40,1791-06-02,Arid,1335,no,"Tech hub, fast-growing"
+12,Osford,Tasmaro,Oceania,4382887,410,10690,1809,1668-07-16,Subarctic,1533,yes,"Port city, river delta"
+13,Valbury,Kirath,Asia,186089,616.9,302,26,1632-06-22,Humid subtropical,1883,yes,"Port city, river delta"
+14,Dunia,Kalindi,Africa,983893,223.7,4398,1575,1717-02-05,Tropical,1877,yes,"Port city, river delta"
+15,Istora,Arcadia Union,North America,132885,317.6,418,1428,1302-11-01,Humid subtropical,439,no,"Mining, steel and rail"
+16,Jormar,Tamsin,Asia,36894,653.3,56,1194,1938-11-19,Tropical,NA,no,"Tech hub, fast-growing"
+17,Eskburg,Tamsin,Asia,444801,38.7,11494,1361,1436-09-07,Continental,2232,no,
+18,Ulburg,Riobranca,South America,1595039,109.1,14620,1530,1425-06-28,Continental,602,yes,"Known for ""old town"" markets"
+19,Dunton,Arcadia Union,North America,362140,599.6,604,952,1859-07-10,Subarctic,507,no,"Tech hub, fast-growing"
+20,Kelia,Westmere,North America,107000,597.3,179,779,1595-01-24,Tropical,211,no,"Mining, steel and rail"
+21,Rosdale,Kalindi,Africa,5260050,758.7,6933,313,1686-08-06,Continental,2273,yes,
+22,Fenby,Riobranca,South America,767434,52.4,14646,413,1512-03-12,Oceanic,962,yes,
+23,Delfield,Tamsin,Asia,117211,450.9,260,26,1097-08-10,Oceanic,348,no,
+24,Marstad,Andessa,South America,72269,62.3,1160,1634,1134-02-25,Mediterranean,535,no,"Mining, steel and rail"
+25,Harwick,Senhai,Asia,4939475,145.7,33902,578,1594-02-18,Mediterranean,320,yes,"Mining, steel and rail"
+26,Esklis,Oruma,Africa,2934786,694.7,4225,453,1580-10-28,Oceanic,NA,yes,Ski resort; hosts winter games
+27,Vallis,Andessa,South America,912359,72.2,12637,1,1442-04-01,Mediterranean,2364,yes,"Mining, steel and rail"
+28,Quenport,Riobranca,South America,736358,796.4,925,35,1226-10-13,Continental,525,yes,"Port city, river delta"
+29,Pelville,Tasmaro,Oceania,377884,430.9,877,39,1903-03-28,Oceanic,1833,no,"Known for ""old town"" markets"
+30,Algrad,Tamsin,Asia,106510,706.6,151,4,1232-02-07,Continental,294,no,University town
+31,Fenwick,Oruma,Africa,1920730,837.9,2292,1786,1944-07-22,Arid,1582,yes,Ski resort; hosts winter games
+32,Norford,Senhai,Asia,67747,655.6,103,14,1346-10-13,Humid subtropical,1110,no,
+33,Bramfield,Tasmaro,Oceania,1310337,649,2019,8,1246-05-05,Arid,2356,yes,"Port city, river delta"
+34,Delia,Arcadia Union,North America,931959,235.9,3951,2012,1516-05-08,Continental,1573,yes,University town
+35,Calfield,Tasmaro,Oceania,88420,763.6,116,258,1472-03-22,Continental,2045,no,University town
+36,Pellis,Andessa,South America,245290,186.1,1318,1,1586-09-04,Humid subtropical,NA,no,
+37,Alville,Tamsin,Asia,3366348,70.8,47547,1931,1907-11-03,Mediterranean,1862,yes,"Known for ""old town"" markets"
+38,Halstad,Ostmark,Europe,239374,90.6,2642,714,1914-01-19,Continental,751,no,
+39,Corhaven,Tasmaro,Oceania,382847,916,418,318,1137-12-28,Tropical,678,yes,"Port city, river delta"
+40,Calport,Andessa,South America,4132611,657.5,6285,650,1456-08-26,Subarctic,1331,yes,Ski resort; hosts winter games
+41,Quenton,Senhai,Asia,122560,141,869,777,1891-05-09,Humid subtropical,2174,no,University town
+42,Dunmar,Tasmaro,Oceania,2210332,915.9,2413,1261,1723-03-04,Mediterranean,1784,yes,
+43,Istbury,Zambeze,Africa,220511,364.7,605,26,1965-10-21,Tropical,1938,no,"Port city, river delta"
+44,Harport,Zambeze,Africa,52171,598.1,87,1737,1771-04-26,Oceanic,NA,no,"Port city, river delta"
+45,Jorholm,Tamsin,Asia,758383,536.8,1413,390,1749-07-01,Subarctic,1830,yes,"Port city, river delta"
+46,Fenmouth,Zambeze,Africa,71105,26.9,2643,32,1330-04-08,Arid,328,no,University town
+47,Harmar,Arcadia Union,North America,239482,669.3,358,409,,Continental,2195,no,"Capital, seat of parliament"
+48,Granmouth,Norland,Europe,35325,235,150,17,1261-09-01,Tropical,NA,no,
+49,Pelburg,Tasmaro,Oceania,249497,332.2,751,1258,1430-09-14,Continental,867,no,"Tech hub, fast-growing"
+50,Pelstad,Oruma,Africa,244287,340.2,718,24,1186-03-07,Continental,2229,yes,Ski resort; hosts winter games
+51,Fenlis,Kalindi,Africa,1359557,605.2,2246,2026,1873-07-06,Arid,537,yes,"Mining, steel and rail"
+52,Eskby,Tamsin,Asia,214428,453.7,473,30,1636-03-13,Tropical,587,no,
+53,Eskport,Westmere,North America,341197,610,559,23,1300-06-28,Humid subtropical,1252,no,"Capital, seat of parliament"
+54,Harhaven,Riobranca,South America,3592070,861.3,4171,120,1320-11-20,Tropical,587,yes,"Tech hub, fast-growing"
+55,Quenville,Norland,Europe,23332,337.4,69,21,1925-10-06,Subarctic,1297,no,
+56,Belby,Westmere,North America,25605,73.1,350,1872,1167-11-20,Continental,2234,no,
+57,Calholm,Senhai,Asia,757341,702.6,1078,548,1342-05-21,Humid subtropical,467,yes,"Capital, seat of parliament"
+58,Corholm,Andessa,South America,1749999,233.4,7498,1599,1472-01-14,Continental,1269,yes,
+59,Calbury,Andessa,South America,26730,533.5,50,1,1594-01-15,Continental,1740,no,
+60,Fenhaven,Andessa,South America,35507,447.5,79,76,1932-02-01,Tropical,499,no,
+61,Normouth,Senhai,Asia,2684327,58,46282,787,1831-03-15,Humid subtropical,2051,yes,
+62,Jorton,Varunda,Asia,357774,270,1325,994,1076-10-01,Oceanic,2059,no,Ski resort; hosts winter games
+63,Delton,Westmere,North America,191156,441,433,812,1522-11-11,Oceanic,2349,no,
+64,Halhaven,Vestria,Europe,408941,666.1,614,11,1982-05-02,Mediterranean,755,no,
+65,Osville,Kirath,Asia,2869482,603.3,4756,1979,1420-05-17,Arid,1081,yes,"Known for ""old town"" markets"
+66,Rosford,Arcadia Union,North America,3034904,890.3,3409,1572,1261-02-07,Subarctic,2320,yes,"Capital, seat of parliament"
+67,Valsund,Tasmaro,Oceania,3410971,120.4,28330,1766,1308-04-04,Tropical,1788,yes,University town
+68,Calby,Arcadia Union,North America,34772,220.7,158,2132,1731-09-19,Humid subtropical,2349,no,
+69,Alia,Tasmaro,Oceania,1771452,776.3,2282,660,1243-04-22,Mediterranean,2294,yes,Ski resort; hosts winter games
+70,Torford,Arcadia Union,North America,26300,801.5,33,13,1089-11-28,Humid subtropical,974,yes,"Known for ""old town"" markets"
+71,Alholm,Westmere,North America,228536,135.2,1690,1208,1589-06-26,Arid,1404,no,"Known for ""old town"" markets"
+72,Pelhaven,Senhai,Asia,244948,213.2,1149,4,1705-09-21,Continental,641,no,University town
+73,Yarville,Lusitane,Europe,59972,361.6,166,243,1536-02-26,Oceanic,540,no,"Mining, steel and rail"
+74,Coria,Senhai,Asia,724358,692.1,1047,1925,1510-08-06,Arid,2018,yes,
+75,Corbury,Vestria,Europe,59584,403.2,148,439,1863-12-23,Subarctic,892,no,
+76,Osby,Tasmaro,Oceania,705790,312.8,2256,4,1306-09-02,Humid subtropical,2039,yes,
+77,Halgrad,Zambeze,Africa,100058,268.8,372,1848,1271-08-18,Continental,2191,no,University town
+78,Alburg,Oruma,Africa,120868,423.2,286,711,1329-01-07,Mediterranean,534,no,"Mining, steel and rail"
+79,Norora,Kirath,Asia,2710991,853.9,3175,37,1462-09-22,Humid subtropical,1612,yes,Ski resort; hosts winter games
+80,Fenfield,Tasmaro,Oceania,1859583,153.8,12091,2152,1756-10-13,Tropical,1578,yes,"Known for ""old town"" markets"
+81,Corlis,Andessa,South America,1606789,568.2,2828,2011,1136-03-24,Continental,2015,yes,"Capital, seat of parliament"
+82,Harlis,Zambeze,Africa,335128,862,389,1923,1130-05-09,Tropical,2190,no,University town
+83,Eskfield,Senhai,Asia,75308,465,162,1340,1176-01-03,Tropical,2203,no,"Mining, steel and rail"
+84,Almouth,Westmere,North America,505454,134.8,3750,1,1920-03-19,Arid,1059,yes,University town
+85,Marmar,Vestria,Europe,498625,25.5,19554,1469,1526-08-25,Tropical,246,no,"Port city, river delta"
+86,Kelholm,Tasmaro,Oceania,158523,258.7,613,1666,1634-03-22,Tropical,1305,no,
+87,Tormouth,Kalindi,Africa,166004,121,1372,832,1319-01-05,Humid subtropical,254,no,"Known for ""old town"" markets"
+88,Roston,Arcadia Union,North America,24629,305,81,1130,1251-11-13,Oceanic,2278,no,
+89,Ulia,Tasmaro,Oceania,101585,903.4,112,124,1948-11-14,Tropical,1256,no,
+90,Almar,Vestria,Europe,975644,489.8,1992,1887,1529-01-21,Humid subtropical,856,yes,
+91,Marford,Kirath,Asia,210229,754.2,279,310,1909-12-09,Mediterranean,438,no,"Tech hub, fast-growing"
+92,Eskia,Andessa,South America,2074269,733.1,2829,9,1938-11-05,Continental,1474,yes,
+93,Lunfield,Senhai,Asia,273684,476.2,575,1608,1730-05-15,Tropical,1793,no,"Known for ""old town"" markets"
+94,Salby,Tasmaro,Oceania,249763,114.5,2181,26,1317-02-09,Mediterranean,1939,yes,"Port city, river delta"
+95,Salburg,Riobranca,South America,68417,297.9,230,134,1662-09-06,Oceanic,1901,no,"Tech hub, fast-growing"
+96,Wesia,Tamsin,Asia,1026917,350,2934,1768,1344-08-06,Mediterranean,1975,yes,
+97,Alfield,Tasmaro,Oceania,107522,388.8,277,238,1394-05-06,Arid,1432,no,"Port city, river delta"
+98,Alwick,Oruma,Africa,64606,768.5,84,903,1484-10-15,Humid subtropical,330,no,
+99,Harora,Oruma,Africa,4476783,373,12002,758,1735-01-12,Oceanic,883,yes,"Capital, seat of parliament"
+100,Belbury,Caldora,Europe,33424,111.4,300,10,1800-02-03,Tropical,315,no,
+101,Lunia,Westmere,North America,49428,120.3,411,34,1498-11-17,Oceanic,1621,no,
+102,Kelville,Tasmaro,Oceania,57051,567.4,101,1520,1690-09-22,Arid,938,no,"Port city, river delta"
+103,Ossund,Kalindi,Africa,271305,335.7,808,385,1279-02-20,Continental,1221,no,"Port city, river delta"
+104,Marholm,Senhai,Asia,856730,208.2,4115,12,1653-08-05,Subarctic,1555,yes,University town
+105,Delport,Norland,Europe,105973,340.7,311,2137,1468-03-23,Arid,1750,no,"Capital, seat of parliament"
+106,Wesdale,Tasmaro,Oceania,760282,861.1,883,31,1187-07-07,Oceanic,458,yes,
+107,Cormouth,Riobranca,South America,190213,56.8,3349,1567,1805-12-02,Mediterranean,445,no,Ski resort; hosts winter games
+108,Quenburg,Arcadia Union,North America,25364,264,96,153,1244-01-03,Continental,1145,no,"Known for ""old town"" markets"
+109,Jorby,Oruma,Africa,64700,561.5,115,1,1557-11-17,Arid,608,no,"Tech hub, fast-growing"
+110,Valia,Westmere,North America,2924021,110.4,26486,7,1329-12-11,Oceanic,1934,yes,"Capital, seat of parliament"
+111,Weston,Norland,Europe,2186251,60.5,36136,567,1920-02-21,Humid subtropical,2060,yes,"Capital, seat of parliament"
+112,Haldale,Arcadia Union,North America,4366935,78.2,55843,204,1124-07-15,Oceanic,NA,yes,"Capital, seat of parliament"
+113,Ulville,Westmere,North America,3230471,442.1,7307,1815,1987-07-22,Continental,1735,yes,"Capital, seat of parliament"
+114,Pelora,Tasmaro,Oceania,1028896,36.7,28035,1487,1076-01-12,Arid,2073,yes,
+115,Lunville,Caldora,Europe,4187513,858.1,4880,973,1078-07-13,Arid,1305,yes,University town
+116,Oston,Vestria,Europe,3313638,170.2,19469,884,1319-03-05,Oceanic,450,yes,
+117,Dunstad,Kalindi,Africa,50489,31.1,1623,222,1117-06-28,Subarctic,1240,no,"Port city, river delta"
+118,Delburg,Lusitane,Europe,112851,723.7,156,33,1654-02-28,Mediterranean,362,no,
+119,Yarby,Vestria,Europe,2510394,106.7,23528,26,1249-03-16,Continental,229,yes,"Port city, river delta"
+120,Roslis,Ostmark,Europe,1025250,677.3,1514,1384,1519-01-22,Continental,1255,yes,"Capital, seat of parliament"
+121,Calstad,Andessa,South America,5093917,635.2,8019,9,1313-04-16,Subarctic,740,yes,"Mining, steel and rail"
+122,Osora,Tamsin,Asia,544510,85.1,6398,310,1615-11-27,Subarctic,1287,no,"Known for ""old town"" markets"
+123,Jorwick,Ostmark,Europe,22452,441.6,51,1968,1428-07-20,Arid,527,no,"Port city, river delta"
+124,Quenlis,Kalindi,Africa,612010,619.2,988,477,1369-05-20,Humid subtropical,1278,yes,
+125,Halbury,Arcadia Union,North America,278748,242.7,1149,805,1446-03-21,Humid subtropical,1878,no,Ski resort; hosts winter games
+126,Fenora,Tasmaro,Oceania,3724505,399.1,9332,31,1425-08-02,Subarctic,438,yes,"Tech hub, fast-growing"
+127,Norbury,Arcadia Union,North America,345593,635.4,544,1104,1530-10-07,Humid subtropical,595,no,Ski resort; hosts winter games
+128,Wesby,Tasmaro,Oceania,498223,385.4,1293,25,1400-10-06,Mediterranean,2166,no,"Tech hub, fast-growing"
+129,Norhaven,Westmere,North America,3818876,649.2,5882,3,1463-05-12,Mediterranean,1225,yes,
+130,Jorgrad,Kalindi,Africa,4527026,54.5,83065,12,1742-02-12,Humid subtropical,938,yes,Ski resort; hosts winter games
+131,Fenbury,Tasmaro,Oceania,74200,97.4,762,176,1548-01-07,Mediterranean,1683,no,"Port city, river delta"
+132,Lunlis,Vestria,Europe,32053,711.3,45,397,1404-12-24,Oceanic,1270,no,"Known for ""old town"" markets"
+133,Falmouth,Kalindi,Africa,2903663,107.1,27112,1244,1713-08-03,Continental,499,yes,"Port city, river delta"
+134,Marhaven,Varunda,Asia,25162,678.6,37,15,1132-05-12,Oceanic,1416,no,"Known for ""old town"" markets"
+135,Calwick,Riobranca,South America,143767,677.1,212,298,1293-05-24,Mediterranean,1507,no,
+136,Alstad,Riobranca,South America,382059,106.2,3598,1350,1958-07-10,Subarctic,1297,no,"Capital, seat of parliament"
+137,Fengrad,Zambeze,Africa,2539951,186,13656,80,1334-03-25,Arid,NA,yes,"Tech hub, fast-growing"
+138,Bramstad,Andessa,South America,25905,914.1,28,788,1775-06-24,Oceanic,2141,no,"Known for ""old town"" markets"
+139,Dunfield,Tamsin,Asia,143600,239.2,600,1408,1288-05-17,Subarctic,NA,no,"Capital, seat of parliament"
+140,Granmar,Kalindi,Africa,344450,722,477,1791,1147-02-13,Continental,1837,no,
+141,Keldale,Riobranca,South America,1040085,288.9,3600,10,1502-12-22,Humid subtropical,1291,yes,"Tech hub, fast-growing"
+142,Belgrad,Kirath,Asia,33707,896.8,38,14,1939-02-05,Humid subtropical,2310,yes,"Tech hub, fast-growing"
+143,Salmouth,Kalindi,Africa,693233,341.8,2028,287,1676-06-05,Humid subtropical,2230,yes,
+144,Lunstad,Arcadia Union,North America,119712,619.8,193,13,1671-03-05,Tropical,303,no,"Known for ""old town"" markets"
+145,Istport,Senhai,Asia,212297,588.8,361,7,1188-05-09,Arid,NA,no,"Mining, steel and rail"
+146,Salgrad,Riobranca,South America,4298385,128.4,33477,29,1133-10-12,Subarctic,1919,yes,
+147,Torburg,Oruma,Africa,528515,192.8,2741,90,1728-01-04,Humid subtropical,1716,no,"Known for ""old town"" markets"
+148,Torlis,Andessa,South America,346960,360.1,964,90,1182-06-26,Mediterranean,621,no,"Known for ""old town"" markets"
+149,Joria,Tasmaro,Oceania,921188,559.2,1647,874,1460-11-18,Humid subtropical,962,yes,
+150,Bramholm,Kalindi,Africa,1150946,496.5,2318,772,1640-08-14,Tropical,898,yes,Ski resort; hosts winter games
+151,Yarburg,Westmere,North America,311581,363,858,2055,1548-09-04,Humid subtropical,822,no,"Capital, seat of parliament"
+152,Ullis,Senhai,Asia,96106,568.2,169,21,1843-04-17,Subarctic,866,no,"Mining, steel and rail"
+153,Pelsund,Tasmaro,Oceania,86421,812.7,106,1370,1152-07-24,Tropical,997,no,
+154,Esksund,Tasmaro,Oceania,4774437,828.5,5763,24,1269-07-03,Continental,1750,yes,
+155,Valfield,Arcadia Union,North America,463112,473,979,169,1541-05-08,Subarctic,2108,no,University town
+156,Lunford,Westmere,North America,107201,729.6,147,31,1375-10-03,Mediterranean,2277,no,
+157,Ulholm,Westmere,North America,1561287,394.1,3962,20,1178-04-06,Continental,2247,yes,"Mining, steel and rail"
+158,Yarmouth,Tasmaro,Oceania,2947906,400.1,7368,2064,1838-10-14,Subarctic,1301,yes,
+159,Torgrad,Tasmaro,Oceania,151817,414.7,366,9,1231-07-25,Tropical,1034,no,"Tech hub, fast-growing"
+160,Quenhaven,Arcadia Union,North America,105685,276.5,382,1428,1746-12-18,Tropical,1969,no,
+161,Yarlis,Tasmaro,Oceania,752158,669.5,1123,913,1737-12-12,Humid subtropical,566,yes,Ski resort; hosts winter games
+162,Gransund,Arcadia Union,North America,1023795,527.9,1939,36,1526-07-23,Subarctic,302,yes,
+163,Pelmar,Tasmaro,Oceania,162010,859.7,188,48,1095-09-18,Arid,675,no,"Tech hub, fast-growing"
+164,Rosholm,Tasmaro,Oceania,511931,441.6,1159,1747,1411-09-13,Subarctic,1123,no,Ski resort; hosts winter games
+165,Norholm,Kalindi,Africa,108075,905.6,119,30,1469-10-19,Oceanic,1811,no,"Port city, river delta"
+166,Lunburg,Zambeze,Africa,109989,904.3,122,1991,1473-10-17,Humid subtropical,1359,no,"Known for ""old town"" markets"
+167,Yarstad,Tasmaro,Oceania,1360689,523.2,2601,912,1087-05-20,Arid,2111,yes,
+168,Harmouth,Varunda,Asia,230418,676,341,1299,,Mediterranean,972,no,"Mining, steel and rail"
+169,Quendale,Caldora,Europe,3143253,850.7,3695,35,1616-07-15,Mediterranean,570,yes,
+170,Falia,Westmere,North America,134235,824.4,163,2027,1266-02-14,Continental,807,no,"Mining, steel and rail"
+171,Istville,Westmere,North America,169354,472,359,1419,1393-03-27,Arid,902,no,
+172,Corsund,Andessa,South America,2683598,600.6,4468,1736,1411-08-03,Arid,2397,yes,
+173,Zenstad,Kalindi,Africa,216582,901.6,240,622,1387-03-10,Mediterranean,210,no,
+174,Ulstad,Westmere,North America,24854,737.1,34,39,1156-11-08,Continental,802,yes,"Capital, seat of parliament"
+175,Wesora,Tasmaro,Oceania,1129500,331.2,3410,1256,1871-06-16,Oceanic,1900,yes,"Port city, river delta"
+176,Dunmouth,Oruma,Africa,1709382,102.8,16628,2028,1651-12-25,Arid,2220,yes,Ski resort; hosts winter games
+177,Eskmouth,Ostmark,Europe,2261930,466,4854,37,1999-03-04,Oceanic,1844,yes,Ski resort; hosts winter games
+178,Calhaven,Caldora,Europe,417567,223,1872,764,1325-10-27,Continental,2315,no,"Mining, steel and rail"
+179,Istburg,Tamsin,Asia,48859,441.4,111,38,1532-08-03,Humid subtropical,NA,no,"Known for ""old town"" markets"
+180,Fenia,Tamsin,Asia,317528,779.8,407,380,1445-06-25,Continental,694,no,"Mining, steel and rail"
+181,Delford,Norland,Europe,1103186,570,1935,132,1647-04-02,Continental,217,yes,Ski resort; hosts winter games
+182,Corora,Westmere,North America,151651,341.7,444,1477,1761-02-15,Continental,1636,no,Ski resort; hosts winter games
+183,Belport,Senhai,Asia,43869,565.1,78,2064,1285-09-09,Continental,596,no,
+184,Beldale,Tasmaro,Oceania,5199994,861.1,6039,495,1830-07-13,Arid,2333,yes,"Mining, steel and rail"
+185,Delmar,Tamsin,Asia,4377126,662.3,6609,14,1963-07-05,Humid subtropical,1646,yes,"Capital, seat of parliament"
+186,Torton,Senhai,Asia,249226,309.7,805,2062,1558-02-27,Oceanic,759,no,
+187,Torstad,Kalindi,Africa,3169008,125.4,25271,1612,1710-08-08,Arid,288,yes,
+188,Falhaven,Vestria,Europe,730085,433.8,1683,1220,1074-06-12,Oceanic,713,yes,University town
+189,Peldale,Westmere,North America,80052,29.8,2686,12,1365-06-25,Humid subtropical,2197,no,"Known for ""old town"" markets"
+190,Valhaven,Andessa,South America,1422152,39.8,35732,55,1860-01-04,Mediterranean,942,yes,"Mining, steel and rail"
+191,Norwick,Tasmaro,Oceania,66807,65.9,1014,38,1932-12-14,Tropical,202,no,"Tech hub, fast-growing"
+192,Wessund,Tasmaro,Oceania,106131,232.1,457,39,1926-05-09,Subarctic,1769,no,"Port city, river delta"
+193,Corville,Ostmark,Europe,28608,742.2,39,9,1552-07-17,Humid subtropical,1308,no,"Mining, steel and rail"
+194,Norby,Norland,Europe,670416,675.6,992,1456,1526-09-17,Tropical,2009,yes,
+195,Delora,Varunda,Asia,1561133,42.9,36390,2048,1480-08-11,Oceanic,1756,yes,
+196,Jorhaven,Arcadia Union,North America,439087,918.1,478,40,1110-05-04,Arid,2130,no,"Port city, river delta"
+197,Halford,Tasmaro,Oceania,1613933,781.6,2065,502,1288-02-21,Humid subtropical,1670,yes,"Known for ""old town"" markets"
+198,Zenville,Caldora,Europe,38390,425.4,90,1825,1685-08-14,Subarctic,848,no,"Tech hub, fast-growing"
+199,Brammouth,Senhai,Asia,33179,894.8,37,1721,1318-01-06,Oceanic,1087,no,"Tech hub, fast-growing"
+200,Lundale,Vestria,Europe,399823,677.9,590,654,1577-03-08,Humid subtropical,1224,yes,"Mining, steel and rail"
+201,Harton,Riobranca,South America,406440,605.4,671,24,1067-01-21,Humid subtropical,1958,no,"Capital, seat of parliament"
+202,Dungrad,Tamsin,Asia,60391,176.2,343,1043,1432-07-26,Subarctic,1015,yes,
+203,Quensund,Tasmaro,Oceania,467238,430.8,1085,2064,1097-10-16,Mediterranean,1544,no,"Tech hub, fast-growing"
+204,Faldale,Tasmaro,Oceania,1534222,811.2,1891,20,1745-05-17,Oceanic,329,yes,"Tech hub, fast-growing"
+205,Harstad,Westmere,North America,52686,862.5,61,114,1792-12-24,Oceanic,1844,no,
+206,Quenford,Arcadia Union,North America,121111,702.6,172,8,1559-02-10,Subarctic,2309,no,
+207,Corfield,Tasmaro,Oceania,1206033,613.5,1966,30,1510-11-01,Oceanic,1131,yes,
+208,Tormar,Vestria,Europe,187526,224.4,836,14,,Arid,1453,no,
+209,Dunlis,Vestria,Europe,597012,652.7,915,503,1714-07-13,Continental,1568,no,
+210,Kelburg,Westmere,North America,1276146,731.1,1746,83,1564-12-07,Subarctic,1313,yes,"Mining, steel and rail"
+211,Istdale,Andessa,South America,260981,730.5,357,364,1385-08-22,Mediterranean,1116,yes,"Port city, river delta"
+212,Caldale,Norland,Europe,26626,642,41,665,1881-08-01,Humid subtropical,318,yes,Ski resort; hosts winter games
+213,Valgrad,Tasmaro,Oceania,2275392,255.4,8909,34,1124-02-03,Mediterranean,1857,yes,
+214,Falholm,Andessa,South America,1638712,385.8,4248,19,1931-01-17,Mediterranean,788,yes,Ski resort; hosts winter games
+215,Torville,Kalindi,Africa,38174,397.6,96,21,1244-04-08,Continental,1673,no,
+216,Marport,Caldora,Europe,137299,305,450,1242,1745-11-17,Tropical,522,no,
+217,Eskwick,Kalindi,Africa,3274845,702,4665,89,1318-01-05,Humid subtropical,1305,yes,"Known for ""old town"" markets"
+218,Kelbury,Riobranca,South America,1312721,758,1732,394,,Humid subtropical,2095,yes,"Tech hub, fast-growing"
+219,Fenville,Tasmaro,Oceania,263284,729.6,361,14,1168-05-15,Tropical,254,no,Ski resort; hosts winter games
+220,Alby,Westmere,North America,43356,602.1,72,10,,Arid,613,no,"Mining, steel and rail"
+221,Norton,Andessa,South America,3552290,570.5,6227,717,1286-07-20,Subarctic,1837,yes,"Known for ""old town"" markets"
+222,Granwick,Tasmaro,Oceania,189848,597.9,318,23,1178-08-07,Arid,1827,no,Ski resort; hosts winter games
+223,Fenburg,Norland,Europe,42782,850.6,50,37,1628-01-17,Continental,1875,no,"Mining, steel and rail"
+224,Ulfield,Westmere,North America,33801,449.7,75,1888,1943-08-10,Mediterranean,1311,no,"Mining, steel and rail"
+225,Zenora,Westmere,North America,54672,572.4,96,1737,1382-09-01,Subarctic,2357,no,"Port city, river delta"
+226,Halmar,Tasmaro,Oceania,606518,223.1,2719,407,,Subarctic,384,yes,
+227,Kelport,Caldora,Europe,267824,162.3,1650,8,1071-05-10,Tropical,835,no,"Tech hub, fast-growing"
+228,Belstad,Westmere,North America,88410,159.5,554,255,1945-05-16,Subarctic,816,no,University town
+229,Eskbury,Ostmark,Europe,65131,375.1,174,2,1280-09-04,Mediterranean,2367,no,"Tech hub, fast-growing"
+230,Weswick,Zambeze,Africa,214537,891,241,281,1867-02-05,Tropical,979,no,"Tech hub, fast-growing"
+231,Lunora,Lusitane,Europe,85788,785.2,109,2190,1094-09-19,Humid subtropical,1161,no,"Port city, river delta"
+232,Norstad,Arcadia Union,North America,565616,276.8,2043,34,1977-10-04,Humid subtropical,NA,yes,
+233,Torhaven,Kalindi,Africa,4414394,292.6,15087,1662,1390-05-04,Continental,949,yes,"Mining, steel and rail"
+234,Ulby,Riobranca,South America,1563081,579.1,2699,18,1935-05-08,Tropical,1267,yes,
+235,Harford,Riobranca,South America,3500893,751.2,4660,9,1629-02-03,Subarctic,716,yes,"Tech hub, fast-growing"
+236,Oshaven,Ostmark,Europe,327074,641.3,510,1074,1358-08-13,Humid subtropical,496,no,University town
+237,Bramdale,Vestria,Europe,139897,512.4,273,176,1910-05-01,Tropical,1320,no,
+238,Istsund,Varunda,Asia,28151,918,31,112,1360-11-08,Continental,713,no,
+239,Kelgrad,Tasmaro,Oceania,107634,514.5,209,3,1757-01-09,Arid,422,no,"Known for ""old town"" markets"
+240,Falport,Caldora,Europe,156147,395.9,394,2126,1597-12-07,Humid subtropical,256,no,
+241,Belfield,Zambeze,Africa,120852,904.8,134,39,1733-08-15,Oceanic,1917,no,
+242,Belburg,Norland,Europe,811982,78,10410,1864,1235-02-27,Tropical,1416,yes,"Port city, river delta"
+243,Kelsund,Ostmark,Europe,144668,353.2,410,1606,1205-09-13,Continental,2170,no,"Mining, steel and rail"
+244,Harburg,Andessa,South America,83613,699.3,120,1780,1281-04-09,Humid subtropical,1000,no,University town
+245,Rosora,Varunda,Asia,4117935,360.3,11429,483,1091-09-17,Oceanic,1745,yes,"Capital, seat of parliament"
+246,Falburg,Arcadia Union,North America,498943,914.1,546,9,1416-01-25,Tropical,1334,no,
+247,Osfield,Tasmaro,Oceania,249072,28.7,8678,729,1558-09-03,Mediterranean,1597,no,"Known for ""old town"" markets"
+248,Falgrad,Caldora,Europe,146362,92.7,1579,30,1461-05-23,Oceanic,2024,no,"Capital, seat of parliament"
+249,Rosport,Tasmaro,Oceania,121294,759.9,160,1012,1652-04-13,Subarctic,1489,no,
+250,Kelton,Lusitane,Europe,3427031,83.1,41240,337,1871-12-26,Tropical,1458,yes,"Capital, seat of parliament"
+251,Falton,Kalindi,Africa,3023208,313,9659,1813,1372-11-23,Mediterranean,2053,yes,University town
+252,Zenton,Kalindi,Africa,40398,852.8,47,22,1927-12-16,Oceanic,624,yes,Ski resort; hosts winter games
+253,Iststad,Tasmaro,Oceania,4573693,644.7,7094,1959,1533-04-11,Arid,773,yes,
+254,Quenholm,Westmere,North America,450410,898.3,501,2012,1432-08-12,Continental,2133,yes,University town
+255,Yarora,Oruma,Africa,3123623,617.4,5059,32,1564-07-05,Mediterranean,675,yes,"Known for ""old town"" markets"
+256,Delgrad,Arcadia Union,North America,1080721,228.6,4728,1665,1734-06-11,Continental,2118,yes,"Mining, steel and rail"
+257,Jorbury,Andessa,South America,1434067,435.8,3291,633,1975-12-26,Mediterranean,2025,yes,University town
+258,Bramgrad,Kirath,Asia,2922092,705.7,4141,491,1523-03-11,Tropical,1829,yes,"Tech hub, fast-growing"
+259,Torholm,Vestria,Europe,97123,324.3,299,456,1555-05-10,Mediterranean,2226,no,"Capital, seat of parliament"
+260,Dunwick,Lusitane,Europe,108026,149.6,722,2122,1629-01-19,Humid subtropical,1934,no,"Port city, river delta"
+261,Fenford,Oruma,Africa,1304436,501.9,2599,36,1833-06-27,Mediterranean,NA,yes,"Port city, river delta"
+262,Norport,Norland,Europe,503590,419.6,1200,1867,1614-02-25,Oceanic,707,no,"Known for ""old town"" markets"
+263,Weshaven,Kalindi,Africa,119029,835.3,142,1545,1565-01-27,Subarctic,401,no,
+264,Harfield,Norland,Europe,76615,110.5,693,9,1168-03-27,Continental,2257,no,"Port city, river delta"
+265,Dunport,Andessa,South America,31295,471,66,560,1082-04-05,Subarctic,486,no,Ski resort; hosts winter games
+266,Osbury,Senhai,Asia,2710985,573.5,4727,1,1370-01-27,Humid subtropical,578,yes,
+267,Fensund,Andessa,South America,26678,886.3,30,40,1541-12-07,Subarctic,723,no,"Known for ""old town"" markets"
+268,Salport,Oruma,Africa,64280,274.6,234,2113,1471-05-05,Subarctic,373,no,University town
+269,Aldale,Varunda,Asia,1567977,689.6,2274,8,1293-08-02,Humid subtropical,1512,yes,"Known for ""old town"" markets"
+270,Alora,Riobranca,South America,66222,472.9,140,1521,1396-01-27,Subarctic,1327,no,"Capital, seat of parliament"
+271,Eskdale,Riobranca,South America,42263,625.5,68,1911,1945-06-07,Arid,927,yes,"Known for ""old town"" markets"
+272,Bramhaven,Caldora,Europe,4473927,181.5,24650,675,1289-05-21,Humid subtropical,1026,yes,
+273,Cordale,Senhai,Asia,1561146,169.4,9216,1786,1844-11-06,Arid,2119,yes,"Mining, steel and rail"
+274,Belholm,Andessa,South America,5249321,379.1,13847,1436,1677-12-20,Oceanic,1919,yes,"Tech hub, fast-growing"
+275,Valholm,Caldora,Europe,3927985,628.7,6248,23,1345-09-24,Tropical,1514,yes,"Port city, river delta"
+276,Haria,Arcadia Union,North America,100339,302.9,331,16,1162-10-20,Oceanic,561,no,
+277,Osburg,Kalindi,Africa,566453,411.3,1377,38,1394-10-17,Tropical,1951,no,"Known for ""old town"" markets"
+278,Quenby,Westmere,North America,278729,524.1,532,5,1958-02-28,Oceanic,1766,no,University town
+279,Wesgrad,Riobranca,South America,29563,838.1,35,44,1662-12-28,Humid subtropical,551,no,
+280,Quenora,Caldora,Europe,125518,485.8,258,699,1849-10-10,Continental,1032,no,
+281,Calford,Kirath,Asia,49775,97.8,509,13,1451-03-20,Mediterranean,2157,no,
+282,Albury,Westmere,North America,4038786,355.4,11364,18,1396-04-08,Humid subtropical,1271,yes,"Mining, steel and rail"
+283,Yaria,Norland,Europe,725048,478.8,1514,769,1661-07-15,Tropical,2159,yes,University town
+284,Salia,Tasmaro,Oceania,232981,411.9,566,13,1940-04-27,Humid subtropical,1859,no,"Mining, steel and rail"
+285,Yarford,Tasmaro,Oceania,1052793,87.1,12087,1662,1335-09-18,Continental,943,yes,"Tech hub, fast-growing"
+286,Granhaven,Kalindi,Africa,62525,73.4,852,32,1142-11-19,Humid subtropical,2212,no,
+287,Wesfield,Westmere,North America,123130,524.3,235,974,1410-03-15,Mediterranean,1989,no,
+288,Eskton,Kirath,Asia,520384,801.5,649,162,1636-11-03,Tropical,1961,no,
+289,Zenford,Andessa,South America,846456,535.4,1581,1619,1504-03-24,Subarctic,1008,yes,"Known for ""old town"" markets"
+290,Quenwick,Tamsin,Asia,1142165,898.8,1271,1919,,Continental,750,yes,"Known for ""old town"" markets"
+291,Rosbury,Oruma,Africa,1183341,339.5,3486,1999,1325-09-04,Tropical,1725,yes,University town
+292,Harsund,Westmere,North America,444075,49.6,8953,30,1139-10-09,Oceanic,1800,no,"Tech hub, fast-growing"
+293,Eskville,Kirath,Asia,119782,90.9,1318,22,1357-06-10,Arid,1656,no,"Mining, steel and rail"
+294,Falby,Oruma,Africa,1249665,201.7,6196,868,1078-04-09,Arid,1626,yes,"Port city, river delta"
+295,Salhaven,Zambeze,Africa,3851239,420.4,9161,25,1068-01-03,Mediterranean,402,yes,
+296,Jorford,Senhai,Asia,25730,130.2,198,20,1907-05-12,Arid,412,no,
+297,Halton,Westmere,North America,3458726,231.1,14966,1882,,Oceanic,2376,yes,
+298,Jorport,Kirath,Asia,79208,416,190,14,1733-08-27,Arid,741,no,University town
+299,Cormar,Westmere,North America,285414,177.4,1609,0,1317-06-02,Subarctic,1588,no,
+300,Belton,Kalindi,Africa,27272,348.5,78,1398,1941-09-19,Continental,822,no,"Port city, river delta"
+301,Granby,Arcadia Union,North America,1851781,337.3,5490,21,1056-03-12,Oceanic,271,yes,Ski resort; hosts winter games
+302,Lunport,Oruma,Africa,2862486,771.2,3712,1736,,Arid,2240,yes,"Tech hub, fast-growing"
+303,Norburg,Westmere,North America,64063,72.3,886,2104,1970-11-02,Arid,846,yes,"Mining, steel and rail"
+304,Marlis,Arcadia Union,North America,1840592,844.2,2180,38,1856-08-20,Oceanic,1733,yes,
+305,Torbury,Kalindi,Africa,141158,859.2,164,209,1629-07-01,Subarctic,1319,no,
+306,Wesport,Varunda,Asia,56991,49.3,1156,1848,1122-04-09,Continental,1305,no,"Known for ""old town"" markets"
+307,Eskstad,Westmere,North America,80038,518,155,867,1448-07-22,Oceanic,2289,no,"Tech hub, fast-growing"
+308,Corwick,Varunda,Asia,171491,177.8,965,1258,1494-02-05,Oceanic,1652,no,"Capital, seat of parliament"
+309,Valton,Kirath,Asia,181706,231.8,784,2151,1094-09-04,Oceanic,1498,no,"Mining, steel and rail"
+310,Zenfield,Tasmaro,Oceania,66648,257.1,259,20,1836-05-22,Continental,NA,yes,
+311,Marora,Vestria,Europe,140907,799.3,176,1,1805-08-23,Humid subtropical,632,no,University town
+312,Torwick,Westmere,North America,1995562,883,2260,559,1546-01-02,Tropical,476,yes,"Mining, steel and rail"
+313,Valwick,Riobranca,South America,46271,638.4,72,13,1715-04-09,Subarctic,774,no,
+314,Eskgrad,Tasmaro,Oceania,69659,546.4,127,1732,,Continental,868,no,"Mining, steel and rail"
+315,Jorstad,Oruma,Africa,80407,459.2,175,278,1477-04-24,Arid,2141,no,
+316,Salwick,Andessa,South America,29605,505.9,59,1961,1436-10-02,Arid,537,no,
+317,Norville,Kalindi,Africa,41357,832.3,50,285,1634-01-27,Oceanic,1478,no,Ski resort; hosts winter games
+318,Granora,Tasmaro,Oceania,1214755,621.3,1955,998,1450-04-11,Continental,1181,yes,"Mining, steel and rail"
+319,Salford,Westmere,North America,29471,422.9,70,228,1575-03-06,Subarctic,NA,no,"Mining, steel and rail"
+320,Istby,Tasmaro,Oceania,30565,572.3,53,107,1774-12-01,Tropical,1681,no,"Port city, river delta"

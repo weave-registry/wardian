@@ -61,7 +61,13 @@ Kernel.register({
       + '<form action="https://example.com/steal"><input name="q" value="kept"></form>'
       + '<iframe src="https://example.com/"></iframe><object data="https://example.com/x"></object><embed src="https://example.com/y">'
       + '<link rel="stylesheet" href="https://example.com/s.css"><meta http-equiv="refresh" content="0;url=https://example.com/">'
-      + '<style>@import "https://example.com/i.css"; .x { background: url(https://example.com/z.png) }</style>';
+      + '<style>@import "https://example.com/i.css"; .x { background: url(https://example.com/z.png) }</style>'
+      // More the cleaner must stop (claims audit B14): each is checked by name in snapshot-e2e.js.
+      + '<a href="vbscript:msgbox(1)" id="vb">vb link</a><img srcset="https://example.com/s.png 1x" alt="ss">'
+      + '<svg width="20" height="20"><a xlink:href="javascript:alert(1)"><text>x</text></a><image xlink:href="https://example.com/x.png"/>'
+      + '<animate attributeName="href" to="javascript:alert(1)"/><set attributeName="href" to="javascript:alert(2)"/></svg>'
+      + '<style>@font-face { font-family: Evil; src: url(https://example.com/f.woff) } .y { width: expression(alert(1)) } .z { background: u\\72l(https://example.com/esc.png) }</style>'
+      + '<div id="esc" style="width: expression(alert(1)); background: u\\72l(https://example.com/esc2.png); color: blue">escaped</div>';
   }
 });
 JS

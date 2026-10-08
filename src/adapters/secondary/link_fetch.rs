@@ -4,7 +4,7 @@
 use crate::ports::web::Downloader;
 use std::{
     io::Read,
-    net::{IpAddr, SocketAddr, ToSocketAddrs},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
     time::Duration,
 };
 
@@ -64,8 +64,9 @@ fn fetchable(ip: IpAddr, allow_lan: bool) -> bool {
             !never && (allow_lan || !v4.is_private())
         }
         IpAddr::V6(v6) => {
-            // An IPv4 address written as IPv6 (::ffff:127.0.0.1) gets the IPv4 rules.
-            if let Some(v4) = v6.to_ipv4_mapped() {
+            // An IPv4 address written as IPv6 gets the IPv4 rules: mapped (::ffff:127.0.0.1),
+            // compatible (::127.0.0.1, which also covers :: and ::1) and NAT64 (64:ff9b::127.0.0.1).
+            if let Some(v4) = v6.to_ipv4().or_else(|| nat64(v6)) {
                 return fetchable(IpAddr::V4(v4), allow_lan);
             }
             let first = v6.segments()[0];
@@ -79,9 +80,49 @@ fn fetchable(ip: IpAddr, allow_lan: bool) -> bool {
     }
 }
 
+/// The IPv4 address inside a NAT64 address of the well-known prefix 64:ff9b::/96 (RFC 6052), which a
+/// NAT64 gateway forwards to that IPv4 address.
+fn nat64(v6: Ipv6Addr) -> Option<Ipv4Addr> {
+    let o = v6.octets();
+    (v6.segments()[..6] == [0x64, 0xff9b, 0, 0, 0, 0]).then(|| Ipv4Addr::new(o[12], o[13], o[14], o[15]))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::fetchable;
+    use super::{fetchable, public_only};
+
+    /// security.md Import links (#149): multicast, broadcast and `localhost` are never fetched.
+    #[test]
+    fn claim_multicast_broadcast_and_localhost_are_never_fetched() {
+        for ip in ["224.0.0.1", "239.255.255.250", "255.255.255.255", "ff02::1"] {
+            assert!(!fetchable(ip.parse().unwrap(), true), "{ip} must always be blocked");
+        }
+        for allow_lan in [false, true] {
+            let e = public_only("localhost:80", allow_lan).unwrap_err();
+            assert!(e.to_string().contains("internal addresses are blocked"), "{e}");
+        }
+    }
+
+    /// security.md Import links, ADR-2610081041 (#149, C9): an IPv4 address written as IPv6, in
+    /// every form, gets the IPv4 rules: mapped (::ffff:a.b.c.d), compatible (::a.b.c.d) and NAT64
+    /// (64:ff9b::a.b.c.d).
+    #[test]
+    fn claim_ipv4_written_as_ipv6_gets_the_ipv4_rules() {
+        for prefix in ["::ffff:", "::", "64:ff9b::"] {
+            for v4 in ["127.0.0.1", "169.254.169.254", "10.0.0.5", "224.0.0.1", "255.255.255.255", "100.64.0.1"] {
+                let ip = format!("{prefix}{v4}");
+                assert!(!fetchable(ip.parse().unwrap(), false), "{ip} must be blocked as {v4} is");
+            }
+            for v4 in ["127.0.0.1", "169.254.169.254"] {
+                let ip = format!("{prefix}{v4}");
+                assert!(!fetchable(ip.parse().unwrap(), true), "{ip} must be blocked even with IMPORT_ALLOW_LAN");
+            }
+            let lan = format!("{prefix}192.168.1.10");
+            assert!(fetchable(lan.parse().unwrap(), true), "{lan} is allowed with IMPORT_ALLOW_LAN, as its IPv4 address is");
+            let public = format!("{prefix}8.8.8.8");
+            assert!(fetchable(public.parse().unwrap(), false), "{public} is public");
+        }
+    }
 
     #[test]
     fn blocks_internal_addresses() {

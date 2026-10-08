@@ -37,7 +37,32 @@ fn names(v: &[&str]) -> Vec<String> {
 #[test]
 fn real_packages_pass() {
     assert!(passes(Path::new("apps/usl-lab")));
-    assert!(passes(Path::new("tests/fixtures/rogue")));
+    // The rogue suite breaks two rules on purpose, for the kernel tests: `closer`'s app.js contains
+    // `</script` (SPEC 6.3), and `probe` needs a method `liar` does not provide (SPEC 6.7.4).
+    // Check must report both, and nothing else may fail.
+    let (ok, report) = checker().check_path(Path::new("tests/fixtures/rogue"));
+    let errors: Vec<&str> = report.iter().flat_map(|b| b.lines()).filter(|l| l.trim_start().starts_with("error")).collect();
+    assert!(!ok && errors.len() == 2, "{report:?}");
+    assert!(errors.iter().any(|l| l.contains("closer")) && errors.iter().any(|l| l.contains("liar.nothing")), "{report:?}");
+}
+
+/// ADR-2610080900: no example part's app.js is over 250 lines.
+#[test]
+fn claim_example_parts_stay_small() {
+    let mut big = Vec::new();
+    for pkg in fs::read_dir("apps").unwrap().flatten() {
+        let Ok(parts) = fs::read_dir(pkg.path().join("apps")) else { continue };
+        for part in parts.flatten() {
+            let js = part.path().join("app.js");
+            if let Ok(text) = fs::read_to_string(&js) {
+                let lines = text.lines().count();
+                if lines > 250 {
+                    big.push(format!("{} ({lines} lines)", js.display()));
+                }
+            }
+        }
+    }
+    assert!(big.is_empty(), "parts over 250 lines: {}", big.join(", "));
 }
 
 /// ADR-2610080900: the Splunk table is made of small parts, so check has nothing to say about its size.
@@ -200,6 +225,124 @@ fn docs_render_with_anchors() {
     assert!(docs.page("guide").unwrap().contains("wardian new module"));
     assert!(docs.page("nope").is_none());
     assert!(docs.schema("app.schema.json").is_some() && docs.schema("x.json").is_none());
+    assert!(docs.page("index").unwrap().contains("Where to start"), "the home page is a page");
+}
+
+/// Every `/docs/<name>#<id>` link on every page names a page that exists, and a heading on it.
+#[test]
+fn docs_links_resolve() {
+    let docs = Docs::new(Arc::new(Embedded));
+    let names: Vec<&str> = Embedded.docs().iter().map(|p| p.name).collect();
+    let mut seen = std::collections::HashSet::new();
+    assert!(names.iter().all(|n| seen.insert(*n)), "two docs pages share a name");
+    let pages: std::collections::HashMap<&str, String> = names.iter().map(|n| (*n, docs.page(n).unwrap())).collect();
+    let mut broken = Vec::new();
+    for (from, html) in &pages {
+        for link in html.split("href=\"/docs/").skip(1) {
+            let target = &link[..link.find('"').unwrap()];
+            let (name, anchor) = target.split_once('#').unwrap_or((target, ""));
+            let name = if name.is_empty() { "index" } else { name };
+            match pages.get(name) {
+                None => broken.push(format!("{from}: /docs/{target} (no such page)")),
+                Some(to) if !anchor.is_empty() && !to.contains(&format!("id=\"{anchor}\"")) => {
+                    broken.push(format!("{from}: /docs/{target} (no such heading)"))
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(broken.is_empty(), "broken docs links:\n{}", broken.join("\n"));
+}
+
+/// website/ holds the docs site as `wardian docs website` writes it, so the website never shows
+/// other text than Wardian does (ADR-2610080903).
+#[test]
+fn docs_website_copy_is_fresh() {
+    let docs = Docs::new(Arc::new(Embedded));
+    let stale: Vec<String> = docs
+        .site()
+        .into_iter()
+        .filter(|(rel, body)| fs::read_to_string(Path::new("website").join(rel)).ok().as_deref() != Some(body.as_str()))
+        .map(|(rel, _)| rel)
+        .collect();
+    assert!(stale.is_empty(), "website/ is out of date; run `wardian docs website` and commit. Stale: {}", stale.join(", "));
+}
+
+// ---------- skills ----------
+
+/// Every shipped skill has a SKILL.md named after its folder, with a description, and carries
+/// every reference page it asks for (ADR-2610080928).
+#[test]
+fn skills_are_whole() {
+    let files = crate::usecases::skills::files(&Embedded);
+    let names = crate::usecases::skills::names(&Embedded);
+    assert_eq!(names, ["wardian-app-factory", "wardian-app-doctor"]);
+    for n in &names {
+        let skill = files.iter().find(|(p, _)| *p == format!("{n}/SKILL.md")).unwrap_or_else(|| panic!("{n} has no SKILL.md")).1.clone();
+        assert!(skill.starts_with("---\n") && skill.contains(&format!("\nname: {n}\n")) && skill.contains("\ndescription: "), "{n}: SKILL.md front matter");
+        for r in ["spec", "ctx", "capabilities"] {
+            assert!(files.iter().any(|(p, _)| *p == format!("{n}/references/{r}.md")), "{n} lacks references/{r}.md");
+        }
+        for (p, body) in files.iter().filter(|(p, _)| p.starts_with(&format!("{n}/"))) {
+            for r in body.split("references/").skip(1).filter_map(|t| t.split('`').next()).filter(|t| t.ends_with(".md")) {
+                assert!(files.iter().any(|(q, _)| *q == format!("{n}/references/{r}")), "{p} names references/{r}, which {n} does not carry");
+            }
+        }
+    }
+}
+
+/// A reference page that is not a docs page stops the install, and is not dropped without a word.
+/// "security" is one only wardian-app-doctor carries, which its SKILL.md names as a bare `security.md`.
+#[test]
+#[should_panic(expected = "wardian-app-doctor carries references/security.md, but there is no docs page security")]
+fn skills_refuse_a_missing_reference() {
+    struct WithoutSecurity;
+    impl Assets for WithoutSecurity {
+        fn ui_file(&self, name: &str) -> Option<&'static str> {
+            Embedded.ui_file(name)
+        }
+        fn ui_names(&self) -> Vec<&'static str> {
+            Embedded.ui_names()
+        }
+        fn gallery(&self) -> &'static str {
+            Embedded.gallery()
+        }
+        fn template(&self, kind: &str) -> Option<crate::ports::assets::TemplateFiles> {
+            Embedded.template(kind)
+        }
+        fn frame_shim(&self) -> &'static str {
+            Embedded.frame_shim()
+        }
+        fn spec_md(&self) -> &'static str {
+            Embedded.spec_md()
+        }
+        fn docs(&self) -> &'static [crate::ports::assets::DocPage] {
+            let pages = Embedded.docs().iter().filter(|p| p.name != "security");
+            let pages = pages.map(|p| crate::ports::assets::DocPage { group: p.group, name: p.name, title: p.title, source: p.source, md: p.md });
+            Box::leak(pages.collect::<Vec<_>>().into_boxed_slice())
+        }
+        fn skills(&self) -> &'static [(&'static str, &'static str)] {
+            Embedded.skills()
+        }
+        fn example_suite(&self) -> &'static [(&'static str, &'static str)] {
+            Embedded.example_suite()
+        }
+        fn schema(&self, name: &str) -> Option<&'static str> {
+            Embedded.schema(name)
+        }
+    }
+    crate::usecases::skills::files(&WithoutSecurity);
+}
+
+/// This repository uses the skills it ships: .claude/skills/ is what `wardian skills .` writes.
+#[test]
+fn skills_repo_copy_is_fresh() {
+    let stale: Vec<String> = crate::usecases::skills::files(&Embedded)
+        .into_iter()
+        .filter(|(rel, body)| fs::read_to_string(Path::new(".claude/skills").join(rel)).ok().as_deref() != Some(body.as_str()))
+        .map(|(rel, _)| rel)
+        .collect();
+    assert!(stale.is_empty(), ".claude/skills/ is out of date; run `wardian skills . --force` and commit. Stale: {}", stale.join(", "));
 }
 
 // ---------- the files port ----------
@@ -900,12 +1043,142 @@ fn fake_upstream() -> String {
     format!("http://{addr}")
 }
 
-/// Not a test by itself: the secrets test runs this binary again with WARDIAN_SECRETS_CHILD set,
-/// and this starts the real server, so the test can read everything it prints.
+/// Not a test by itself: `TestServer` runs this binary again with WARDIAN_TEST_SERVER set, and
+/// this starts the real server, so a test can talk to it and read everything it prints.
 #[test]
-fn secrets_server_child() {
-    let Ok(apps) = std::env::var("WARDIAN_SECRETS_CHILD") else { return };
+fn server_child() {
+    let Ok(apps) = std::env::var("WARDIAN_TEST_SERVER") else { return };
     crate::serve(crate::config::Settings::from_env(Some(&apps), &LocalDisk), true);
+}
+
+/// The real server in a child process, serving `apps` with `data` as its data folder, and every
+/// line it prints. The child gets only `env`, never this process's keys or ADMIN_TOKEN.
+struct TestServer {
+    addr: String,
+    child: std::process::Child,
+    log: Arc<std::sync::Mutex<String>>,
+    readers: Vec<std::thread::JoinHandle<()>>,
+}
+
+impl TestServer {
+    /// Starts the child; `addr` is the address it was told to listen on.
+    fn spawn(apps: &Path, data: &Path, addr: &str, env: &[(&str, &str)]) -> (TestServer, std::sync::mpsc::Receiver<String>) {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+        let mut cmd = Command::new(std::env::current_exe().unwrap());
+        cmd.args(["tests::server_child", "--exact", "--nocapture", "--test-threads=1"]).env_clear();
+        for keep in ["PATH", "HOME", "TMPDIR"] {
+            if let Some(v) = std::env::var_os(keep) {
+                cmd.env(keep, v);
+            }
+        }
+        let mut child = cmd
+            .env("WARDIAN_TEST_SERVER", apps)
+            .env("DATA_DIR", data)
+            .env("ADDR", addr)
+            .envs(env.iter().copied())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let log = Arc::new(std::sync::Mutex::new(String::new()));
+        let (port_tx, port_rx) = std::sync::mpsc::channel();
+        let mut readers = Vec::new();
+        for (stream, port_tx) in [(Box::new(child.stdout.take().unwrap()) as Box<dyn std::io::Read + Send>, Some(port_tx)), (Box::new(child.stderr.take().unwrap()), None)] {
+            let log = Arc::clone(&log);
+            readers.push(std::thread::spawn(move || {
+                for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                    if let (Some(tx), Some(addr)) = (&port_tx, line.split("listening on http://").nth(1)) {
+                        let _ = tx.send(addr.trim().to_string());
+                    }
+                    log.lock().unwrap().push_str(&format!("{line}\n"));
+                }
+            }));
+        }
+        (TestServer { addr: addr.to_string(), child, log, readers }, port_rx)
+    }
+
+    /// Starts the child on a free port and waits until it listens.
+    fn start(apps: &Path, data: &Path, env: &[(&str, &str)]) -> TestServer {
+        let (mut server, port_rx) = TestServer::spawn(apps, data, "127.0.0.1:0", env);
+        match port_rx.recv_timeout(std::time::Duration::from_secs(60)) {
+            Ok(addr) => server.addr = addr,
+            Err(_) => panic!("the server did not start:\n{}", server.stop()),
+        }
+        server
+    }
+
+    /// Waits for the child to end by itself, for at most 30 s, and returns everything it printed.
+    fn wait(mut self) -> String {
+        let t = std::time::Instant::now();
+        while self.child.try_wait().unwrap().is_none() && t.elapsed() < std::time::Duration::from_secs(30) {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        self.stop()
+    }
+
+    /// Stops the child and returns everything it printed.
+    fn stop(mut self) -> String {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        for r in self.readers.drain(..) {
+            let _ = r.join();
+        }
+        let log = self.log.lock().unwrap().clone();
+        log
+    }
+
+    /// One request on a new connection, sent as written: with `Host: localhost` unless `headers`
+    /// names another, and no `Connection` header. Returns the status, the response head and the body.
+    fn send(&self, method: &str, path: &str, headers: &[(&str, &str)], body: &[u8]) -> (u16, String, Vec<u8>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let mut conn = std::net::TcpStream::connect(&self.addr).unwrap();
+        conn.set_read_timeout(Some(std::time::Duration::from_secs(30))).unwrap();
+        let mut head = format!("{method} {path} HTTP/1.1\r\n");
+        if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("Host")) {
+            head.push_str("Host: localhost\r\n");
+        }
+        for (k, v) in headers {
+            head.push_str(&format!("{k}: {v}\r\n"));
+        }
+        head.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+        conn.write_all(head.as_bytes()).unwrap();
+        conn.write_all(body).unwrap();
+        let mut reader = BufReader::new(conn);
+        let mut head = String::new();
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            head.push_str(&line);
+        }
+        let status = head.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+        let len = head.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse().unwrap_or(0))).unwrap_or(0);
+        let mut body = vec![0; len];
+        reader.read_exact(&mut body).unwrap();
+        (status, head, body)
+    }
+
+    /// A JSON request from this machine (Host: localhost), with `headers` added. Returns the status
+    /// and the answer.
+    fn json(&self, method: &str, path: &str, body: Option<Value>, headers: &[(&str, &str)]) -> (u16, Value) {
+        let mut h = headers.to_vec();
+        let bytes = body.map(|b| b.to_string().into_bytes()).unwrap_or_default();
+        if !bytes.is_empty() {
+            h.push(("Content-Type", "application/json"));
+        }
+        let (status, _, answer) = self.send(method, path, &h, &bytes);
+        (status, serde_json::from_slice(&answer).unwrap_or(Value::Null))
+    }
+}
+
+/// A suite folder named `name` in `apps`, whose apps (name, caps) declare only what they are given.
+fn tiny_suite(apps: &Path, name: &str, members: &[(&str, &[&str])]) {
+    let list: Vec<Value> = members.iter().map(|(n, caps)| serde_json::json!({"name": n, "caps": caps})).collect();
+    fs::create_dir_all(apps.join(name)).unwrap();
+    fs::write(apps.join(name).join("suite.json"), serde_json::json!({"format": 1, "title": name, "apps": list}).to_string()).unwrap();
 }
 
 /// Every key and account filled, from the environment and through Settings, then every answer
@@ -915,9 +1188,8 @@ fn secrets_server_child() {
 fn secrets_never_leave_in_answers_exports_or_logs() {
     use crate::usecases::workspace::copy_tree;
     use serde_json::json;
-    use std::io::{BufRead, BufReader, Read};
-    use std::process::{Command, Stdio};
-    use std::sync::{mpsc, Mutex};
+    use std::io::Read;
+    use std::sync::Mutex;
 
     let up = fake_upstream();
     let base = tmp("secrets");
@@ -946,50 +1218,22 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
         "POSTED-GOOGLE-PRIVATE-KEY-SECRET",
     ];
 
-    let mut child = Command::new(std::env::current_exe().unwrap())
-        .args(["tests::secrets_server_child", "--exact", "--nocapture", "--test-threads=1"])
-        .env("WARDIAN_SECRETS_CHILD", &apps)
-        .env("DATA_DIR", &data)
-        .env("ADDR", "127.0.0.1:0")
-        .env("ADMIN_TOKEN", admin)
-        .envs(env)
-        .env("ANTHROPIC_WORKSPACE_ID", "wrkspc_ENVWORKSPACESECRET")
-        .env("ANTHROPIC_BASE_URL", &up)
-        .env("AWS_REGION", "us-east-1")
-        .env("WARDIAN_BEDROCK_BASE_URL", &up)
-        .env("WARDIAN_AI_PROVIDER", "bedrock")
-        .env("SPLUNK_URL", &up)
-        .env("SPLUNK_USERNAME", "admin")
-        .env("GDRIVE_SA_KEY", base.join("sa.json"))
-        .env("GDRIVE_API_BASE", &up)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let log = Arc::new(Mutex::new(String::new()));
-    let (port_tx, port_rx) = mpsc::channel();
-    let out = BufReader::new(child.stdout.take().unwrap());
-    let out_log = Arc::clone(&log);
-    let out_thread = std::thread::spawn(move || {
-        for line in out.lines().map_while(Result::ok) {
-            if let Some(addr) = line.split("listening on http://").nth(1) {
-                let _ = port_tx.send(addr.trim().to_string());
-            }
-            out_log.lock().unwrap().push_str(&format!("{line}\n"));
-        }
-    });
-    let mut err = child.stderr.take().unwrap();
-    let err_log = Arc::clone(&log);
-    let err_thread = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = err.read_to_string(&mut s);
-        err_log.lock().unwrap().push_str(&s);
-    });
-    let Ok(addr) = port_rx.recv_timeout(std::time::Duration::from_secs(60)) else {
-        let _ = child.kill();
-        let _ = child.wait();
-        panic!("the server did not start:\n{}", log.lock().unwrap());
-    };
+    let sa = base.join("sa.json").display().to_string();
+    let mut all_env = env.to_vec();
+    all_env.extend([
+        ("ADMIN_TOKEN", admin),
+        ("ANTHROPIC_WORKSPACE_ID", "wrkspc_ENVWORKSPACESECRET"),
+        ("ANTHROPIC_BASE_URL", up.as_str()),
+        ("AWS_REGION", "us-east-1"),
+        ("WARDIAN_BEDROCK_BASE_URL", up.as_str()),
+        ("WARDIAN_AI_PROVIDER", "bedrock"),
+        ("SPLUNK_URL", up.as_str()),
+        ("SPLUNK_USERNAME", "admin"),
+        ("GDRIVE_SA_KEY", sa.as_str()),
+        ("GDRIVE_API_BASE", up.as_str()),
+    ]);
+    let server = TestServer::start(&apps, &data, &all_env);
+    let addr = server.addr.clone();
 
     // Every answer the server gives, with what was asked.
     let agent = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(30)).build();
@@ -1059,11 +1303,7 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
     }
     ask("POST", "/api/import/preview", Some(("application/zip", export)), true);
 
-    let _ = child.kill();
-    let _ = child.wait();
-    let _ = out_thread.join();
-    let _ = err_thread.join();
-    let log = log.lock().unwrap().clone();
+    let log = server.stop();
     assert!(log.contains("admin: whoever sends ADMIN_TOKEN") && log.contains("export: loan-planner with its data"), "the server's log was read:\n{log}");
 
     let mut searched = answers.into_inner().unwrap();
@@ -1128,4 +1368,508 @@ fn start_finds_a_wardian_already_running() {
         crate::Address::Ready(l, _) => panic!("took {:?} although a Wardian runs on {port}", l.local_addr()),
         crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
     }
+}
+
+// ---------- every claim names its test (ADR-2610081041) ----------
+
+/// The catalog over `apps`, as the server builds it, with the real disk.
+fn hub(apps: &Path, data: &Path) -> crate::usecases::catalog::Hub {
+    use crate::adapters::secondary::google_drive::GoogleDrive;
+    hub_with_drive(apps, data, Arc::new(GoogleDrive::new("https://drive.invalid")))
+}
+
+fn hub_with_drive(apps: &Path, data: &Path, drive: Arc<dyn crate::ports::drive::DriveConnector>) -> crate::usecases::catalog::Hub {
+    use crate::adapters::secondary::link_fetch::LinkFetcher;
+    use crate::usecases::{catalog::{Hub, HubPorts}, history::History};
+    let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
+    let ports = HubPorts { fs: Arc::clone(&fs), drive, web: Arc::new(LinkFetcher::new(false)), assets: Arc::new(Embedded) };
+    let history = Arc::new(History::new(fs, data, apps));
+    Hub::new(ports, history, data.to_path_buf(), apps.to_path_buf(), std::time::Duration::from_secs(60))
+}
+
+/// A Google that accepts any service account key, and has nothing in Drive.
+struct AnyDriveKey;
+
+impl crate::ports::drive::DriveConnector for AnyDriveKey {
+    fn client(&self, _: &str) -> Result<Arc<dyn crate::ports::drive::DriveClient>, String> {
+        Ok(Arc::new(AnyDriveKey))
+    }
+}
+
+impl crate::ports::drive::DriveClient for AnyDriveKey {
+    fn client_email(&self) -> String { "w@example.iam.gserviceaccount.com".into() }
+    fn check(&self) -> Result<(), String> { Ok(()) }
+    fn browse(&self, _: Option<&str>) -> Result<Vec<crate::domain::package::Folder>, String> { Ok(Vec::new()) }
+    fn preview(&self, _: &str) -> Result<Vec<String>, String> { Ok(Vec::new()) }
+    fn download(&self, _: &str) -> Result<Vec<u8>, String> { Err("nothing here".into()) }
+    fn open_folder(self: Arc<Self>, _: &str, _: &str, _: std::time::Duration, _: bool) -> Result<Arc<dyn crate::ports::drive::DriveFolder>, String> {
+        Err("nothing here".into())
+    }
+}
+
+/// security.md Admin (#135, #138, #140): without ADMIN_TOKEN, a request whose Host is not loopback
+/// is not an admin (DNS rebinding), and a change needs a JSON or zip Content-Type (no form posts
+/// from other sites). Neither changes anything.
+#[test]
+fn claim_admin_gate_without_a_token() {
+    use serde_json::json;
+    let base = tmp("claim-admin");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    tiny_suite(&apps, "s", &[("a", &["splunk"])]);
+    let server = TestServer::start(&apps, &data, &[]);
+    let grant = json!({"app": "s", "channel": "splunk", "mode": "use", "decision": "allow"}).to_string();
+    let json_ct = ("Content-Type", "application/json");
+    for host in ["evil.com", "evil.com:8000", "localhost.evil.com", "127.0.0.1.evil.com", "[::1].evil.com"] {
+        let (status, _, body) = server.send("POST", "/api/grants", &[("Host", host), json_ct], grant.as_bytes());
+        assert_eq!(status, 403, "Host: {host} {}", String::from_utf8_lossy(&body));
+        let (status, _, _) = server.send("POST", "/api/import", &[("Host", host), ("Content-Type", "application/zip")], b"PK");
+        assert_eq!(status, 403, "import with Host: {host}");
+        assert_ne!(server.send("GET", "/api/trash", &[("Host", host)], b"").0, 200, "GET /api/trash with Host: {host}");
+    }
+    for ct in ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"] {
+        let (status, _, body) = server.send("POST", "/api/grants", &[("Content-Type", ct)], grant.as_bytes());
+        assert_eq!(status, 400, "Content-Type: {ct}");
+        assert!(String::from_utf8_lossy(&body).contains("expected Content-Type: application/json"));
+        assert_eq!(server.send("POST", "/api/import", &[("Content-Type", ct)], b"PK").0, 400, "import with Content-Type: {ct}");
+    }
+    assert_eq!(server.json("GET", "/api/grants", None, &[]).1["grants"], json!([]), "nothing was changed");
+    assert!(!data.join("grants.json").exists());
+    // The same request from this machine, as JSON, is an admin's: the refusals were the gate's.
+    let (status, answer) = server.json("POST", "/api/grants", Some(serde_json::from_str(&grant).unwrap()), &[("Host", "127.0.0.1:8000")]);
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(server.json("GET", "/api/grants", None, &[]).1["grants"][0]["channel"], "splunk");
+    server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// security.md Admin (#136): with ADMIN_TOKEN, the X-Admin-Token header must equal it, from every
+/// address; a wrong token of any length, the same length included, is refused.
+#[test]
+fn claim_admin_token_must_match() {
+    use serde_json::json;
+    let base = tmp("claim-token");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    tiny_suite(&apps, "s", &[("a", &["splunk"])]);
+    let token = "right-token-0123456789";
+    let server = TestServer::start(&apps, &data, &[("ADMIN_TOKEN", token)]);
+    let grant = || Some(json!({"app": "s", "channel": "splunk", "mode": "use", "decision": "allow"}));
+    let same_length = "right-token-0123456780";
+    assert_eq!(same_length.len(), token.len());
+    let longer = format!("{token}0");
+    for wrong in [None, Some(""), Some(same_length), Some("right-token"), Some(longer.as_str()), Some("RIGHT-TOKEN-0123456789")] {
+        let headers: Vec<(&str, &str)> = wrong.map(|t| vec![("X-Admin-Token", t)]).unwrap_or_default();
+        let (status, answer) = server.json("POST", "/api/grants", grant(), &headers);
+        assert_eq!(status, 403, "token {wrong:?}: {answer}");
+    }
+    assert_eq!(server.json("GET", "/api/grants", None, &[]).1["grants"], json!([]), "nothing was changed");
+    let (status, answer) = server.json("POST", "/api/grants", grant(), &[("X-Admin-Token", token), ("Host", "evil.com")]);
+    assert_eq!(status, 200, "the right token passes, whatever the Host: {answer}");
+    assert_eq!(server.json("GET", "/api/grants", None, &[]).1["grants"][0]["allow"], true);
+    server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// security.md Capabilities, ADR-2610071219 #5, SPEC 6.9 (#120, #36, #133): reading another
+/// package's table needs the user's "tables.<package>" permission, checked by the server.
+#[test]
+fn claim_reading_another_packages_table_needs_its_grant() {
+    use serde_json::json;
+    let base = tmp("claim-tables");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    tiny_suite(&apps, "owner", &[("w", &["db"])]);
+    tiny_suite(&apps, "reader", &[("r", &["db"])]);
+    let server = TestServer::start(&apps, &data, &[]);
+    let (status, answer) = server.json("POST", "/api/db/insert", Some(json!({"package": "owner", "app": "w", "table": "t", "columns": ["a"], "rows": [[1], [2]], "create": true})), &[]);
+    assert_eq!(status, 200, "{answer}");
+    let read = || server.json("POST", "/api/db/page", Some(json!({"package": "reader", "app": "r", "source": "owner", "table": "t"})), &[]);
+    let (status, answer) = read();
+    assert_eq!(status, 400, "{answer}");
+    assert!(answer["error"].as_str().unwrap_or("").contains("not allowed"), "{answer}");
+    let (status, _) = server.json("POST", "/api/grants", Some(json!({"app": "reader", "channel": "tables.owner", "mode": "use", "decision": "allow"})), &[]);
+    assert_eq!(status, 200);
+    let (status, answer) = read();
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer["total"], 2, "{answer}");
+    server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610072118 #2 (#59): a background job gets the same permission checks as a call that
+/// waits; a refused one starts no job.
+#[test]
+fn claim_a_background_search_needs_the_grant_and_starts_no_job() {
+    use serde_json::json;
+    let base = tmp("claim-bg");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    tiny_suite(&apps, "s", &[("a", &["splunk", "db"]), ("quiet", &["db"])]);
+    let server = TestServer::start(&apps, &data, &[]);
+    for (app, why) in [("a", "you have not allowed s to use splunk"), ("quiet", "does not declare the capability \"splunk\"")] {
+        for route in ["/api/splunk/search", "/api/db/search-into"] {
+            let (status, answer) = server.json("POST", route, Some(json!({"package": "s", "app": app, "search": "index=x", "background": true})), &[]);
+            assert_eq!(status, 400, "{route} {app}: {answer}");
+            assert!(answer["error"].as_str().unwrap_or("").contains(why), "{route} {app}: {answer}");
+        }
+    }
+    assert_eq!(server.json("GET", "/api/jobs", None, &[]).1["jobs"], json!([]), "no job was started");
+    server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610072118 #5 (#63): a long call that waits is answered with `Connection: close`; one run
+/// as a background job is not.
+#[test]
+fn claim_a_foreground_long_call_lets_its_connection_go() {
+    use serde_json::json;
+    let base = tmp("claim-close");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    tiny_suite(&apps, "s", &[("a", &["splunk"])]);
+    let server = TestServer::start(&apps, &data, &[]);
+    server.json("POST", "/api/grants", Some(json!({"app": "s", "channel": "splunk", "mode": "use", "decision": "allow"})), &[]);
+    let search = |background: bool| {
+        let body = json!({"package": "s", "app": "a", "search": "index=x", "background": background}).to_string();
+        server.send("POST", "/api/splunk/search", &[("Content-Type", "application/json")], body.as_bytes())
+    };
+    let (_, head, _) = search(false);
+    assert!(head.to_ascii_lowercase().contains("connection: close"), "{head}");
+    let (status, head, body) = search(true);
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    assert!(!head.to_ascii_lowercase().contains("connection: close"), "{head}");
+    server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// SPEC 3.3, 3.4, 5.4 (#161, #162, #166): the host serves an app's files at /apps/<name>/<path>, a
+/// URL ending in `/` serves that folder's index.html, and it never serves hidden files, other
+/// names, or anything inside a folder named `node_modules` or `target`.
+#[test]
+fn claim_build_folders_and_hidden_files_are_never_served() {
+    let base = tmp("claim-serve");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    let app = apps.join("x");
+    for (rel, body) in [
+        ("app.wasm", EMPTY_WASM),
+        ("index.html", b"<p>top</p>".as_slice()),
+        ("demo/index.html", b"<p>demo</p>"),
+        ("target/a", b"build output"),
+        ("target/index.html", b"<p>built</p>"),
+        ("node_modules/a.js", b"downloaded"),
+        ("sub/node_modules/a.js", b"downloaded"),
+        ("sub/target/a", b"build output"),
+        (".env", b"SECRET=1"),
+        ("a b.txt", b"spaced"),
+    ] {
+        fs::create_dir_all(app.join(rel).parent().unwrap()).unwrap();
+        fs::write(app.join(rel), body).unwrap();
+    }
+    let server = TestServer::start(&apps, &data, &[]);
+    let get = |path: &str| server.send("GET", path, &[], b"");
+    for (path, shown) in [("/apps/x/index.html", "<p>top</p>"), ("/apps/x/", "<p>top</p>"), ("/apps/x/demo/", "<p>demo</p>")] {
+        let (status, _, body) = get(path);
+        assert_eq!(status, 200, "{path}");
+        assert!(String::from_utf8_lossy(&body).starts_with(shown), "{path}");
+    }
+    for path in [
+        "/apps/x/target/a",
+        "/apps/x/target/",
+        "/apps/x/node_modules/a.js",
+        "/apps/x/sub/node_modules/a.js",
+        "/apps/x/sub/target/a",
+        // A disk that ignores case (macOS) would find these too.
+        "/apps/x/TARGET/a",
+        "/apps/x/Node_Modules/a.js",
+        "/apps/x/.env",
+        "/apps/x/a%20b.txt",
+        "/apps/x/demo/../.env",
+    ] {
+        assert_eq!(get(path).0, 404, "{path} must not be served");
+    }
+    server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// SPEC 7.6 (#184): a removed app moves to `.trash/<name>--<time>` inside the apps folder, leaves
+/// the app list, is never served from there, and restore brings it back.
+#[test]
+fn claim_a_removed_app_waits_in_the_trash() {
+    use serde_json::json;
+    let base = tmp("claim-trash");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    fs::create_dir_all(apps.join("hello")).unwrap();
+    fs::write(apps.join("hello/app.wasm"), EMPTY_WASM).unwrap();
+    fs::write(apps.join("hello/index.html"), b"<p>hi</p>").unwrap();
+    let server = TestServer::start(&apps, &data, &[]);
+    assert_eq!(server.json("GET", "/api/apps", None, &[]).1, json!(["hello"]));
+    let (status, answer) = server.json("POST", "/api/apps/remove", Some(json!({"name": "hello"})), &[]);
+    assert_eq!(status, 200, "{answer}");
+    let id = answer["id"].as_str().unwrap().to_string();
+    assert!(id.starts_with("hello--"), "{id}");
+    assert!(apps.join(".trash").join(&id).join("index.html").is_file(), "moved, not deleted");
+    assert!(!apps.join("hello").exists());
+    assert_eq!(server.json("GET", "/api/apps", None, &[]).1, json!([]), "it leaves the app list");
+    assert_eq!(server.json("GET", "/api/trash", None, &[]).1["items"][0]["id"], id.as_str());
+    for path in [format!("/apps/.trash/{id}/index.html"), format!("/apps/.trash/{id}/"), format!("/frame/.trash/{id}"), "/apps/hello/index.html".into()] {
+        assert_eq!(server.send("GET", &path, &[], b"").0, 404, "{path}");
+    }
+    let (status, answer) = server.json("POST", "/api/apps/restore", Some(json!({"id": id})), &[]);
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(server.json("GET", "/api/apps", None, &[]).1, json!(["hello"]), "restore brings it back");
+    assert_eq!(server.send("GET", "/apps/hello/index.html", &[], b"").0, 200);
+    server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610072033 #3 (#50): every stop is written to wardian.log: a failed bind, and SIGTERM.
+#[test]
+fn claim_every_stop_is_logged() {
+    let base = tmp("claim-stops");
+    let apps = base.join("apps");
+    fs::create_dir_all(&apps).unwrap();
+
+    // The port is taken.
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = taken.local_addr().unwrap().to_string();
+    let data = base.join("bind");
+    let (server, _) = TestServer::spawn(&apps, &data, &addr, &[]);
+    let out = server.wait();
+    let log = fs::read_to_string(data.join("wardian.log")).unwrap_or_else(|e| panic!("no wardian.log ({e}); the server said:\n{out}"));
+    let last = log.lines().last().unwrap_or("");
+    assert!(last.contains("stopped:") && last.contains("cannot listen on") && last.contains(&addr), "{log}");
+    drop(taken);
+
+    // SIGTERM.
+    #[cfg(unix)]
+    {
+        let data = base.join("term");
+        let server = TestServer::start(&apps, &data, &[]);
+        let pid = server.child.id().to_string();
+        assert!(std::process::Command::new("kill").args(["-TERM", &pid]).status().unwrap().success());
+        let out = server.wait();
+        let log = fs::read_to_string(data.join("wardian.log")).unwrap();
+        assert!(log.lines().last().unwrap_or("").contains("stopped by SIGTERM"), "{log}\n{out}");
+    }
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610072118 #1 (#56): jobs live in memory, and the server says at start that a restart
+/// forgets them.
+#[test]
+fn claim_the_server_says_a_restart_forgets_jobs() {
+    let base = tmp("claim-restart");
+    let apps = base.join("apps");
+    fs::create_dir_all(&apps).unwrap();
+    let server = TestServer::start(&apps, &base.join("data"), &[]);
+    let log = server.stop();
+    assert!(log.contains("a restart forgets them"), "{log}");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// security.md Keys, ADR-2610071106 #3 (#141, #14): the keys, accounts, permissions and settings
+/// filled in through Settings are files only their owner can read (mode 600).
+#[test]
+fn claim_keys_and_settings_are_private_files() {
+    use serde_json::json;
+    let up = fake_upstream();
+    let base = tmp("claim-private");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    tiny_suite(&apps, "s", &[("a", &["splunk"])]);
+    let server = TestServer::start(&apps, &data, &[("ANTHROPIC_BASE_URL", up.as_str()), ("WARDIAN_BEDROCK_BASE_URL", up.as_str())]);
+    let post = |path: &str, v: Value| {
+        let (status, answer) = server.json("POST", path, Some(v), &[]);
+        assert_eq!(status, 200, "{path}: {answer}");
+    };
+    post("/api/ai/key", json!({"key": "sk-ant-PRIVATE", "workspace": "wrkspc_PRIVATE"}));
+    post("/api/ai/provider", json!({"provider": "bedrock", "region": "us-east-1", "auth": "api-key", "token": "BEDROCK-PRIVATE"}));
+    post("/api/splunk/config", json!({"url": up, "token": "SPLUNK-PRIVATE"}));
+    post("/api/grants", json!({"app": "s", "channel": "splunk", "mode": "use", "decision": "allow"}));
+    post("/api/source", json!({"kind": "local"}));
+    server.stop();
+    // A Drive key is saved only after Google accepts it, so this one is accepted by a stand-in.
+    hub_with_drive(&apps, &data, Arc::new(AnyDriveKey)).set_key("{}").unwrap();
+    #[cfg(unix)]
+    for f in ["anthropic-key", "anthropic-workspace", "ai-provider", "bedrock.json", "splunk.json", "service-account.json", "grants.json", "config.json"] {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(data.join(f)).unwrap_or_else(|e| panic!("{f}: {e}")).permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "{f} is mode {mode:o}");
+    }
+    let _ = fs::remove_dir_all(base);
+}
+
+/// SPEC 7.5, security.md (#147): an import refuses a name that is taken unless asked to replace
+/// it, and the app already there is left exactly as it was.
+#[test]
+fn claim_an_import_refuses_a_taken_name() {
+    use crate::usecases::import::import_zip;
+    let base = tmp("claim-taken");
+    let apps = base.join("apps");
+    fs::create_dir_all(apps.join("hello")).unwrap();
+    fs::write(apps.join("hello/app.wasm"), EMPTY_WASM).unwrap();
+    fs::write(apps.join("hello/index.html"), b"<p>mine</p>").unwrap();
+    let before = files_under(&base);
+    let zip = zip_of(&[("hello/app.wasm", EMPTY_WASM), ("hello/index.html", b"<p>theirs</p>"), ("hello/new.js", b"//")]);
+    let e = import_zip(&LocalDisk, &zip, "hello.zip", &apps, false, &|_| {}).err().expect("a taken name is refused");
+    assert!(e.contains("already in the local folder: hello"), "{e}");
+    assert_eq!(files_under(&base), before, "no file was added or removed");
+    assert_eq!(fs::read(apps.join("hello/index.html")).unwrap(), b"<p>mine</p>");
+    import_zip(&LocalDisk, &zip, "hello.zip", &apps, true, &|_| {}).unwrap();
+    assert_eq!(fs::read(apps.join("hello/index.html")).unwrap(), b"<p>theirs</p>", "Replace overwrites it");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// SPEC 3.5, security.md (#145): a zip of more than 10,000 entries is refused, and nothing is written.
+#[test]
+fn claim_a_zip_of_more_than_10000_entries_is_refused() {
+    use crate::domain::import_plan::MAX_ENTRIES;
+    use crate::usecases::import::import_zip;
+    assert_eq!(MAX_ENTRIES, 10_000);
+    let base = tmp("claim-entries");
+    let apps = base.join("apps");
+    fs::create_dir_all(&apps).unwrap();
+    let names: Vec<String> = (0..MAX_ENTRIES).map(|i| format!("hello/f{i}.txt")).collect();
+    let mut entries: Vec<(&str, &[u8])> = vec![("hello/app.wasm", EMPTY_WASM)];
+    entries.extend(names.iter().map(|n| (n.as_str(), b"x".as_slice())));
+    assert_eq!(entries.len(), MAX_ENTRIES + 1);
+    let e = import_zip(&LocalDisk, &zip_of(&entries), "x.zip", &apps, true, &|_| {}).err().expect("refused");
+    assert!(e.contains("more than 10000 entries"), "{e}");
+    assert_eq!(files_under(&base), Vec::<String>::new(), "nothing was written");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// security.md Import links (#150): only http:// and https:// links are fetched.
+#[test]
+fn claim_only_http_and_https_links_are_imported() {
+    let base = tmp("claim-links");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    fs::create_dir_all(&apps).unwrap();
+    let hub = hub(&apps, &data);
+    for url in ["ftp://example.com/a.zip", "file:///etc/passwd", "gopher://example.com/a.zip", "javascript:alert(1)", "//example.com/a.zip", "example.com/a.zip"] {
+        let e = hub.import_url(url, false).err().unwrap_or_else(|| panic!("{url} was fetched"));
+        assert!(e.contains("must start with https:// or http://"), "{url}: {e}");
+    }
+    let _ = fs::remove_dir_all(base);
+}
+
+/// SPEC 2.2 (#157): a package in a newer format is listed with the reason it does not run.
+#[test]
+fn claim_a_newer_format_says_update_wardian() {
+    let base = tmp("claim-format");
+    let (apps, data) = (base.join("apps"), base.join("data"));
+    for (name, file, body) in [("mod", "app.json", r#"{"format": 99, "title": "New"}"#), ("st", "suite.json", r#"{"format": 99, "title": "New", "apps": []}"#)] {
+        fs::create_dir_all(apps.join(name)).unwrap();
+        fs::write(apps.join(name).join(file), body).unwrap();
+        fs::write(apps.join(name).join("app.wasm"), EMPTY_WASM).unwrap();
+    }
+    fs::create_dir_all(apps.join("old")).unwrap();
+    fs::write(apps.join("old/app.wasm"), EMPTY_WASM).unwrap();
+    let listed = hub(&apps, &data).apps();
+    for name in ["mod", "st"] {
+        let info = listed.iter().find(|a| a.name == name).unwrap_or_else(|| panic!("{name} is listed"));
+        let e = info.error.as_deref().unwrap_or("");
+        assert!(e.contains("Update Wardian") && e.contains("format 99"), "{name}: {e:?}");
+    }
+    assert!(listed.iter().find(|a| a.name == "old").unwrap().error.is_none());
+    let _ = fs::remove_dir_all(base);
+}
+
+/// SPEC 5.1 (#164): `app.wasm` must be a WebAssembly binary, version 1; `wardian check` says so.
+#[test]
+fn claim_app_wasm_must_be_webassembly_version_1() {
+    let dir = tmp("claim-wasm").join("w");
+    fs::create_dir_all(&dir).unwrap();
+    for (bytes, why) in [(b"\0asm\x02\0\0\0".as_slice(), "need version 1"), (b"\0asm", "need version 1"), (b"MZ\x90\0\x03\0\0\0", "not a WebAssembly module"), (b"", "not a WebAssembly module")] {
+        fs::write(dir.join("app.wasm"), bytes).unwrap();
+        let (ok, report) = checker().check_dir(&dir, "w");
+        assert!(!ok && report.contains(why), "{bytes:?}: {report}");
+    }
+    fs::write(dir.join("app.wasm"), EMPTY_WASM).unwrap();
+    assert!(checker().check_dir(&dir, "w").0);
+    let _ = fs::remove_dir_all(dir.parent().unwrap());
+}
+
+/// SPEC 7.2 (#182): a `.zip`, a `.wardian` and a `.rustle` file are read the same way, by the
+/// importer and by `wardian check`.
+#[test]
+fn claim_zip_wardian_and_rustle_files_are_accepted() {
+    use crate::usecases::import::import_zip;
+    let base = tmp("claim-rustle");
+    let zip = zip_of(&[("app.wasm", EMPTY_WASM), ("index.html", b"<p>hi</p>")]);
+    for ext in ["zip", "wardian", "rustle"] {
+        let apps = base.join(ext);
+        let done = import_zip(&LocalDisk, &zip, &format!("my-app.{ext}"), &apps, false, &|_| {}).unwrap();
+        assert_eq!(done.apps, ["my-app"], ".{ext}: named after the file");
+        let file = base.join(format!("my-app.{ext}"));
+        fs::write(&file, &zip).unwrap();
+        let (ok, report) = checker().check_path(&file);
+        assert!(ok && report.join("").contains("my-app"), ".{ext}: {report:?}");
+    }
+    let _ = fs::remove_dir_all(base);
+}
+
+/// SPEC 7.3 (#183): the importer accepts project zips as they come, by the listed rules.
+#[test]
+fn claim_import_is_lenient() {
+    use crate::usecases::import::import_zip;
+    let base = tmp("claim-lenient");
+    let n = std::cell::Cell::new(0);
+    let import = |entries: &[(&str, &[u8])], zip_name: &str| {
+        n.set(n.get() + 1);
+        let apps = base.join(format!("t{}", n.get()));
+        let done = import_zip(&LocalDisk, &zip_of(entries), zip_name, &apps, false, &|_| {}).unwrap();
+        (done, apps)
+    };
+    let w = EMPTY_WASM;
+    // A folder holding suite.json is a package top, with everything inside it.
+    let (done, apps) = import(&[("proj/my-suite/suite.json", b"{}"), ("proj/my-suite/apps/a/app.js", b"//"), ("proj/my-suite/apps/a/x.wasm", w)], "x.zip");
+    assert_eq!(done.apps, ["my-suite"]);
+    assert!(apps.join("my-suite/apps/a/app.js").is_file() && apps.join("my-suite/apps/a/x.wasm").is_file());
+    // The nearest folder above a .wasm that holds app.json is the top.
+    let (done, apps) = import(&[("calc/app.json", b"{}"), ("calc/build/out/calc.wasm", w)], "x.zip");
+    assert_eq!(done.apps, ["calc"]);
+    assert!(apps.join("calc/app.wasm").is_file(), "the one .wasm is also saved as app.wasm");
+    // Otherwise the .wasm's folder, skipping build folders.
+    let (done, apps) = import(&[("usl-wasm/pkg/usl_wasm.wasm", w), ("usl-wasm/pkg/usl_wasm.js", b"//")], "x.zip");
+    assert_eq!(done.apps, ["usl-wasm"]);
+    assert!(apps.join("usl-wasm/app.wasm").is_file() && apps.join("usl-wasm/pkg/usl_wasm.wasm").is_file());
+    for build in ["dist", "build", "out", "output", "release", "wasm", "bin", "www", "public"] {
+        let path = format!("tool/{build}/t.wasm");
+        assert_eq!(import(&[(path.as_str(), w)], "x.zip").0.apps, ["tool"], "{build}/ is skipped");
+    }
+    // A package at the very top: named after its .wasm file, or after the zip for app.wasm.
+    assert_eq!(import(&[("adder.wasm", w)], "bundle.zip").0.apps, ["adder"]);
+    assert_eq!(import(&[("app.wasm", w)], "bundle.zip").0.apps, ["bundle"]);
+    // Several .wasm files and no app.wasm: skipped, as is anything outside every package top.
+    let (done, _) = import(&[("two/a.wasm", w), ("two/b.wasm", w), ("one/app.wasm", w), ("README.md", b"x")], "x.zip");
+    assert_eq!(done.apps, ["one"]);
+    assert!(done.skipped.iter().any(|s| s.contains("several .wasm files")) && done.skipped.iter().any(|s| s.contains("outside any app folder")), "{:?}", done.skipped);
+    let _ = fs::remove_dir_all(base);
+}
+
+/// SPEC 8 (#186): `wardian check` exits 0 when no package has errors, warnings included, and 1
+/// otherwise.
+#[test]
+fn claim_check_exits_0_or_1_and_warnings_do_not_fail() {
+    use crate::adapters::primary::cli::{run, Command};
+    let base = tmp("claim-exit");
+    let warned = base.join("warned");
+    fs::create_dir_all(&warned).unwrap();
+    fs::write(warned.join("app.wasm"), EMPTY_WASM).unwrap();
+    fs::write(warned.join("app.json"), r#"{"format": 1, "titel": "a typo"}"#).unwrap();
+    let (ok, report) = checker().check_dir(&warned, "warned");
+    assert!(ok && report.contains("warn"), "a warning: {report}");
+    let broken = base.join("broken");
+    fs::create_dir_all(&broken).unwrap();
+    fs::write(broken.join("app.wasm"), b"not wasm").unwrap();
+    let docs = Docs::new(Arc::new(Embedded));
+    let no_exports = || -> Arc<dyn crate::ports::service::Exports> { unreachable!("check does not export") };
+    let exit = |paths: &[&Path]| {
+        let mut args = vec!["check".to_string()];
+        args.extend(paths.iter().map(|p| p.display().to_string()));
+        match run(&args, &scaffold(), &docs, &base, &no_exports) {
+            Command::Exit(code) => code,
+            Command::Serve { .. } => panic!("check does not serve"),
+        }
+    };
+    assert_eq!(exit(&[&warned]), 0);
+    assert_eq!(exit(&[&broken]), 1);
+    assert_eq!(exit(&[&warned, &broken]), 1, "one failing package fails the check");
+    let _ = fs::remove_dir_all(base);
 }

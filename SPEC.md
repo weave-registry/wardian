@@ -1,7 +1,7 @@
 # Wardian package format
 
-Format version: **1**
-Applies to: Wardian 0.3 and later
+Format version: **2** (format 1 packages run unchanged; see 2.5)
+Applies to: Wardian 0.4 and later (format 1: Wardian 0.3 and later)
 
 This document says what a Wardian package is, what a host guarantees to it, and what a package
 must not do. The words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
@@ -33,7 +33,9 @@ without it is format 1.
 why in the app list instead.
 
 2.3. Within one format version, changes are additive only. A host MUST ignore fields it does not
-know. `wardian check` reports them as warnings, because they are usually typos.
+know. `wardian check` reports them as warnings, because they are often typos. One exception: an
+unknown key inside `channels` is an error, because a misspelt `send` or `receive` would silently
+leave the package with no channel.
 
 2.4. A package SHOULD state `"format": 1` once it depends on anything in this document.
 
@@ -126,16 +128,23 @@ serves `index.html` from that folder.
    Every file is sent with `X-Content-Type-Options: nosniff` and
    `Access-Control-Allow-Origin: *`.
 
-5.6. **Pages run sandboxed.** Every HTML and SVG file is sent with
-`Content-Security-Policy: sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads`.
-The browser gives the page a unique, throwaway origin. So a page:
+5.6. **Pages run sandboxed.** Every HTML and SVG file of a package is sent with a
+`Content-Security-Policy` that starts with
+`sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads` and allows requests
+only to the package's own folder (`/apps/<name>/`), the host's page library (`/sdk/`), Google Fonts,
+and `data:` and `blob:` URLs (ADR-2610081003). The browser gives the page a unique, throwaway
+origin. So a page:
 
-- CAN run scripts, use forms, open pop-ups and dialogs, start downloads, and fetch files from its
-  own package;
-- CANNOT read the host's pages or settings, use cookies, `localStorage`, `sessionStorage` or
-  IndexedDB, or keep any data between visits.
+- CAN run scripts, use forms, open dialogs, start downloads, open files the user picks, and load
+  files from its own package and `/sdk/`;
+- CANNOT request any other address (the internet, the host's API, other packages), read the host's
+  pages or settings, use cookies, `localStorage`, `sessionStorage` or IndexedDB, or keep any data
+  between visits.
 
-   A page that needs to keep data SHOULD let the user download it and load it again.
+   A page MUST ship every file it loads. A page that needs to keep data SHOULD let the user
+   download it and load it again. A policy cannot close three routes, for pages and suite apps
+   alike: a pop-up after a click, navigating the frame away, and WebRTC. A host MUST NOT claim
+   otherwise; Wardian's `tests/run-page-sandbox-e2e.sh` proves both the limits and these routes.
 
 ## 6. Suites
 
@@ -305,7 +314,7 @@ between apps. A value that cannot be copied, such as a function, makes `emit` or
 
 | Capability | Grants | Provided by |
 |---|---|---|
-| `storage` | `ctx.store`. The host keeps the data per suite, per app and per browser. | kernel |
+| `storage` | `ctx.store`. The host keeps the data per suite and per app, in its data folder (ADR-2610071055), with a copy in the browser for a viewer the host does not let write. | kernel |
 | `asset` | `ctx.asset`: read files of this suite's own package, such as `.wasm` modules or data. | kernel |
 | `worker` | `ctx.spawn` | the frame |
 | `source` | `ctx.source` | the frame |
@@ -319,7 +328,7 @@ between apps. A value that cannot be copied, such as a function, makes `emit` or
 A Splunk search, a load into a table (`searchInto`) and a `claude:sample` request can take minutes
 (ADR-2610072118). The host MUST NOT hold one HTTP request open for them: the kernel asks the server
 to start a job, which answers with its id at once, then asks how the job is going with short
-requests (every second at first, then every two) and settles the app's promise with the result.
+requests (the first after 250 ms, then every second for the first 10 seconds, then every two) and settles the app's promise with the result.
 Apps see the same promises as before; the result also carries the job's id as `job`. A job keeps
 running when its app is closed, so an app MAY look for its own job with `jobs()` when it opens and
 pick it up with `wait(id)`. A job is shown only to the package that started it (and to the host's
@@ -403,8 +412,8 @@ A table too large for one message travels as a **dataset reference**: the messag
 a receiving suite app that declares `db` reads the rows with `ctx.cap('db').readPage({ package,
 table, … })`, read-only, after the user allows it to read that package's tables.
 
-Data MUST be JSON-compatible and at most 256 KB. A package may send at most 100 messages in 10
-seconds. The permission belongs to the package, not to one app inside a suite: in a suite, only
+Data MUST be JSON-compatible and at most 256 KB, counted as the characters of its JSON text. A package may send at most 100 allowed messages in 10
+seconds from one browser tab. The permission belongs to the package, not to one app inside a suite: in a suite, only
 the entries that declare a channel can use it.
 
 **In a suite app:**
@@ -582,6 +591,6 @@ To check files in an editor, map the schemas in your editor settings. For VS Cod
 ## 9. Not in format 2
 
 - Adding or removing suite apps while a suite runs (hot-plug).
-- `claude:sample`, or any other AI capability.
+- An AI capability other than `claude:sample` (6.6).
 - Network access for apps, even through the kernel.
 - Signed packages.

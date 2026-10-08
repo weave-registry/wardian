@@ -34,7 +34,7 @@ the background-job resume (ADR-2610072118). Each app's `storage` is kept per par
    | `keep` | main | Send to other apps, Download CSV, Save table, saved tables | caps `storage`, `db`, `claude:downloads`; channel sends `splunk.table`; listens `table:ready`, `table:view`; emits `table:ready` when a saved table is opened |
 
    The outline may change where the code shows a better cut, within these rules: one job per part,
-   no part's `app.js` over about 250 lines, results never wait on a hidden panel, and the message on
+   no part's `app.js` over 250 lines (`claim_example_parts_stay_small`; ADR-2610081041), results never wait on a hidden panel, and the message on
    `splunk.table` stays as it is so the USL lab keeps working.
 2. **Both copies' features survive.** The new suite has Save search, Save table and the saved lists
    from the working copy, and the job resume from the repository copy.
@@ -43,7 +43,7 @@ the background-job resume (ADR-2610072118). Each app's `storage` is kept per par
    finds the old shape in its own storage reads it.
 4. **Make an app splits by default.** Its instructions say: build a suite when the app has more than
    one job; one part per job (inputs, each view of the result, each export); inputs in `aside`,
-   results in `main`; no part over about 250 lines. The rustle-app-factory skill says the same.
+   results in `main`; no part over 250 lines. The rustle-app-factory skill says the same.
 5. **`wardian check` warns about one big part.** A suite app whose `app.js` is over 400 lines, or a
    suite with one view part whose `view.html` holds more than one `<h2>`, gets a warning that
    names the parts it could split into.

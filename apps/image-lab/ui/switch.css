@@ -1,0 +1,10 @@
+/* <label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch"> Dark mode</label> */
+.w-switch-row { display: inline-flex; align-items: center; gap: var(--w-space-2); font: var(--w-text)/1.4 var(--w-font); color: var(--w-fg); cursor: pointer; }
+.w-switch { appearance: none; margin: 0; flex: none; position: relative; width: 36px; height: 20px; border-radius: 999px; cursor: pointer;
+  background: var(--w-border); transition: background var(--w-speed); }
+.w-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--w-bg); box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform var(--w-speed); }
+.w-switch:checked { background: var(--w-primary); }
+.w-switch:checked::after { transform: translateX(16px); }
+.w-switch:focus-visible { outline: 2px solid var(--w-ring); outline-offset: 2px; }
+.w-switch:disabled { opacity: .5; cursor: not-allowed; }

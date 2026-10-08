@@ -1,0 +1,7 @@
+{
+  "format": 2,
+  "title": "Rogue page",
+  "description": "A hostile page app for tests/run-page-sandbox-e2e.sh: it tries every way to reach the network (ADR-2610081003).",
+  "page": "index.html",
+  "channels": { "send": ["rogue.test"] }
+}

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game of Life</title>
+<!-- The Wardian component library (wardian add button field card switch arrange). -->
+<link rel="stylesheet" href="ui/theme.css">
+<link rel="stylesheet" href="ui/button.css">
+<link rel="stylesheet" href="ui/field.css">
+<link rel="stylesheet" href="ui/card.css">
+<link rel="stylesheet" href="ui/switch.css">
+<style>
+  /* --cell, --board and --glow colour the world; app.js reads them, so they follow light and dark. */
+  :root { color-scheme: light dark; --page: #f7f7f8; --cell: #0f766e; --board: #fbfbfc; --glow: #5eead4; --gridline: rgba(0,0,0,.06); }
+  @media (prefers-color-scheme: dark) { :root { --page: #111113; --cell: #5eead4; --board: #0b0f12; --glow: #0f766e; --gridline: rgba(255,255,255,.05); } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: var(--w-space-5) clamp(16px, 3vw, 32px); font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
+  .top { margin-bottom: var(--w-space-4); }
+  h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.02em; }
+  .top p { margin: 4px 0 0; color: var(--w-muted); }
+  h2 { margin: 0 0 var(--w-space-3); font: 600 var(--w-text-lg)/1.3 var(--w-font); }
+  /* Two columns that Arrange may swap, join, or fill differently. */
+  .layout { display: grid; grid-template-columns: minmax(250px, 300px) minmax(0, 1fr); gap: var(--w-space-4); align-items: start; }
+  .col { display: flex; flex-direction: column; gap: var(--w-space-4); min-width: 0; }
+  .col[hidden] { display: none; }
+  @media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .panel { padding: var(--w-space-4) var(--w-space-5); }
+  .panel.view { padding: var(--w-space-3); }
+  .btnrow { display: flex; flex-wrap: wrap; gap: var(--w-space-2); margin-bottom: var(--w-space-3); }
+  .btnrow:last-child { margin-bottom: 0; }
+  #play { min-width: 84px; }
+  input[type=range] { width: 100%; accent-color: var(--w-primary); }
+  .range-row { display: flex; align-items: center; gap: var(--w-space-3); }
+  .range-row output { min-width: 4.8em; text-align: right; font-variant-numeric: tabular-nums; color: var(--w-muted); font-size: var(--w-text-sm); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--w-space-3); margin: 0; }
+  .stats div { padding: var(--w-space-2) var(--w-space-3); border-radius: var(--w-radius); background: var(--w-muted-bg); }
+  .stats dt { color: var(--w-muted); font-size: var(--w-text-sm); }
+  .stats dd { margin: 0; font: 600 22px/1.3 var(--w-font-mono); font-variant-numeric: tabular-nums; }
+  .stage { position: relative; margin: 0 auto; max-width: 100%; border-radius: var(--w-radius); overflow: hidden; background: var(--board); outline: 1px solid var(--w-border); outline-offset: -1px; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  .viewbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--w-space-3); padding: var(--w-space-3) var(--w-space-2) var(--w-space-1); color: var(--w-muted); font-size: var(--w-text-sm); }
+  .help { margin: 0; padding-left: 1.1em; color: var(--w-muted); font-size: var(--w-text-sm); }
+  .help li + li { margin-top: 4px; }
+  kbd { font: 12px var(--w-font-mono); padding: 1px 5px; border: 1px solid var(--w-border); border-radius: 4px; background: var(--w-muted-bg); }
+</style>
+<header class="top">
+  <h1>Game of Life</h1>
+  <p>Cells live, die and are born by a simple rule. WebAssembly runs every generation.</p>
+</header>
+<main class="layout" data-arrange-grid>
+  <div class="col" data-arrange-column="side">
+    <section class="w-card panel" data-panel="run" data-panel-label="Run">
+      <h2>Run</h2>
+      <div class="btnrow">
+        <button class="w-button" id="play" type="button" title="Play or pause (Space)">Play</button>
+        <button class="w-button" data-variant="outline" id="step" type="button" title="One generation (S)">Step</button>
+        <button class="w-button" data-variant="outline" id="skip" type="button" title="Jump 100 generations in one call">+100</button>
+      </div>
+      <div class="w-field">
+        <label class="w-label" for="speed">Speed</label>
+        <div class="range-row"><input id="speed" type="range" min="0" max="10" value="5"><output id="speedOut" for="speed"></output></div>
+      </div>
+      <dl class="stats" aria-live="off">
+        <div><dt>Generation</dt><dd id="gen">0</dd></div>
+        <div><dt>Population</dt><dd id="pop">0</dd></div>
+      </dl>
+    </section>
+    <section class="w-card panel" data-panel="world" data-panel-label="World">
+      <h2>World</h2>
+      <div class="w-field">
+        <label class="w-label" for="pattern">Pattern</label>
+        <select class="w-input" id="pattern">
+          <option value="glider">Glider</option>
+          <option value="lwss">Lightweight spaceship</option>
+          <option value="gosper">Gosper glider gun</option>
+          <option value="pulsar">Pulsar</option>
+          <option value="rpent">R-pentomino</option>
+          <option value="acorn">Acorn</option>
+          <option value="replicator">Replicator (try HighLife)</option>
+        </select>
+      </div>
+      <div class="btnrow">
+        <button class="w-button" data-variant="outline" id="place" type="button">Place in the middle</button>
+      </div>
+      <div class="btnrow">
+        <button class="w-button" data-variant="outline" id="random" type="button" title="Random fill (R)">Random fill</button>
+        <button class="w-button" data-variant="outline" id="clear" type="button" title="Clear (C)">Clear</button>
+      </div>
+      <div class="w-field">
+        <label class="w-label" for="rule">Rule</label>
+        <select class="w-input" id="rule">
+          <option value="B3/S23">Conway's Life (B3/S23)</option>
+          <option value="B36/S23">HighLife (B36/S23)</option>
+          <option value="B2/S">Seeds (B2/S)</option>
+        </select>
+        <p class="w-hint" id="ruleHint"></p>
+      </div>
+      <div class="w-field">
+        <label class="w-label" for="size">Grid</label>
+        <select class="w-input" id="size">
+          <option value="80x50">80 × 50 (big cells)</option>
+          <option value="160x100" selected>160 × 100</option>
+          <option value="320x200">320 × 200</option>
+          <option value="640x400">640 × 400</option>
+        </select>
+        <p class="w-hint">Changing the grid clears it. The edges wrap around.</p>
+      </div>
+      <label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch" id="trail" checked> Fading trails</label>
+    </section>
+    <section class="w-card panel" data-panel="help" data-panel-label="How to play">
+      <h2>How to play</h2>
+      <ul class="help">
+        <li>Click or drag on the board to draw cells. Start on a live cell to erase.</li>
+        <li>A live cell with 2 or 3 live neighbours lives on. A dead cell with exactly 3 comes alive.</li>
+        <li>Keys: <kbd>Space</kbd> play, <kbd>S</kbd> step, <kbd>R</kbd> random, <kbd>C</kbd> clear.</li>
+      </ul>
+    </section>
+  </div>
+  <div class="col" data-arrange-column="main">
+    <section class="w-card panel view" data-panel="board" data-panel-label="The board">
+      <div class="stage" id="stage"><canvas id="board" aria-label="The Game of Life board. Click or drag to draw cells."></canvas></div>
+      <div class="viewbar"><span id="sizeInfo"></span><span id="motion"></span></div>
+    </section>
+  </div>
+</main>
+<script src="ui/arrange.js"></script>
+<script type="module" src="./app.js"></script>
+</html>

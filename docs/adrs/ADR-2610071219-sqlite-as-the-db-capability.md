@@ -21,7 +21,8 @@ cases behind ports, adapters at the edge).
 
 1. **Store.** The host keeps one SQLite database per package, `<data dir>/db/<package>.sqlite`,
    through a `Database` port and an SQLite adapter (`rusqlite` with its bundled SQLite, so the
-   binary stays self-contained; about 1.5 MB larger). A package can open only its own file.
+   binary stays self-contained, and under 12 MB, which `tests/run-all.sh` checks; ADR-2610081041).
+   A package can open only its own file.
 2. **Capability.** A suite app that declares `db` gets `ctx.cap('db')`:
    - `query(sql, params)` → `{columns, rows, changed}` for one statement, parameters bound, results
      capped at 1,000 rows per call;

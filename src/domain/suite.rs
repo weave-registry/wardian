@@ -26,6 +26,98 @@ pub const FRAME_CSP: &str = "sandbox allow-scripts allow-forms allow-modals allo
     style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; \
     img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'";
 
+/// The rules a page app's HTML and SVG run under (ADR-2610081003): the same sandbox as a frame, and
+/// requests only to the package's own files and Wardian's page library. A sandboxed page has a
+/// throwaway origin, so 'self' cannot name the server; the package is named by the request's `Host`
+/// and the package's path instead. `http://` also matches `https://`, for a Wardian behind a proxy.
+/// A `Host` that is not a plain host[:port] names nothing, so the page loads nothing.
+pub fn page_csp(host: &str, package: &str) -> String {
+    let plain = |s: &str, extra: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-._".contains(c) || extra.contains(c));
+    let named = plain(host, ":[]") && plain(package, "");
+    let own = if named { format!("http://{host}/apps/{package}/ ") } else { String::new() };
+    let sdk = if named { format!("http://{host}/sdk/ ") } else { String::new() };
+    let form = if named { own.trim_end() } else { "'none'" };
+    format!(
+        "sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads; \
+         default-src 'none'; \
+         script-src {own}{sdk}'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; \
+         style-src {own}'unsafe-inline' https://fonts.googleapis.com; font-src {own}https://fonts.gstatic.com data:; \
+         img-src {own}data: blob:; media-src {own}data: blob:; connect-src {own}data: blob:; \
+         worker-src {own}blob:; frame-src {own}blob:; form-action {form}; base-uri 'none'; object-src 'none'"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{frame, page_csp, script_id, script_tag, tag_name};
+
+    #[test]
+    fn tag_name_takes_only_one_complete_opening_tag() {
+        assert_eq!(tag_name("<div>"), Some("div"));
+        assert_eq!(tag_name("<section class=\"card\">"), Some("section"));
+        assert_eq!(tag_name("<p title=\"it's\">"), Some("p"));
+        for bad in ["<div", "<section", "<section><aside>", "<div></div><p>", "<div id=\"x>", "<div id='x>", "<div>text", "<div class=\"a\"><b>", "div>", "<>", "< div>"] {
+            assert_eq!(tag_name(bad), None, "{bad:?} is not one opening tag");
+        }
+    }
+
+    #[test]
+    fn script_tag_refuses_code_that_can_escape_the_script() {
+        for code in ["s = '</script>'", "s = '</SCRIPT>'", "s = '<!--<script>'", "s = '<!--'"] {
+            let read = |_: &str| Some(code.as_bytes().to_vec());
+            assert!(script_tag(&read, "app.js").is_err(), "{code:?} must be refused");
+        }
+        let read = |_: &str| Some(b"let a = 1 < 2;".to_vec());
+        assert!(script_tag(&read, "app.js").is_ok());
+    }
+
+    #[test]
+    fn script_id_removes_only_one_js() {
+        assert_eq!(script_id("lib/app.js"), "app-src");
+        assert_eq!(script_id("x.js.js"), "x.js-src");
+        assert_eq!(script_id("x.js"), "x-src");
+    }
+
+    #[test]
+    fn frame_refuses_two_scripts_with_one_id() {
+        let suite = |scripts: &str, own: &str| {
+            format!(r#"{{"scripts": [{scripts}], "apps": [{{"name": "a", "scripts": [{own}]}}]}}"#)
+        };
+        for (scripts, own) in [(r#""lib/app.js""#, ""), (r#""a/util.js""#, r#""b/util.js""#), (r#""x.js""#, r#""x.js.js""#)] {
+            let json = suite(scripts, own);
+            let read = |rel: &str| Some(if rel == "suite.json" { json.clone().into_bytes() } else { b"let a = 1;".to_vec() });
+            let got = frame(&read, "", Some("a"));
+            if scripts.contains("x.js") {
+                assert!(got.is_ok(), "x.js and x.js.js get different ids: {got:?}");
+            } else {
+                assert!(got.unwrap_err().contains("both get the id"), "{scripts} and {own} must be refused");
+            }
+        }
+    }
+
+    #[test]
+    fn page_csp_names_only_the_package_and_the_sdk() {
+        let p = page_csp("127.0.0.1:8000", "text-tools");
+        assert!(p.starts_with("sandbox allow-scripts"), "the sandbox stays: {p}");
+        assert!(p.contains("default-src 'none'"));
+        assert!(p.contains("connect-src http://127.0.0.1:8000/apps/text-tools/ data: blob:;"));
+        assert!(p.contains("script-src http://127.0.0.1:8000/apps/text-tools/ http://127.0.0.1:8000/sdk/ 'unsafe-inline'"));
+        assert!(p.contains("form-action http://127.0.0.1:8000/apps/text-tools/;"));
+        assert!(!p.contains("/api/") && !p.contains("'self'") && !p.contains(" * ") && !p.contains("http: ") && !p.contains("https: "));
+        assert!(page_csp("[::1]:8000", "a").contains("http://[::1]:8000/apps/a/"), "IPv6 hosts work");
+    }
+
+    #[test]
+    fn page_csp_with_a_strange_host_names_nothing() {
+        for host in ["", "evil.com/x", "a b", "h;default-src *", "h'"] {
+            let p = page_csp(host, "app");
+            assert!(!p.contains("/apps/") && !p.contains("/sdk/"), "{host:?} gave {p}");
+            assert!(p.contains("connect-src data: blob:;") && p.contains("form-action 'none';"), "{host:?} gave {p}");
+        }
+        assert!(!page_csp("127.0.0.1:8000", "a;b").contains("/apps/"), "a strange package name names nothing");
+    }
+}
+
 #[derive(Deserialize)]
 struct Suite {
     #[serde(default)]
@@ -63,19 +155,47 @@ fn text(read: Read, rel: &str) -> Result<String, String> {
 }
 
 /// Inlines a script so `ctx.source("<stem>-src")` can read it back, as in the
-/// single-file build.
+/// single-file build. Code holding `</script` or `<!--` is refused: the first
+/// ends the element early, and `<!--` then `<script` makes the parser skip the
+/// closing tag added here, so the rest of the frame becomes part of this script.
 fn script_tag(read: Read, rel: &str) -> Result<String, String> {
     let code = text(read, rel)?;
     if code.to_ascii_lowercase().contains("</script") {
         return Err(format!("{rel} contains </script"));
     }
-    let stem = rel.rsplit('/').next().unwrap_or(rel).trim_end_matches(".js");
-    Ok(format!("<script id=\"{stem}-src\">\n{code}\n</script>\n"))
+    if code.contains("<!--") {
+        return Err(format!("{rel} contains <!--"));
+    }
+    Ok(format!("<script id=\"{}\">\n{code}\n</script>\n", script_id(rel)))
+}
+
+/// The id `ctx.source` finds a script by: its file name, less one `.js`, then `-src`.
+fn script_id(rel: &str) -> String {
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    format!("{}-src", name.strip_suffix(".js").unwrap_or(name))
 }
 
 /// The tag name of an opening tag like `<section id="x">`, for its closing tag.
+/// None unless `open` is exactly one opening tag: it ends with its `>` and
+/// holds no other `<` or `>`, and no quote is left open (an open quote hides
+/// the `>`, so the view would become part of an attribute).
 pub fn tag_name(open: &str) -> Option<&str> {
-    let name = open.strip_prefix('<')?.split(|c: char| c.is_whitespace() || c == '>').next()?;
+    let inner = open.strip_prefix('<')?.strip_suffix('>')?;
+    if inner.contains(['<', '>']) {
+        return None;
+    }
+    let mut quote = None;
+    for c in inner.chars() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            None if c == '"' || c == '\'' => quote = Some(c),
+            _ => {}
+        }
+    }
+    if quote.is_some() {
+        return None;
+    }
+    let name = inner.split(char::is_whitespace).next()?;
     (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric())).then_some(name)
 }
 
@@ -135,12 +255,20 @@ pub fn frame(read: Read, shim: &str, app: Option<&str>) -> Result<String, String
                 }
                 _ => inner,
             };
+            // Two scripts with one id would make ctx.source find the first one for both.
+            let own = format!("{dir}/app.js");
+            let rels: Vec<&String> = s.scripts.iter().chain(&a.scripts).chain([&own]).collect();
+            for (i, rel) in rels.iter().enumerate() {
+                if let Some(other) = rels[..i].iter().find(|o| script_id(o) == script_id(rel)) {
+                    return Err(format!("{other} and {rel} both get the id {}", script_id(rel)));
+                }
+            }
             let mut scripts = String::new();
-            for rel in s.scripts.iter().chain(&a.scripts) {
+            for rel in &rels[..rels.len() - 1] {
                 scripts.push_str(&script_tag(read, rel)?);
             }
             scripts.push_str(&format!("<script>\n{shim}\n</script>\n"));
-            scripts.push_str(&script_tag(read, &format!("{dir}/app.js"))?);
+            scripts.push_str(&script_tag(read, &own)?);
             (body, scripts)
         }
     };

@@ -1,7 +1,7 @@
 //! The web server: Wardian's own pages, the JSON API they use, and the apps' files. It knows
 //! the driving ports only; what each request does is the use cases' business.
 
-use crate::ports::service::{export_file_name, safe_rel, safe_segment, JobKind, Services, Unwatched, EXPORT_MIME, FRAME_CSP, MAX_ZIP_BYTES};
+use crate::ports::service::{export_file_name, page_csp, safe_rel, safe_segment, JobKind, Services, Unwatched, EXPORT_MIME, FRAME_CSP, MAX_ZIP_BYTES};
 use serde_json::{json, Value};
 use super::http_server::{Header, Method, Request, Response, Server};
 use std::{io::Read, path::Path, sync::Arc};
@@ -67,9 +67,11 @@ fn mime(path: &Path) -> &'static str {
 /// A file from inside an app. App pages are code from whoever made the zip,
 /// so every page is served sandboxed: the browser gives it a throwaway
 /// origin, and it cannot call this server's settings API or read its
-/// replies, even when opened in its own tab. The CORS header lets such a
-/// sandboxed page still load its own scripts and .wasm files from here.
-fn app_file(bytes: Vec<u8>, rel: &str) -> Response {
+/// replies, even when opened in its own tab. Its policy also lets it request
+/// only its own package and the page library (ADR-2610081003), so it cannot
+/// send what it holds anywhere. The CORS header lets such a sandboxed page
+/// still load its own scripts and .wasm files from here.
+fn app_file(bytes: Vec<u8>, rel: &str, policy: &str) -> Response {
     let ct = mime(Path::new(rel));
     let mut resp = Response::from_data(bytes)
         .with_header(header("Content-Type", ct))
@@ -77,10 +79,7 @@ fn app_file(bytes: Vec<u8>, rel: &str) -> Response {
         .with_header(header("X-Content-Type-Options", "nosniff"))
         .with_header(header("Access-Control-Allow-Origin", "*"));
     if ct.starts_with("text/html") || ct == "image/svg+xml" {
-        resp = resp.with_header(header(
-            "Content-Security-Policy",
-            "sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads",
-        ));
+        resp = resp.with_header(header("Content-Security-Policy", policy));
     }
     resp
 }
@@ -130,8 +129,29 @@ fn query<'a>(url: &'a str, key: &str) -> Option<&'a str> {
     })
 }
 
-fn same_bytes(a: &str, b: &str) -> bool {
-    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+/// Whether a guess is the token, in a time that does not depend on how much of the guess is right,
+/// or on whether its length is (ADR-2610081041): both are hashed, and the fixed-size digests are
+/// compared byte by byte without stopping early.
+fn same_bytes(guess: &str, token: &str) -> bool {
+    use ring::digest::{digest, SHA256};
+    let (a, b) = (digest(&SHA256, guess.as_bytes()), digest(&SHA256, token.as_bytes()));
+    a.as_ref().iter().zip(b.as_ref()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// The host a Host header names, without its port; None when it is not `host[:port]` or
+/// `[v6]:port`, so that `[::1].evil.com` is not read as `::1`.
+fn host_name(header: &str) -> Option<&str> {
+    let (host, port) = match header.strip_prefix('[') {
+        Some(rest) => {
+            let (host, after) = rest.split_once(']')?;
+            (host, if after.is_empty() { None } else { Some(after.strip_prefix(':')?) })
+        }
+        None => match header.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (header, None),
+        },
+    };
+    port.is_none_or(|p| !p.is_empty() && p.bytes().all(|c| c.is_ascii_digit())).then_some(host)
 }
 
 /// Who may change settings and browse Drive. With ADMIN_TOKEN set, whoever
@@ -143,12 +163,18 @@ fn is_admin(req: &Request<'_>, token: Option<&str>) -> bool {
         return req_header(req, "X-Admin-Token").is_some_and(|t| same_bytes(t, token));
     }
     let peer_local = req.remote_addr().is_some_and(|a| a.ip().is_loopback());
-    let host = req_header(req, "Host").unwrap_or("");
-    let host = match host.strip_prefix('[') {
-        Some(rest) => rest.split(']').next().unwrap_or(""),
-        None => host.split(':').next().unwrap_or(""),
-    };
-    peer_local && matches!(host, "localhost" | "127.0.0.1" | "::1")
+    let host = host_name(req_header(req, "Host").unwrap_or(""));
+    peer_local && matches!(host, Some("localhost" | "127.0.0.1" | "::1"))
+}
+
+/// A docs page, or 404 for a name the site does not have.
+fn docs_page(html: Option<String>) -> Response {
+    match html {
+        Some(html) => Response::from_string(html)
+            .with_header(header("Content-Type", "text/html; charset=utf-8"))
+            .with_header(header("Cache-Control", "no-cache")),
+        None => Response::from_string("not found").with_status_code(404),
+    }
 }
 
 fn json_resp(code: u16, v: Value) -> Response {
@@ -194,18 +220,21 @@ fn read_json_upto(req: &mut Request<'_>, max: u64) -> Result<Value, String> {
 /// Reads an uploaded zip. Like the JSON check above, the zip content type is
 /// one a browser will not send across sites without asking first.
 fn read_zip(req: &mut Request<'_>) -> Result<Vec<u8>, String> {
-    if req_header(req, "Content-Type") != Some("application/zip") {
+    let ct = req_header(req, "Content-Type").map(String::from);
+    read_zip_body(ct.as_deref(), req.as_reader())
+}
+
+/// The zip in `body`, if `content_type` says it is one and it is at most 100 MB.
+fn read_zip_body(content_type: Option<&str>, body: &mut dyn Read) -> Result<Vec<u8>, String> {
+    if content_type != Some("application/zip") {
         return Err("expected Content-Type: application/zip".into());
     }
-    let mut body = Vec::new();
-    req.as_reader()
-        .take(MAX_ZIP_BYTES + 1)
-        .read_to_end(&mut body)
-        .map_err(|e| e.to_string())?;
-    if body.len() as u64 > MAX_ZIP_BYTES {
+    let mut zip = Vec::new();
+    body.take(MAX_ZIP_BYTES + 1).read_to_end(&mut zip).map_err(|e| e.to_string())?;
+    if zip.len() as u64 > MAX_ZIP_BYTES {
         return Err("the zip is larger than 100 MB".into());
     }
-    Ok(body)
+    Ok(zip)
 }
 
 /// A long call asked to run as a background job (ADR-2610072118): it answers {job: id} at once,
@@ -450,15 +479,10 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
         // /api/apps keeps its original reply (names only), so a page loaded
         // before an upgrade keeps working; app-list adds titles and pages.
         // Documentation, and the JSON Schemas editors use to check app.json and suite.json.
-        (Method::Get, ["docs"]) => Response::from_string("")
-            .with_status_code(302)
-            .with_header(header("Location", "/docs/guide")),
-        (Method::Get, ["docs", name]) => match s.pages.page(name) {
-            Some(html) => Response::from_string(html)
-                .with_header(header("Content-Type", "text/html; charset=utf-8"))
-                .with_header(header("Cache-Control", "no-cache")),
-            None => Response::from_string("not found").with_status_code(404),
-        },
+        // The path arrives without its slashes, so /docs and /docs/ are both the home page.
+        (Method::Get, ["docs"]) => docs_page(s.pages.page("index")),
+        (Method::Get, ["docs", name]) => docs_page(s.pages.page(name)),
+        (Method::Get, ["docs", parent, name]) => docs_page(s.pages.page(&format!("{parent}/{name}"))),
         (Method::Get, ["schemas", file]) => match s.pages.schema(file) {
             Some(body) => {
                 Response::from_string(body)
@@ -551,10 +575,11 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
                 rel = if rel.is_empty() { "index.html".into() } else { format!("{rel}/index.html") };
             }
             let bytes = if safe_rel(&rel) { hub.read(name, &rel) } else { None };
+            let policy = page_csp(req_header(req, "Host").unwrap_or(""), name);
             match bytes {
-                Some(bytes) if query(&url, "wardian-probe") == Some("1") && rel.ends_with(".html") => app_file(with_snapshot(with_probe(bytes)), &rel),
-                Some(bytes) if rel.ends_with(".html") => app_file(with_snapshot(bytes), &rel),
-                Some(bytes) => app_file(bytes, &rel),
+                Some(bytes) if query(&url, "wardian-probe") == Some("1") && rel.ends_with(".html") => app_file(with_snapshot(with_probe(bytes)), &rel, &policy),
+                Some(bytes) if rel.ends_with(".html") => app_file(with_snapshot(bytes), &rel, &policy),
+                Some(bytes) => app_file(bytes, &rel, &policy),
                 None => Response::from_string("not found").with_status_code(404),
             }
         }
@@ -576,5 +601,28 @@ mod tests {
         // One script, closed once: nothing inside it may end it early.
         assert_eq!(PAGE_SNAPSHOT.matches("</script").count(), 1);
         assert!(out.trim_end().ends_with("})();</script>"));
+    }
+
+    /// security.md Admin, ADR-2610081041 (#136, C9): the token check accepts only the token itself;
+    /// a guess of another length, or of the same length, is refused.
+    #[test]
+    fn claim_the_admin_token_check_accepts_only_the_token() {
+        let token = "s3cret-token-0123456789";
+        assert!(same_bytes(token, token));
+        for guess in ["", "s", "s3cret-token", "s3cret-token-012345678", "s3cret-token-0123456780", "S3cret-token-0123456789", "s3cret-token-01234567890", "s3cret-token-0123456789\0"] {
+            assert!(!same_bytes(guess, token), "{guess:?}");
+        }
+    }
+
+    /// security.md, SPEC 3.5 (#145): an uploaded zip of more than 100 MB is refused, and only a zip
+    /// Content-Type is read.
+    #[test]
+    fn claim_an_upload_over_100_mb_is_refused() {
+        let mut big = std::io::repeat(b'x').take(MAX_ZIP_BYTES + 1);
+        assert_eq!(read_zip_body(Some("application/zip"), &mut big).unwrap_err(), "the zip is larger than 100 MB");
+        assert_eq!(read_zip_body(Some("application/zip"), &mut &b"PK"[..]).unwrap(), b"PK");
+        for ct in [None, Some("text/plain"), Some("multipart/form-data")] {
+            assert!(read_zip_body(ct, &mut &b"PK"[..]).unwrap_err().contains("expected Content-Type: application/zip"), "{ct:?}");
+        }
     }
 }

@@ -37,8 +37,8 @@ composition root and the settings decide where it goes.
    `Llm::messages` keeps taking a complete Messages body; each adapter maps it to its wire format.
 2. **Adapter.** `adapters/secondary/bedrock_inference.rs`: moves the model from the body to the URL,
    adds `anthropic_version`, signs the request (bearer token, or SigV4 with `ring`'s HMAC-SHA256
-   and SHA-256, which Wardian already carries for TLS — no AWS SDK and no new crate, so Wardian stays
-   one small binary), and maps Bedrock's errors onto
+   and SHA-256, which Wardian already carries for TLS — no AWS SDK and no new crate, so the release
+   binary stays under 12 MB, which `tests/run-all.sh` checks (ADR-2610081041)), and maps Bedrock's errors onto
    `LlmError` so the use case's retries and messages keep working (403 says the model has not been
    enabled for the account in that region). It owns the default Bedrock model ids for both tiers;
    `WARDIAN_BEDROCK_MODEL` and `WARDIAN_BEDROCK_QUICK_MODEL` override them.
@@ -50,8 +50,10 @@ composition root and the settings decide where it goes.
    `AWS_REGION`, and `AWS_BEARER_TOKEN_BEDROCK` or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` /
    `AWS_SESSION_TOKEN`.
 4. **Testing a key.** Bedrock's runtime endpoint has no model lookup, so the test is one invocation
-   of the quick model with `max_tokens: 1`. It costs a fraction of a cent and proves the region,
-   the sign-in and the model access together.
+   of the quick model with `max_tokens: 1`: exactly one request, and a refused key is not saved.
+   **Not yet tested** (ADR-2610081041): `tests/splunk-e2e.js` checks that a wrong key is refused,
+   but no test counts the requests or reads `max_tokens`. It proves the region, the sign-in and the
+   model access together.
 
 Not in this decision: AWS profiles, SSO and instance roles (the full AWS credential chain), streaming,
 and the Converse API. Each can follow in its own ADR.

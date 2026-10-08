@@ -12,6 +12,41 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- **A documentation site** (ADR-2610080903) at `/docs`: grouped pages, search, a phone layout, and a
+  page for every example and every decision, from the Markdown in the repository.
+  `wardian docs FOLDER` writes it as a static site; the website keeps it in `website/`. Tests fail
+  on a broken `/docs` link or a stale copy.
+- **Eleven new example apps**, so every kind and every capability but `splunk` has one that runs
+  with no account: `unit-converter`, `number-lab`, `text-tools`, `image-lab`, `life`,
+  `csv-explorer`, `habit-tracker`, `meeting-notes`, `monte-carlo`, `focus-timer` and `focus-log`.
+  `tests/run-examples-e2e.sh` opens all sixteen in a browser.
+- **AI skills ship with Wardian** (ADR-2610080928): `wardian skills` installs `wardian-app-factory`
+  and `wardian-app-doctor`, with their reference pages, into a project's `.claude/skills/`.
+
+### Security
+
+- **Every claim names its test** (ADR-2610081041). An audit of 186 claims in the ADRs, SPEC.md and
+  the security page added tests for the ones nothing proved (the admin gate, permissions, import
+  limits, link import, viewer-state limits, key file modes, the trash, the stop log, kernel
+  refusals, sender identity, page storage, channel limits, the snapshot cleaner), and fixed what
+  they found: `target/` and `node_modules/` were served from the local folder (SPEC 3.4); IPv4
+  addresses written as `::a.b.c.d` or `64:ff9b::/96` escaped the import-link rules; a `Host` like
+  `[::1].evil.com` counted as loopback; most kernel refusals were not recorded as faults (SPEC 6.7);
+  `ctx.emit('toString')` passed the contract check; an answer to a call by an app that was not asked
+  was dropped silently and is now a fault. Vague claims became measures (a release binary under
+  12 MB, parts of at most 250 lines), and `scripts/release-check.sh` checks the release steps.
+- **A page app reaches only its own package** (ADR-2610081003). Pages were sent `sandbox` and no other
+  rule, so a page could fetch any address, load outside scripts and post forms anywhere, while the
+  docs said apps were cut off from the network. Each page now gets a policy that allows only its
+  own `/apps/<name>/`, `/sdk/`, Google Fonts, and `data:` and `blob:` URLs.
+  `tests/run-page-sandbox-e2e.sh` runs a hostile page against an "outside" server and fails if one
+  request gets out. **Breaking:** a page that loaded scripts, styles or data from the internet must
+  now ship those files in its package. Three routes a policy cannot close (a pop-up after a click,
+  navigating the frame away, WebRTC) are listed on the security page, and the same test proves they
+  are still open, for pages and suites, so the docs cannot claim more than the browser does.
+
 ## [0.4.1] - 2026-10-08
 
 A friendlier first run (ADR-2610080930): `wardian` in a terminal prints a short styled block and

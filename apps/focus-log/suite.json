@@ -1,0 +1,102 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/suite.schema.json",
+  "format": 2,
+  "title": "Focus log",
+  "description": "Keeps every session the Focus timer sends, with your permission: time today, the last 7 days, time per label, and the full history.",
+  "styles": [
+    "ui/theme.css",
+    "ui/button.css",
+    "ui/field.css",
+    "ui/card.css",
+    "ui/table.css",
+    "ui/badge.css",
+    "style.css"
+  ],
+  "scripts": [
+    "shared/log.js"
+  ],
+  "header": "header.html",
+  "apps": [
+    {
+      "name": "inbox",
+      "slot": "aside",
+      "wrap": "<aside class=\"w-card panel\">",
+      "emits": {
+        "log:changed": {
+          "retain": true
+        }
+      },
+      "caps": [
+        "db"
+      ],
+      "channels": {
+        "receive": [
+          "focus.session"
+        ]
+      }
+    },
+    {
+      "name": "today",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "log:changed"
+      ],
+      "caps": [
+        "db",
+        "storage"
+      ]
+    },
+    {
+      "name": "week",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "log:changed"
+      ],
+      "caps": [
+        "db"
+      ]
+    },
+    {
+      "name": "labels",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "log:changed"
+      ],
+      "caps": [
+        "db",
+        "storage"
+      ]
+    },
+    {
+      "name": "history",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "emits": {
+        "log:changed": {
+          "retain": true
+        }
+      },
+      "listens": [
+        "log:changed"
+      ],
+      "caps": [
+        "db"
+      ]
+    },
+    {
+      "name": "export",
+      "slot": "main",
+      "wrap": "<section class=\"w-card panel\">",
+      "listens": [
+        "log:changed"
+      ],
+      "caps": [
+        "db",
+        "claude:downloads"
+      ]
+    }
+  ]
+}

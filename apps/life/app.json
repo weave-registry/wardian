@@ -1,0 +1,7 @@
+{
+  "$schema": "http://127.0.0.1:8000/schemas/app.schema.json",
+  "format": 1,
+  "title": "Game of Life",
+  "description": "Conway's Game of Life with the simulation in WebAssembly: draw cells, load classic patterns, switch rules.",
+  "page": "index.html"
+}

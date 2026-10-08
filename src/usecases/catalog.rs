@@ -8,7 +8,7 @@ use super::import::import_zip;
 use super::workspace::FIRST_RUN_MARKER;
 use crate::domain::grants::{self, Answer};
 use crate::domain::import_plan::{app_name_from, MAX_ZIP_BYTES};
-use crate::domain::package::{app_info, drive_file_id, safe_rel, safe_segment, trash_entry, unix_now, valid_drive_id, AppInfo, SourceChoice, APP_MARKERS};
+use crate::domain::package::{app_info, drive_file_id, safe_rel, safe_segment, servable_rel, trash_entry, unix_now, valid_drive_id, AppInfo, SourceChoice, APP_MARKERS};
 use crate::domain::suite;
 use crate::ports::{
     assets::Assets,
@@ -143,8 +143,12 @@ impl Hub {
         }
     }
 
-    /// A file of a served app. `rel` must already have passed `safe_rel`.
+    /// A file of a served app. `rel` must already have passed `safe_rel`; a file inside a build
+    /// folder (`node_modules`, `target`) is never served, from either source (SPEC.md 3.4).
     pub fn read(&self, app: &str, rel: &str) -> Option<Vec<u8>> {
+        if !servable_rel(rel) {
+            return None;
+        }
         match &*self.serving() {
             Serving::Local => self.fs.read(&self.local_root.join(app).join(rel)),
             Serving::Drive(d) => d.read(app, rel),
@@ -152,6 +156,9 @@ impl Hub {
     }
 
     fn has(&self, serving: &Serving, app: &str, rel: &str) -> bool {
+        if !servable_rel(rel) {
+            return false;
+        }
         match serving {
             Serving::Local => self.fs.is_file(&self.local_root.join(app).join(rel)),
             Serving::Drive(d) => d.has(app, rel),

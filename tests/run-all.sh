@@ -19,6 +19,13 @@ started=$(date +%s)
 step "cargo test --release"
 cargo test --release
 
+# ADR-2610071106 and ADR-2610071219 promise a self-contained binary under 12 MB (ADR-2610081041).
+step "release binary under 12 MB"
+cargo build --release -q --bin wardian
+size=$(wc -c < "$CARGO_TARGET_DIR/release/wardian")
+echo "target/release/wardian: $size bytes"
+[ "$size" -le $((12 * 1024 * 1024)) ] || { echo "FAIL: the release binary is over 12 MB"; exit 1; }
+
 if command -v hexa >/dev/null 2>&1; then
   step "hexa analyze . --grade A"
   hexa analyze . --grade A

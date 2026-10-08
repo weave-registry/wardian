@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Package format · Wardian docs</title>
+<meta name="description" content="Wardian documentation: Package format">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: light dark; --bg: #f6f5ef; --panel: #fbfaf6; --ink: #183e32; --text: #23302a; --muted: #5f6b62; --line: #d8ddd2; --code: #ecefe4; --accent: #2f6b50; --mark: #dce8a5; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111814; --panel: #16201b; --ink: #e3efd9; --text: #d7ddd3; --muted: #9aa79c; --line: #2a3a31; --code: #1d2a23; --accent: #a9d28a; --mark: #3c4d1f; } }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 5rem; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid #788d35; outline-offset: 2px; }
+  .skip { position: absolute; left: .5rem; top: -4rem; background: var(--panel); padding: .5rem; z-index: 5; }
+  .skip:focus { top: .5rem; }
+  header { display: flex; gap: 1rem; align-items: center; padding: .65rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 3; }
+  header .brand { display: flex; align-items: center; gap: .5rem; color: var(--ink); font-weight: 650; font-size: 1.15rem; letter-spacing: -.02em; text-decoration: none; white-space: nowrap; }
+  header .brand img { width: 26px; height: 26px; }
+  header .brand span { color: var(--muted); font-weight: 400; }
+  .search { position: relative; flex: 1; max-width: 26rem; margin-left: auto; }
+  .search input { width: 100%; font: inherit; font-size: .92rem; padding: .4rem .7rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+  .search ol { position: absolute; top: 2.4rem; left: 0; right: 0; list-style: none; margin: 0; padding: .3rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 30px rgb(0 0 0 / .15); max-height: 70vh; overflow: auto; }
+  .search ol[hidden] { display: none; }
+  .search li a { display: block; padding: .4rem .6rem; border-radius: 5px; color: var(--text); text-decoration: none; font-size: .9rem; }
+  .search li a small { display: block; color: var(--muted); }
+  .search li a[aria-selected="true"], .search li a:hover { background: var(--mark); }
+  header .links { display: flex; gap: 1rem; white-space: nowrap; }
+  header .links a { color: var(--muted); text-decoration: none; font-size: .92rem; }
+  header .links a:hover { color: var(--ink); }
+  .wrap { display: grid; grid-template-columns: 16rem minmax(0, 48rem); gap: 3rem; max-width: 72rem; margin: 0 auto; padding: 1.5rem 1.25rem 5rem; }
+  nav.side { position: sticky; top: 4.2rem; align-self: start; max-height: calc(100vh - 5rem); overflow: auto; font-size: .9rem; padding-bottom: 2rem; }
+  nav.side summary { display: none; }
+  nav.side h4 { margin: 1.1rem 0 .3rem; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  nav.side ul { list-style: none; margin: 0; padding: 0; }
+  nav.side a { display: block; padding: .18rem .5rem; color: var(--text); text-decoration: none; border-radius: 5px; }
+  nav.side a:hover { color: var(--accent); }
+  nav.side a[aria-current] { background: var(--mark); color: var(--ink); font-weight: 600; }
+  nav.side .toc { margin: .2rem 0 .4rem .6rem; border-left: 1px solid var(--line); }
+  nav.side .toc a { color: var(--muted); font-size: .84rem; padding: .1rem .6rem; }
+  main { min-width: 0; }
+  main h1 { font: 600 2.3rem/1.15 Georgia, "Times New Roman", serif; color: var(--ink); margin: .6rem 0 1.2rem; letter-spacing: -.01em; }
+  main h2 { font-size: 1.45rem; color: var(--ink); margin-top: 2.6rem; padding-top: .6rem; border-top: 1px solid var(--line); }
+  main h3 { font-size: 1.12rem; color: var(--ink); margin-top: 1.8rem; }
+  .anchor { margin-left: .4rem; color: var(--line); text-decoration: none; font-weight: 400; }
+  h2:hover .anchor, h3:hover .anchor { color: var(--accent); }
+  code { font: .88em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); padding: .1em .3em; border-radius: 4px; }
+  pre { background: var(--code); padding: .9rem 1rem; border-radius: 8px; overflow-x: auto; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  blockquote { margin: 1.2rem 0; padding: .6rem 1rem; border-left: 4px solid var(--mark); background: var(--panel); border-radius: 0 8px 8px 0; }
+  blockquote p { margin: .3rem 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93rem; display: block; overflow-x: auto; }
+  th, td { border-bottom: 1px solid var(--line); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+  .edit { margin-top: 3rem; font-size: .88rem; color: var(--muted); }
+  .pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1rem; }
+  .pager a { flex: 1; max-width: 48%; padding: .7rem 1rem; border: 1px solid var(--line); border-radius: 8px; text-decoration: none; color: var(--ink); background: var(--panel); }
+  .pager a:hover { border-color: var(--accent); }
+  .pager a small { display: block; color: var(--muted); font-size: .78rem; }
+  .pager .next { text-align: right; margin-left: auto; }
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: .5rem; }
+    nav.side { position: static; max-height: none; border-bottom: 1px solid var(--line); padding-bottom: .5rem; margin-bottom: 1rem; }
+    nav.side summary { display: list-item; cursor: pointer; padding: .5rem 0; color: var(--ink); font-weight: 600; }
+    header .brand span, header .links a:not(:first-child) { display: none; }
+  }
+</style>
+<a class="skip" href="#content">Skip to content</a>
+<header>
+  <a class="brand" href="/docs/"><img src="/logo.svg" alt="">Wardian <span>docs</span></a>
+  <div class="search" role="search">
+    <input id="q" type="search" placeholder="Search the docs  ( / )" aria-label="Search the docs" autocomplete="off" aria-controls="hits" aria-expanded="false">
+    <ol id="hits" role="listbox" hidden></ol>
+  </div>
+  <div class="links"><a href="/">Home</a><a href="https://github.com/weave-registry/wardian">GitHub</a></div>
+</header>
+<div class="wrap">
+<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec" aria-current="page">Package format</a><ul class="toc"><li><a href="#1-terms">1. Terms</a></li><li><a href="#2-versions">2. Versions</a></li><li><a href="#3-package-layout">3. Package layout</a></li><li><a href="#4-app-json">4. app.json</a></li><li><a href="#5-module-apps">5. Module apps</a></li><li><a href="#6-suites">6. Suites</a></li><li><a href="#7-distribution">7. Distribution</a></li><li><a href="#8-starting-and-checking-a-package">8. Starting and checking a package</a></li><li><a href="#9-not-in-format-2">9. Not in format 2</a></li></ul></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
+<main id="content">
+<h1 id="wardian-package-format">Wardian package format</h1>
+<p>Format version: <strong>2</strong> (format 1 packages run unchanged; see 2.5)
+Applies to: Wardian 0.4 and later (format 1: Wardian 0.3 and later)</p>
+<p>This document says what a Wardian package is, what a host guarantees to it, and what a package
+must not do. The words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.</p>
+<p><code>wardian check &lt;package&gt;</code> tests a package against this document. The JSON Schemas in <code>schemas/</code>
+describe <code>app.json</code> and <code>suite.json</code> for editors.</p>
+<hr />
+<h2 id="1-terms">1. Terms<a class="anchor" href="#1-terms" aria-label="Link to this section">#</a></h2>
+<table><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><strong>package</strong></td><td>One folder that a host runs as one entry in its app list.</td></tr>
+<tr><td><strong>module app</strong></td><td>A package whose main part is a WebAssembly module, <code>app.wasm</code>.</td></tr>
+<tr><td><strong>page</strong></td><td>An HTML page inside a package that the host shows as the app's interface.</td></tr>
+<tr><td><strong>suite</strong></td><td>A package that holds several <strong>suite apps</strong> described by a <code>suite.json</code>.</td></tr>
+<tr><td><strong>suite app</strong></td><td>One sealed part of a suite: an <code>app.js</code>, and optionally a <code>view.html</code>.</td></tr>
+<tr><td><strong>host</strong></td><td>The Wardian server and its main page.</td></tr>
+<tr><td><strong>kernel</strong></td><td>The host page that runs a suite and passes messages between its apps.</td></tr>
+<tr><td><strong>frame</strong></td><td>The sandboxed browser frame one page or one suite app runs in.</td></tr>
+</tbody></table>
+<h2 id="2-versions">2. Versions<a class="anchor" href="#2-versions" aria-label="Link to this section">#</a></h2>
+<p>2.1. <code>app.json</code> and <code>suite.json</code> MAY have a <code>"format"</code> field, a whole number from 1. A file
+without it is format 1.</p>
+<p>2.2. A host MUST NOT run a package whose format is newer than the host supports. It MUST say
+why in the app list instead.</p>
+<p>2.3. Within one format version, changes are additive only. A host MUST ignore fields it does not
+know. <code>wardian check</code> reports them as warnings, because they are often typos. One exception: an
+unknown key inside <code>channels</code> is an error, because a misspelt <code>send</code> or <code>receive</code> would silently
+leave the package with no channel.</p>
+<p>2.4. A package SHOULD state <code>"format": 1</code> once it depends on anything in this document.</p>
+<p>2.5. <strong>Format 2</strong> adds one thing: channels between packages (<code>channels</code>, section 6.9). A package
+that declares <code>channels</code> MUST state <code>"format": 2</code>. Then a format-1 host refuses it with "Update
+Wardian" (2.2) instead of failing when the app runs. Everything else is unchanged, so a format-1
+package runs on a format-2 host as before.</p>
+<h2 id="3-package-layout">3. Package layout<a class="anchor" href="#3-package-layout" aria-label="Link to this section">#</a></h2>
+<p>3.1. A package is one folder. The folder's name is the package's name.</p>
+<p>3.2. A package MUST contain <code>app.wasm</code> or <code>suite.json</code> at its top. If it contains <code>suite.json</code>,
+it is a suite, and the host ignores <code>app.wasm</code> and any page.</p>
+<p>3.3. <strong>Names.</strong> Every folder and file name in a package MUST match <code>[A-Za-z0-9_-][A-Za-z0-9_.-]*</code>:
+letters, digits, <code>-</code>, <code>_</code> and <code>.</code>, not starting with <code>.</code>. The host does not serve other names.</p>
+<p>3.4. <strong>Never served:</strong> hidden files, and anything inside a folder named <code>node_modules</code> or <code>target</code>.</p>
+<p>3.5. <strong>Limits:</strong></p>
+<table><thead><tr><th>Limit</th><th>Value</th></tr></thead><tbody>
+<tr><td>Folder depth below the package top</td><td>8</td></tr>
+<tr><td>Files in one package</td><td>2,000</td></tr>
+<tr><td>One file</td><td>64 MB</td></tr>
+<tr><td>All files, unpacked</td><td>256 MB</td></tr>
+<tr><td>A zip, uploaded or fetched by link</td><td>100 MB</td></tr>
+<tr><td>A zip, fetched from Google Drive</td><td>64 MB</td></tr>
+<tr><td>Entries in a zip</td><td>10,000</td></tr>
+</tbody></table>
+<h2 id="4-app-json">4. <code>app.json</code><a class="anchor" href="#4-app-json" aria-label="Link to this section">#</a></h2>
+<p><code>app.json</code> is optional, at the top of the package.</p>
+<pre><code class="language-json">{
+  "format": 1,
+  "title": "USL analyzer",
+  "description": "Fits the Universal Scalability Law to load-test results.",
+  "page": "demo/index.html"
+}
+</code></pre>
+<table><thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>format</code></td><td>integer</td><td>See section 2.</td></tr>
+<tr><td><code>title</code></td><td>string</td><td>The name shown in the app list. Default: the folder name.</td></tr>
+<tr><td><code>description</code></td><td>string</td><td>Shown under the title.</td></tr>
+<tr><td><code>page</code></td><td>string</td><td>Path of the app's page in the package. See 5.3.</td></tr>
+<tr><td><code>channels</code></td><td>object</td><td>Format 2. Channels the page may use to talk to other packages: <code>{ "send": [...], "receive": [...] }</code>. See 6.9.</td></tr>
+</tbody></table>
+<h2 id="5-module-apps">5. Module apps<a class="anchor" href="#5-module-apps" aria-label="Link to this section">#</a></h2>
+<p>5.1. <code>app.wasm</code> MUST be a WebAssembly binary, version 1 (it starts with <code>\0asm</code> and <code>01 00 00 00</code>).</p>
+<p>5.2. <strong>Without a page</strong>, the host shows each exported function with one input per parameter.
+It calls the function with JavaScript numbers. If the call fails because a parameter is <code>i64</code>,
+it calls it again with <code>BigInt</code>s. It shows other exports (memory, globals) by name.</p>
+<p>The host provides one import, <code>env.log(value)</code>, which writes to the host's output log. The
+host replaces every other <em>function</em> import with a stub that logs the call and returns 0, so
+the module still loads. A module that imports a memory, table or global does not load
+without a page.</p>
+<p>5.3. <strong>With a page</strong>, the host shows the page instead, in a frame. The page is <code>page</code> from
+<code>app.json</code>, or else the first of these that exists: <code>index.html</code>, <code>demo/index.html</code>,
+<code>www/index.html</code>, <code>web/index.html</code>.</p>
+<p>5.4. A page loads its own files with relative URLs (<code>../pkg/app.js</code>, <code>./app.wasm</code>). The host
+serves the package's folder tree as it is, at <code>/apps/&lt;name&gt;/&lt;path&gt;</code>. A URL that ends in <code>/</code>
+serves <code>index.html</code> from that folder.</p>
+<p>5.5. <strong>Content types.</strong> The host serves:</p>
+<table><thead><tr><th>Extension</th><th>Content type</th></tr></thead><tbody>
+<tr><td><code>.wasm</code></td><td><code>application/wasm</code></td></tr>
+<tr><td><code>.js</code>, <code>.mjs</code></td><td><code>text/javascript</code></td></tr>
+<tr><td><code>.html</code></td><td><code>text/html; charset=utf-8</code></td></tr>
+<tr><td><code>.css</code></td><td><code>text/css</code></td></tr>
+<tr><td><code>.json</code></td><td><code>application/json</code></td></tr>
+<tr><td><code>.svg</code></td><td><code>image/svg+xml</code></td></tr>
+<tr><td><code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.gif</code>, <code>.webp</code>, <code>.ico</code></td><td>the matching image type</td></tr>
+<tr><td><code>.woff2</code></td><td><code>font/woff2</code></td></tr>
+<tr><td><code>.txt</code>, <code>.md</code>, <code>.ts</code>, <code>.rs</code>, <code>.toml</code>, <code>.sh</code></td><td><code>text/plain; charset=utf-8</code></td></tr>
+<tr><td>anything else</td><td><code>application/octet-stream</code></td></tr>
+</tbody></table>
+<p>Every file is sent with <code>X-Content-Type-Options: nosniff</code> and
+<code>Access-Control-Allow-Origin: *</code>.</p>
+<p>5.6. <strong>Pages run sandboxed.</strong> Every HTML and SVG file of a package is sent with a
+<code>Content-Security-Policy</code> that starts with
+<code>sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads</code> and allows requests
+only to the package's own folder (<code>/apps/&lt;name&gt;/</code>), the host's page library (<code>/sdk/</code>), Google Fonts,
+and <code>data:</code> and <code>blob:</code> URLs (ADR-2610081003). The browser gives the page a unique, throwaway
+origin. So a page:</p>
+<ul>
+<li>
+<p>CAN run scripts, use forms, open dialogs, start downloads, open files the user picks, and load
+files from its own package and <code>/sdk/</code>;</p>
+</li>
+<li>
+<p>CANNOT request any other address (the internet, the host's API, other packages), read the host's
+pages or settings, use cookies, <code>localStorage</code>, <code>sessionStorage</code> or IndexedDB, or keep any data
+between visits.</p>
+<p>A page MUST ship every file it loads. A page that needs to keep data SHOULD let the user
+download it and load it again. A policy cannot close three routes, for pages and suite apps
+alike: a pop-up after a click, navigating the frame away, and WebRTC. A host MUST NOT claim
+otherwise; Wardian's <code>tests/run-page-sandbox-e2e.sh</code> proves both the limits and these routes.</p>
+</li>
+</ul>
+<h2 id="6-suites">6. Suites<a class="anchor" href="#6-suites" aria-label="Link to this section">#</a></h2>
+<p>A suite is several small apps that share one screen. Each suite app runs in its own frame, and
+the apps talk only through the kernel.</p>
+<p>One job per part (ADR-2610080900): inputs, each view of the result and each export SHOULD be parts
+of their own, inputs in <code>aside</code> and results in <code>main</code>, so viewers can arrange them (6.11). Code that
+several parts need goes in a shared file listed in <code>scripts</code>, not copied. <code>wardian check</code> warns about
+a part whose <code>app.js</code> is over 400 lines, and about a suite whose only panel has more than one <code>&lt;h2&gt;</code>.</p>
+<h3 id="6-1-layout">6.1. Layout<a class="anchor" href="#6-1-layout" aria-label="Link to this section">#</a></h3>
+<pre><code>my-suite/
+  suite.json
+  apps/&lt;name&gt;/app.js       each suite app's code (required)
+  apps/&lt;name&gt;/view.html    its markup (if it has a slot)
+  ...                      shared files named in suite.json
+</code></pre>
+<p>A host MAY let each viewer rearrange a suite's panels for themselves: change their order, move
+them between the two columns, hide them, or use one column. Wardian calls this <strong>Arrange</strong> and keeps
+the layout for the viewer, not in the package. A hidden panel's app still runs. So an app MUST NOT depend on
+where its panel sits, or on being visible.</p>
+<h3 id="6-2-suite-json">6.2. <code>suite.json</code><a class="anchor" href="#6-2-suite-json" aria-label="Link to this section">#</a></h3>
+<pre><code class="language-json">{
+  "format": 1,
+  "title": "USL scalability lab",
+  "styles": ["https://fonts.googleapis.com/css2?family=...", "core/style.css"],
+  "scripts": ["core/lib.js"],
+  "header": "core/header.html",
+  "columns": "minmax(280px, 340px) minmax(0, 1fr)",
+  "apps": [
+    { "name": "engine", "scripts": ["core/engine.js"],
+      "emits": { "engine:status": { "retain": true } },
+      "provides": ["analyze", "curve"], "caps": ["worker", "source"] },
+    { "name": "inputs", "slot": "aside", "wrap": "&lt;aside class=\"inputs\"&gt;",
+      "emits": { "data:changed": { "retain": true } }, "caps": ["storage"] },
+    { "name": "chart", "slot": "main", "wrap": "&lt;section id=\"chartSec\"&gt;",
+      "listens": ["analysis:ready"], "needs": ["engine.curve"] }
+  ]
+}
+</code></pre>
+<table><thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>format</code>, <code>title</code>, <code>description</code></td><td></td><td>As in <code>app.json</code>.</td></tr>
+<tr><td><code>styles</code></td><td>list</td><td>Stylesheets for every frame, in order. Each is a package path (inlined) or a URL starting <code>https://fonts.googleapis.com/</code>. No other outside URL is allowed.</td></tr>
+<tr><td><code>scripts</code></td><td>list of paths</td><td>Scripts inlined into every suite app's frame, before the app's code.</td></tr>
+<tr><td><code>header</code></td><td>path</td><td>HTML shown across the top, in its own frame.</td></tr>
+<tr><td><code>columns</code></td><td>string</td><td>CSS <code>grid-template-columns</code> for the two columns. Default <code>minmax(280px, 340px) minmax(0, 1fr)</code>.</td></tr>
+<tr><td><code>apps</code></td><td>list</td><td>The suite apps, below. At least one.</td></tr>
+</tbody></table>
+<p>Each entry in <code>apps</code>:</p>
+<table><thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>name</code></td><td>name</td><td>Required. Unique in the suite.</td></tr>
+<tr><td><code>slot</code></td><td><code>"aside"</code> or <code>"main"</code></td><td><code>aside</code>: the left column, sticky, scrolls alone. <code>main</code>: the right column, in list order. Absent: the app has no view and runs out of sight.</td></tr>
+<tr><td><code>wrap</code></td><td>string</td><td>One opening tag that the view sits in, e.g. <code>&lt;section id="chartSec"&gt;</code>. The host adds <code>data-app="&lt;name&gt;"</code>. Default <code>&lt;div&gt;</code>.</td></tr>
+<tr><td><code>dir</code></td><td>path</td><td>Folder with <code>app.js</code> and <code>view.html</code>. Default <code>apps/&lt;name&gt;</code>.</td></tr>
+<tr><td><code>scripts</code></td><td>list of paths</td><td>Extra scripts for this app only, inlined after the suite's <code>scripts</code>.</td></tr>
+<tr><td><code>emits</code></td><td>object</td><td>Topics the app may emit: <code>{ "topic": {} }</code>, or <code>{ "topic": { "retain": true } }</code>.</td></tr>
+<tr><td><code>listens</code></td><td>list</td><td>Topics the app may listen to.</td></tr>
+<tr><td><code>provides</code></td><td>list</td><td>Methods other apps may call on this app.</td></tr>
+<tr><td><code>needs</code></td><td>list</td><td>Methods this app may call, as <code>"app.method"</code>.</td></tr>
+<tr><td><code>caps</code></td><td>list</td><td>Capabilities, from 6.6.</td></tr>
+<tr><td><code>channels</code></td><td>object</td><td>Format 2. Channels to other packages: <code>{ "send": [...], "receive": [...] }</code>. See 6.9.</td></tr>
+</tbody></table>
+<p><code>emits</code>, <code>listens</code>, <code>provides</code>, <code>needs</code>, <code>caps</code> and <code>channels</code> together are the app's <strong>contract</strong>.</p>
+<h3 id="6-3-the-frame">6.3. The frame<a class="anchor" href="#6-3-the-frame" aria-label="Link to this section">#</a></h3>
+<p>The host builds each suite app's frame as one document, in this order:</p>
+<ol>
+<li>
+<p>every entry of <code>styles</code>: a <code>&lt;link&gt;</code> for a font URL, else the file inlined in <code>&lt;style&gt;</code>;</p>
+</li>
+<li>
+<p>the view: <code>view.html</code> inside <code>wrap</code>. In the <code>main</code> slot, the host wraps it in <code>&lt;main&gt;</code>, and
+for every app after the first, it adds a hidden element before it, so CSS rules like
+<code>main section:first-child</code> behave as they would on one page;</p>
+</li>
+<li>
+<p>every entry of <code>scripts</code>, then the app's <code>scripts</code>, each inlined as
+<code>&lt;script id="&lt;file stem&gt;-src"&gt;</code> (so <code>core/lib.js</code> becomes <code>lib-src</code>);</p>
+</li>
+<li>
+<p>the kernel shim, which defines <code>Kernel</code>;</p>
+</li>
+<li>
+<p><code>app.js</code>, then <code>Kernel.start()</code>.</p>
+<p>Inlined scripts MUST NOT contain <code>&lt;/script</code>, and inlined styles MUST NOT contain <code>&lt;/style</code>.</p>
+</li>
+</ol>
+<p>The frame runs under this policy, so the browser blocks every network request it could make:</p>
+<pre><code>sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads;
+default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob:; worker-src blob:;
+style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;
+img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'
+</code></pre>
+<p>A suite app gets everything it needs from the kernel or from its own frame. It MAY compile
+WebAssembly (<code>'wasm-unsafe-eval'</code> allows that, not JavaScript <code>eval</code>), and it loads the bytes
+with <code>ctx.asset</code>. Images MUST be inlined as <code>data:</code> URLs or made as <code>blob:</code> URLs.</p>
+<h3 id="6-4-app-js">6.4. <code>app.js</code><a class="anchor" href="#6-4-app-js" aria-label="Link to this section">#</a></h3>
+<p><code>app.js</code> MUST call <code>Kernel.register</code> exactly once:</p>
+<pre><code class="language-js">Kernel.register({
+  name: 'chart',
+  listens: ['analysis:ready'],
+  needs: ['engine.curve'],
+  init(ctx) { /* ... */ }
+});
+</code></pre>
+<p>The contract given to <code>register</code> MUST equal the contract in <code>suite.json</code>. Order of list items
+does not matter. If they differ, the kernel reports a fault and does not start the app. <strong>The
+kernel enforces the contract in <code>suite.json</code>, never the one in <code>app.js</code>.</strong> The copy in
+<code>app.js</code> exists so the same code also runs in a single-page build.</p>
+<p><code>register</code> MAY also take <code>snapshot(ctx)</code>, for <strong>Save as web page</strong> (7.4). It returns HTML text or
+an element, or a promise of either, and the saved page shows that inside the app's root (the
+element made from <code>wrap</code>) in place of what the frame shows. An element is copied the same way as
+the frame (below). Use it to put more in the file than fits on screen, such as every row of a
+table, and say so in the text when you cut. Without it, or when it returns <code>null</code>, throws or
+rejects, the host copies what the frame shows: field values written in, the chosen option marked
+<code>selected</code>, ticked boxes <code>checked</code>, each canvas and inline SVG as a <code>data:</code> image, and <code>blob:</code>
+images read into <code>data:</code> URLs. Hidden panels are left out. A part that does not answer within 10
+seconds is shown as "this part could not be saved". <code>snapshot</code> is not part of the contract.</p>
+<pre><code class="language-js">Kernel.register({
+  name: 'rows',
+  listens: ['table:ready'],
+  init(ctx) { /* ... */ },
+  snapshot(ctx) { return '&lt;table&gt;…every row…&lt;/table&gt;&lt;p&gt;All 2,410 rows.&lt;/p&gt;'; }
+});
+</code></pre>
+<h3 id="6-5-ctx">6.5. <code>ctx</code><a class="anchor" href="#6-5-ctx" aria-label="Link to this section">#</a></h3>
+<p><code>init(ctx)</code> receives a frozen object with these members:</p>
+<table><thead><tr><th>Member</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>name</code></td><td>The app's name.</td></tr>
+<tr><td><code>root</code></td><td>The element made from <code>wrap</code>.</td></tr>
+<tr><td><code>$(sel)</code>, <code>$$(sel)</code></td><td><code>querySelector</code> and <code>querySelectorAll</code> inside <code>root</code> (<code>$$</code> returns an array).</td></tr>
+<tr><td><code>el(tag)</code>, <code>text(s)</code></td><td>Create an element or a text node.</td></tr>
+<tr><td><code>emit(topic, payload)</code></td><td>Send <code>payload</code> to every app that listens to <code>topic</code>. Throws if <code>topic</code> is not in <code>emits</code>.</td></tr>
+<tr><td><code>on(topic, fn)</code></td><td>Call <code>fn(payload)</code> for each message on <code>topic</code>. Throws if <code>topic</code> is not in <code>listens</code>. If the topic is retained, <code>fn</code> first gets the latest payload.</td></tr>
+<tr><td><code>provide({ method: fn })</code></td><td>Make methods callable by other apps. <code>fn(args)</code> may return a value or a promise. Throws if a method is not in <code>provides</code>.</td></tr>
+<tr><td><code>call(app, method, args)</code></td><td>A promise of the other app's result. Rejects if <code>"app.method"</code> is not in <code>needs</code>, if the other app does not provide it, if it does not start within 15 seconds, or if the method throws.</td></tr>
+<tr><td><code>store.get(key)</code>, <code>store.set(key, value)</code></td><td>Needs <code>storage</code>. <code>get</code> is synchronous and returns <code>null</code> for a missing key. Values MUST be JSON-compatible.</td></tr>
+<tr><td><code>asset(path)</code></td><td>Needs <code>asset</code>. A promise of an <code>ArrayBuffer</code> with the bytes of <code>path</code>, a file in this suite's package, e.g. <code>ctx.asset('text.wasm')</code>.</td></tr>
+<tr><td><code>cap(name)</code></td><td>Needs <code>claude:&lt;name&gt;</code>. A promise of the capability, or <code>null</code> if this host cannot provide it.</td></tr>
+<tr><td><code>channel(name)</code></td><td>Format 2. <code>{ send(data), on(fn) }</code> for a channel to other packages. See 6.9.</td></tr>
+<tr><td><code>observe(el, fn)</code></td><td>Call <code>fn</code> when <code>el</code> changes size.</td></tr>
+<tr><td><code>source(id)</code></td><td>Needs <code>source</code>. The text of an inlined script, e.g. <code>ctx.source('lib-src')</code>.</td></tr>
+<tr><td><code>spawn(code)</code></td><td>Needs <code>worker</code>. A Web Worker that runs <code>code</code>, or <code>null</code> if workers are not available.</td></tr>
+</tbody></table>
+<p><strong>Every payload, argument and result is copied</strong> (structured clone). No object is ever shared
+between apps. A value that cannot be copied, such as a function, makes <code>emit</code> or <code>call</code> throw.</p>
+<h3 id="6-6-capabilities">6.6. Capabilities<a class="anchor" href="#6-6-capabilities" aria-label="Link to this section">#</a></h3>
+<table><thead><tr><th>Capability</th><th>Grants</th><th>Provided by</th></tr></thead><tbody>
+<tr><td><code>storage</code></td><td><code>ctx.store</code>. The host keeps the data per suite and per app, in its data folder (ADR-2610071055), with a copy in the browser for a viewer the host does not let write.</td><td>kernel</td></tr>
+<tr><td><code>asset</code></td><td><code>ctx.asset</code>: read files of this suite's own package, such as <code>.wasm</code> modules or data.</td><td>kernel</td></tr>
+<tr><td><code>worker</code></td><td><code>ctx.spawn</code></td><td>the frame</td></tr>
+<tr><td><code>source</code></td><td><code>ctx.source</code></td><td>the frame</td></tr>
+<tr><td><code>claude:downloads</code></td><td><code>ctx.cap('downloads')</code> → <code>{ save({ filename, data }) }</code>. <code>filename</code> matches <code>[A-Za-z0-9_. -]{1,120}</code>. <code>data</code> is a string, <code>Blob</code>, <code>ArrayBuffer</code> or typed array. Resolves to <code>{ status: 'saved' }</code>.</td><td>kernel</td></tr>
+<tr><td><code>claude:sample</code></td><td><code>ctx.cap('sample')</code> → a function <code>sample(prompt, {signal, onText, modelTier})</code> resolving to <code>{ text, truncated }</code>, and <code>sample.json(prompt, opts)</code> resolving to parsed JSON. Errors carry <code>e.code</code> (<code>not_granted</code>, <code>rate_limited</code>, <code>refused</code>, <code>invalid_json</code>, <code>prompt_too_large</code>, <code>cancelled</code>, <code>error</code>). Wardian answers through the Claude provider set up in Settings, the Anthropic API or Amazon Bedrock, and resolves to <code>null</code> when there is none, so apps MUST handle <code>null</code>. The user allows each package once, as for <code>splunk</code>.</td><td>host server</td></tr>
+<tr><td><code>splunk</code></td><td><code>ctx.cap('splunk')</code> → <code>{ status(), search({ search, earliest?, latest? }), jobs(), wait(id), cancel(id) }</code>. <code>status()</code> resolves to <code>{ ready }</code>. <code>search</code> resolves to <code>{ fields, rows, truncated, messages, job }</code>, at most 10 000 rows. The server runs the search with its own Splunk account; the app never sees it. <code>jobs()</code> resolves to this package's background jobs of the last hour, newest first: <code>{ id, app, kind, label, state, progress, started, ended, elapsed, error }</code>, <code>kind</code> one of <code>splunk.search</code>, <code>splunk.into</code>, <code>ai.sample</code>, <code>state</code> one of <code>running</code>, <code>done</code>, <code>failed</code>, <code>cancelled</code>, <code>progress</code> the rows loaded so far or <code>null</code>. <code>wait(id)</code> resolves to a job's result when it is done, as the call that started it would have; <code>cancel(id)</code> stops it (6.6.1).</td><td>host server</td></tr>
+<tr><td><code>db</code></td><td><code>ctx.cap('db')</code> → the package's own SQLite database, kept by the host (ADR-2610071219): <code>query({ sql, params })</code> → <code>{ columns, rows, changed, truncated }</code> for one statement, at most 1 000 rows; <code>page({ table, offset, limit, orderBy, desc, where, params })</code> → <code>{ columns, rows, total, offset }</code>, <code>limit</code> at most 1 000, <code>where</code> a condition with <code>?</code> (or <code>?N</code>) placeholders, read-only; <code>insertRows({ table, columns, rows, create, replace })</code>; <code>tables()</code>; <code>readPage({ package, ...page })</code> reads another package's table, read-only, after the user allows it once (asked as <code>tables.&lt;package&gt;</code>); <code>searchInto({ search, earliest, latest, table })</code> loads a Splunk search into a table, up to 1 000 000 rows (needs <code>splunk</code> too). The host refuses ATTACH, DETACH, loading extensions and pragmas that set anything; a database may hold 1 GB and a statement may run 10 seconds.</td><td>host server</td></tr>
+</tbody></table>
+<h4 id="6-6-1-long-calls-run-as-background-jobs">6.6.1. Long calls run as background jobs</h4>
+<p>A Splunk search, a load into a table (<code>searchInto</code>) and a <code>claude:sample</code> request can take minutes
+(ADR-2610072118). The host MUST NOT hold one HTTP request open for them: the kernel asks the server
+to start a job, which answers with its id at once, then asks how the job is going with short
+requests (the first after 250 ms, then every second for the first 10 seconds, then every two) and settles the app's promise with the result.
+Apps see the same promises as before; the result also carries the job's id as <code>job</code>. A job keeps
+running when its app is closed, so an app MAY look for its own job with <code>jobs()</code> when it opens and
+pick it up with <code>wait(id)</code>. A job is shown only to the package that started it (and to the host's
+own pages); the server runs the same permission checks before it starts one. Finished jobs are
+kept for an hour, at most 50 per package, and a restart of the host forgets them. Cancelling a
+Splunk job also cancels the search on the Splunk server; rows already loaded into a table stay.</p>
+<p>A <code>splunk</code> search MUST NOT run until the user allows the package, the same way as a channel
+(6.9), with the answer kept under mode <code>use</code>. The server MUST check that answer, and that the
+calling app lists <code>splunk</code> in <code>suite.json</code>, on every search. A host without Splunk resolves
+<code>ctx.cap('splunk')</code> to <code>null</code>, so apps MUST handle <code>null</code>.</p>
+<p>A host MUST NOT grant a capability that the app's contract in <code>suite.json</code> does not list.</p>
+<h3 id="6-7-kernel-guarantees">6.7. Kernel guarantees<a class="anchor" href="#6-7-kernel-guarantees" aria-label="Link to this section">#</a></h3>
+<ol>
+<li>A suite app can reach nothing outside its frame except through the kernel.</li>
+<li>The kernel delivers a message only to apps whose <code>listens</code> contain its topic.</li>
+<li>The kernel replays the latest payload of a retained topic to every app that starts listening.</li>
+<li>The kernel forwards a call only if the caller <code>needs</code> it and the callee <code>provides</code> it. Only
+the called app can answer it.</li>
+<li>A call to an app that has not finished starting waits for up to 15 seconds.</li>
+<li>Any refusal is recorded as a fault. Faults show on the suite page and in <code>Kernel.faults()</code>.
+<code>Kernel.trace()</code> returns the last 400 events. <code>Kernel.apps()</code> returns every contract.</li>
+</ol>
+<h3 id="6-8-frame-kernel-messages-informative">6.8. Frame–kernel messages (informative)<a class="anchor" href="#6-8-frame-kernel-messages-informative" aria-label="Link to this section">#</a></h3>
+<p>The shim and the kernel exchange these <code>postMessage</code> objects. Apps do not use them directly.
+They are listed for anyone who writes another host or shim. The kernel identifies the sender
+by its frame, never by the message's content.</p>
+<table><thead><tr><th>From frame</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>{k:'hello', app}</code></td><td>The frame is ready.</td></tr>
+<tr><td><code>{k:'emit', topic, payload}</code></td><td><code>ctx.emit</code></td></tr>
+<tr><td><code>{k:'on', topic}</code></td><td><code>ctx.on</code></td></tr>
+<tr><td><code>{k:'provide', methods}</code></td><td><code>ctx.provide</code></td></tr>
+<tr><td><code>{k:'call', id, app, method, args}</code></td><td><code>ctx.call</code></td></tr>
+<tr><td><code>{k:'result', id, ok, value | error}</code></td><td>The answer to an <code>invoke</code>.</td></tr>
+<tr><td><code>{k:'store', key, value}</code></td><td><code>ctx.store.set</code></td></tr>
+<tr><td><code>{k:'asset', id, path}</code></td><td><code>ctx.asset</code></td></tr>
+<tr><td><code>{k:'cap', id, name}</code>, <code>{k:'capop', id, name, op, args}</code></td><td><code>ctx.cap</code> and a capability's methods.</td></tr>
+<tr><td><code>{k:'size', h, bg}</code></td><td>The frame's content height and background color.</td></tr>
+<tr><td><code>{k:'chsend', id, channel, data}</code>, <code>{k:'chon', id, channel}</code></td><td><code>ctx.channel(name).send</code> and <code>.on</code>.</td></tr>
+<tr><td><code>{k:'fault', message}</code></td><td>An error inside the app.</td></tr>
+<tr><td><code>{k:'snapshot', id, html, css | error}</code></td><td>The answer to <code>snapshot</code>: the frame's rendering (7.4).</td></tr>
+</tbody></table>
+<table><thead><tr><th>From kernel</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>{k:'boot', contract, store}</code></td><td>The contract from <code>suite.json</code>, and the stored data.</td></tr>
+<tr><td><code>{k:'msg', topic, payload}</code></td><td>A message for <code>ctx.on</code>.</td></tr>
+<tr><td><code>{k:'invoke', id, method, args}</code></td><td>Another app calls a provided method.</td></tr>
+<tr><td><code>{k:'reply', id, ok, value | error}</code></td><td>The answer to <code>call</code>, <code>asset</code>, <code>cap</code>, <code>capop</code>, <code>chsend</code> or <code>chon</code>.</td></tr>
+<tr><td><code>{k:'chmsg', channel, data, from, at}</code></td><td>A message on a channel, for <code>ctx.channel(name).on</code>.</td></tr>
+<tr><td><code>{k:'snapshot', id, css}</code></td><td>Save as web page asks for a rendering; <code>css</code> asks for the frame's styles too.</td></tr>
+</tbody></table>
+<h3 id="6-9-channels-between-packages">6.9. Channels between packages<a class="anchor" href="#6-9-channels-between-packages" aria-label="Link to this section">#</a></h3>
+<p>Topics (6.2) connect the apps of one suite. <strong>Channels</strong> connect separate packages: a page app
+and a suite, or two suites, each installed on its own. Because that crosses the line between
+packages, the user decides, the way a phone asks before an app uses the camera.</p>
+<ol>
+<li><strong>Declare.</strong> A package lists its channels: in <code>app.json</code> for a page app, in each <code>suite.json</code>
+entry for a suite app. <code>send</code> lists the channels it may send on; <code>receive</code> the channels it may
+read. A channel name is 1–64 characters: lowercase letters, digits, <code>.</code>, <code>-</code>, <code>_</code>, starting with
+a letter or digit. The package MUST state <code>"format": 2</code>.</li>
+<li><strong>Ask.</strong> The first time a package sends or receives on a channel, the host asks the user:
+<em>"loan-planner wants to send messages on the channel budget."</em> The answer, allow or don't allow,
+is kept per package, channel and direction. The host MUST NOT ask about, or allow, a channel the
+package does not declare. Closing the question without an answer refuses this use only.</li>
+<li><strong>Revoke.</strong> The host lists every answer, and the user can take one back. The package is then
+asked again.</li>
+<li><strong>Deliver.</strong> The host sends each message to every package that is allowed to receive on that
+channel, in every Wardian tab of this browser, except the sender. It stamps each message with
+the sending package's name, so a package cannot pretend to be another.</li>
+<li><strong>Keep the latest.</strong> The host keeps the latest message on each channel. A
+package that starts receiving gets it first, like a retained topic.</li>
+</ol>
+<p>A table too large for one message travels as a <strong>dataset reference</strong>: the message carries
+<code>{ dataset: { package, table, total, columns, fields } }</code> (and MAY carry the first rows inline), and
+a receiving suite app that declares <code>db</code> reads the rows with <code>ctx.cap('db').readPage({ package, table, … })</code>, read-only, after the user allows it to read that package's tables.</p>
+<p>Data MUST be JSON-compatible and at most 256 KB, counted as the characters of its JSON text. A package may send at most 100 allowed messages in 10
+seconds from one browser tab. The permission belongs to the package, not to one app inside a suite: in a suite, only
+the entries that declare a channel can use it.</p>
+<p><strong>In a suite app:</strong></p>
+<pre><code class="language-js">Kernel.register({
+  name: 'view',
+  channels: { receive: ['budget'] },      // the same as in suite.json
+  init(ctx) {
+    ctx.channel('budget').on((data, { from }) =&gt; { /* from: the sending package */ })
+      .catch(e =&gt; { /* the user did not allow it */ });
+  }
+});
+</code></pre>
+<p><strong>In a page app</strong>, load the host's small library, then use the same calls:</p>
+<pre><code class="language-html">&lt;script src="/sdk/wardian.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  wardian.channel('budget').send({ monthly: 1798.65 })
+    .catch(e =&gt; { /* not allowed, or the page was opened outside Wardian */ });
+&lt;/script&gt;
+</code></pre>
+<p><code>send(data)</code> resolves once the message is delivered. <code>on(fn)</code> resolves once receiving is allowed.
+Both reject when the user does not allow the channel. A page opened on its own, outside Wardian's
+app list, has no channels: both calls reject.</p>
+<h3 id="6-10-standard-components">6.10. Standard components<a class="anchor" href="#6-10-standard-components" aria-label="Link to this section">#</a></h3>
+<p>A host provides a small set of standard elements, so apps look and behave alike without bringing
+their own copies. A host MUST define them in every suite frame and in <code>/sdk/wardian.js</code> for page apps.
+They need no capability. An app MUST still work, in plain form, where an element is not defined.</p>
+<table><thead><tr><th>Element</th><th>Does</th></tr></thead><tbody>
+<tr><td><code>&lt;wardian-progress&gt;</code></td><td>A progress bar. Without <code>value</code> it shows work of unknown length; with <code>value</code> and <code>max</code> it fills. Attributes <code>label</code>, <code>detail</code>, <code>elapsed</code> (a running clock), <code>cancelable</code> (a Stop button that fires <code>cancel</code>). Methods <code>start(label, opts)</code>, <code>update({value, max, label, detail})</code>, <code>done(label)</code>, <code>fail(label)</code>; property <code>seconds</code>. It has the <code>progressbar</code> role and stops moving for reduced motion. Colours come from <code>--wardian-progress-color</code>, <code>--wardian-progress-track</code> and <code>--wardian-progress-error</code>.</td></tr>
+</tbody></table>
+<p>The component library is different: it is <strong>copied in</strong>, not provided. <code>wardian add COMPONENT... PACKAGE</code> copies each component's files (plain CSS, and a small script for tabs, dialog, toast and
+tooltip) into the package's <code>ui/</code> folder, with <code>ui/theme.css</code>, the tokens they all read
+(<code>--w-bg</code>, <code>--w-fg</code>, <code>--w-primary</code>, <code>--w-radius</code> …). For a suite it adds them to <code>suite.json</code>
+<code>styles</code> and <code>scripts</code>, before the package's own files so those win; for a page app it prints the
+tags to add. The files then belong to the package: it stays self-contained, keeps working on a host
+without the library, and its author may change them. <code>wardian add</code> never replaces a file that is
+already there unless given <code>--force</code>. A running host shows every component at <code>/ui/</code>.</p>
+<p>Every app SHOULD use the library, so all apps look and work alike. <code>wardian check</code> warns about a
+suite or page app with no <code>theme.css</code>. A module app needs nothing: the host draws its functions with
+the library.</p>
+<h3 id="6-11-arrange">6.11. Arrange<a class="anchor" href="#6-11-arrange" aria-label="Link to this section">#</a></h3>
+<p>Every app offers <strong>Arrange</strong>: each viewer may reorder its panels, move them between two columns,
+hide them, or use one column. The layout belongs to the viewer and the host keeps it; the package never
+changes. A hidden panel's code still runs, so an app MUST NOT depend on where a panel sits or on
+being visible. All three kinds use the same script, <code>ui/arrange.js</code>:</p>
+<ul>
+<li><strong>Suite.</strong> The host arranges the apps that have a <code>slot</code>. The app does nothing.</li>
+<li><strong>Page app.</strong> The page marks its parts with <code>data-panel="id"</code> (and optionally
+<code>data-panel-label</code>), puts them in up to two containers marked <code>data-arrange-column="side"</code> and
+<code>"main"</code> (or in one parent), may mark the element around the columns <code>data-arrange-grid</code> so they
+can swap or join, and loads <code>ui/arrange.js</code> (<code>wardian add arrange</code>). The page is sandboxed and
+cannot keep the layout, so the script asks the host page with
+<code>postMessage({wardian: 'layout', k: 'get' | 'set', id, layout})</code>, and the host replies
+<code>{wardian: 'layout', id, layout}</code>. Outside a host, the layout lasts until the page closes.</li>
+</ul>
+<p>Wardian keeps layouts, each app's <code>storage</code> data and the latest channel messages in its data folder
+(<code>state/</code>), with a copy in the browser for a viewer the host does not let write (ADR-2610071055).
+<code>wardian check</code> warns about a page with no <code>data-panel</code>.</p>
+<ul>
+<li><strong>Module app.</strong> The host draws one card per function, and arranges those.</li>
+</ul>
+<h2 id="7-distribution">7. Distribution<a class="anchor" href="#7-distribution" aria-label="Link to this section">#</a></h2>
+<p>7.1. <strong>A folder.</strong> Put the package folder in the host's apps folder, or in the Google Drive
+folder the host serves. Wardian's apps folder is its working folder, <code>DATA_DIR/apps</code>, kept apart from
+any source repository; each save there is a version in the app's history (ADR-2610071122).</p>
+<p>7.2. <strong>A <code>.wardian</code> file</strong> is a zip. It SHOULD hold one package folder at its top:
+<code>my-app.wardian</code> → <code>my-app/app.wasm</code>, <code>my-app/app.json</code>, … A <code>.zip</code> is read the same way. A host
+SHOULD also accept <code>.rustle</code>, the extension from before the rename. Its media type is
+<code>application/vnd.wardian+zip</code>, and on macOS its type identifier is <code>studio.wardian.package</code>.</p>
+<p>A file a host exports (ADR-2610071248) holds exactly the files <code>wardian check</code> reads, and a manifest
+at <code>&lt;package&gt;/.wardian/export.json</code>: <code>{format: 1, type, package, title, exported_at, wardian_version, includes: {app, data}, data: {storage, layout, tables: [{name, rows}]}}</code>. With the
+user's consent it also holds the app's data under <code>&lt;package&gt;/.wardian/data/</code>: <code>storage.json</code> (its
+<code>storage</code>), <code>layout.json</code> (its Arrange layout) and <code>tables.sqlite</code> (its <code>db</code> tables). It MUST NOT hold
+keys, accounts, permission answers, history or another package's data. The folder is hidden, so a
+host that predates exports, and <code>wardian check</code>, ignore it. A host SHOULD show the manifest before
+importing, and MUST install the data only when the user asks; permissions are never imported.</p>
+<p>7.3. <strong>Import is lenient.</strong> To accept project zips as they come, the importer also:</p>
+<ul>
+<li>
+<p>treats a folder that holds <code>suite.json</code> as a package top, with everything inside it;</p>
+</li>
+<li>
+<p>for each <code>.wasm</code> file, takes the nearest folder above it that holds an <code>app.json</code> as the
+package top;</p>
+</li>
+<li>
+<p>otherwise takes the folder of the <code>.wasm</code> file as the package top, skipping build folders named
+<code>pkg</code>, <code>dist</code>, <code>build</code>, <code>out</code>, <code>output</code>, <code>release</code>, <code>wasm</code>, <code>bin</code>, <code>www</code> or <code>public</code>. So
+<code>usl-wasm/pkg/usl_wasm.wasm</code> makes the package <code>usl-wasm</code>;</p>
+</li>
+<li>
+<p>accepts a folder with one <code>.wasm</code> file and no <code>app.wasm</code>, and also saves that file as
+<code>app.wasm</code>;</p>
+</li>
+<li>
+<p>names a package at the very top of the zip after the zip, or after its <code>.wasm</code> file;</p>
+</li>
+<li>
+<p>skips a folder with several <code>.wasm</code> files and no <code>app.wasm</code>, and anything outside every
+package top.</p>
+<p>A package SHOULD NOT depend on these rules. Use the layout in 7.2.</p>
+</li>
+</ul>
+<p>7.4. <strong>A saved web page</strong> (ADR-2610080905). <strong>Save as web page</strong> saves the app as the viewer
+sees it now as one HTML file, <code>&lt;app&gt;-&lt;yyyy-mm-dd&gt;.html</code>, that opens in any browser with no Wardian
+and no network. It is a rendering, not a program: HTML and CSS only, every visible panel in the
+viewer's Arrange layout, the current values of fields, and each canvas and chart as a <code>data:</code> image,
+under a note with the app's title, when it was saved, and that it is a copy that does not update.</p>
+<p>Each frame renders itself, because only it can read its own document. A suite's kernel asks each
+visible panel's frame (6.4, 6.8); a page app is answered by a small script the host adds to the end
+of every page app's HTML it serves, which a page MAY steer by setting <code>window.wardianSnapshot</code> to a
+function that returns HTML text or an element (or a promise of one); a module app's cards are drawn
+by the host, so it copies them itself. The messages are <code>{wardian: 'snapshot', k: 'ask', id}</code> from
+the host and <code>{wardian: 'snapshot', k: 'answer', id, html, css}</code> (a suite's kernel answers with
+<code>parts: [{name, slot, html}]</code>, <code>css</code>, <code>mode</code> and <code>columns</code> instead).</p>
+<p>The answers are the app's own code, so the host MUST clean them in the browser, on inert parsed
+HTML, by an allow-list: no <code>script</code>, <code>iframe</code>, <code>frame</code>, <code>object</code>, <code>embed</code>, <code>link</code>, <code>meta</code>, <code>base</code>
+or <code>form</code> (a form becomes a plain box), no <code>on…</code> attribute, no <code>javascript:</code> or <code>vbscript:</code> URL, and
+no <code>src</code>, <code>href</code>, <code>srcset</code> or <code>xlink:href</code> but <code>data:image/…</code> sources and <code>#fragment</code> links. SVG is
+kept without <code>script</code>, <code>foreignObject</code> or animation. CSS loses <code>@import</code>, <code>@font-face</code>, <code>url()</code> to
+anything but a <code>data:</code> image, and <code>expression(</code>. Web fonts are left out. The file MUST start with</p>
+<pre><code class="language-html">&lt;meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"&gt;
+</code></pre>
+<p>so the browser blocks anything that gets through. A file over 25 MB is refused with a message that
+names the largest part.</p>
+<p>7.5. The importer unpacks into a hidden staging folder first, so a failed import changes
+nothing. It refuses a package whose name is already taken, unless asked to replace it.</p>
+<p>7.6. <strong>Removing.</strong> A host SHOULD move a removed package aside rather than delete it, so the
+removal can be undone. Wardian moves it to <code>.trash/</code> inside the apps folder; hidden folders are
+never listed or served. A package a save replaces is not removed: its version stays in the history.</p>
+<h2 id="8-starting-and-checking-a-package">8. Starting and checking a package<a class="anchor" href="#8-starting-and-checking-a-package" aria-label="Link to this section">#</a></h2>
+<pre><code>wardian new module my-app      numbers in, numbers out; Wardian builds the interface
+wardian new page my-app        WebAssembly plus your own page
+wardian new suite my-app       three sealed apps that talk through the kernel
+</code></pre>
+<p>Each template passes <code>wardian check</code> as created, and includes its Rust source and a <code>build.sh</code>.</p>
+<pre><code>wardian check my-app/          a package folder
+wardian check apps/            every package in a folder
+wardian check my-app.wardian    a zip, exactly as the importer would unpack it
+</code></pre>
+<p>The exit status is 0 if no package has errors and 1 otherwise. Warnings do not fail a check.</p>
+<p><code>wardian check</code> cannot run JavaScript, so it does not compare the contract in <code>app.js</code> with
+<code>suite.json</code> (6.4). The kernel does that when the suite starts.</p>
+<p>To check files in an editor, map the schemas in your editor settings. For VS Code:</p>
+<pre><code class="language-json">"json.schemas": [
+  { "fileMatch": ["app.json"], "url": "./schemas/app.schema.json" },
+  { "fileMatch": ["suite.json"], "url": "./schemas/suite.schema.json" }
+]
+</code></pre>
+<h2 id="9-not-in-format-2">9. Not in format 2<a class="anchor" href="#9-not-in-format-2" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>Adding or removing suite apps while a suite runs (hot-plug).</li>
+<li>An AI capability other than <code>claude:sample</code> (6.6).</li>
+<li>Network access for apps, even through the kernel.</li>
+<li>Signed packages.</li>
+</ul>
+
+<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/SPEC.md"><code>SPEC.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
+<div class="pager"><a class="prev" href="/docs/operate" rel="prev"><small>Previous</small>Run Wardian for others</a><a class="next" href="/docs/cli" rel="next"><small>Next</small>Command line</a></div>
+</main>
+</div>
+<script>
+(() => {
+  const index = [["Wardian documentation","","/docs/"],["Wardian documentation","Where to start","/docs/#where-to-start"],["Wardian documentation","Three kinds of app","/docs/#three-kinds-of-app"],["Wardian documentation","What an app may use","/docs/#what-an-app-may-use"],["Wardian documentation","Why it is built this way","/docs/#why-it-is-built-this-way"],["Install and run","","/docs/install"],["Install and run","Install with one command","/docs/install#install-with-one-command"],["Install and run","Build from source","/docs/install#build-from-source"],["Install and run","Run from a checkout","/docs/install#run-from-a-checkout"],["Install and run","Packages for macOS and Linux","/docs/install#packages-for-macos-and-linux"],["Install and run","Docker","/docs/install#docker"],["Install and run","The working folder","/docs/install#the-working-folder"],["Install and run","The first start","/docs/install#the-first-start"],["Install and run","Next","/docs/install#next"],["Your first ten minutes","","/docs/tour"],["Your first ten minutes","1. Open an app","/docs/tour#1-open-an-app"],["Your first ten minutes","2. Arrange it your way","/docs/tour#2-arrange-it-your-way"],["Your first ten minutes","3. Save what you see","/docs/tour#3-save-what-you-see"],["Your first ten minutes","4. Send the app to someone","/docs/tour#4-send-the-app-to-someone"],["Your first ten minutes","5. Make one of your own","/docs/tour#5-make-one-of-your-own"],["Your first ten minutes","6. Change it, then go back","/docs/tour#6-change-it-then-go-back"],["Your first ten minutes","7. Remove it","/docs/tour#7-remove-it"],["Your first ten minutes","What next","/docs/tour#what-next"],["How Wardian works","","/docs/concepts"],["How Wardian works","The parts","/docs/concepts#the-parts"],["How Wardian works","One folder, one app","/docs/concepts#one-folder-one-app"],["How Wardian works","Sealed by the browser, not by trust","/docs/concepts#sealed-by-the-browser-not-by-trust"],["How Wardian works","The kernel and the contract","/docs/concepts#the-kernel-and-the-contract"],["How Wardian works","Topics and methods","/docs/concepts#topics-and-methods"],["How Wardian works","Where things live","/docs/concepts#where-things-live"],["How Wardian works","Format versions","/docs/concepts#format-versions"],["Building Wardian apps","","/docs/guide"],["Building Wardian apps","Which kind of app?","/docs/guide#which-kind-of-app"],["Building Wardian apps","A module in two minutes","/docs/guide#a-module-in-two-minutes"],["Building Wardian apps","A page: when numbers are not enough","/docs/guide#a-page-when-numbers-are-not-enough"],["Building Wardian apps","A suite: several sealed parts","/docs/guide#a-suite-several-sealed-parts"],["Building Wardian apps","The contract","/docs/guide#the-contract"],["Building Wardian apps","What ctx gives an app","/docs/guide#what-ctx-gives-an-app"],["Building Wardian apps","Add an app to a suite","/docs/guide#add-an-app-to-a-suite"],["Building Wardian apps","Check, then share","/docs/guide#check-then-share"],["Building Wardian apps","Editor help","/docs/guide#editor-help"],["Page apps in depth","","/docs/pages"],["Page apps in depth","How the page is found","/docs/pages#how-the-page-is-found"],["Page apps in depth","The sandbox","/docs/pages#the-sandbox"],["Page apps in depth","Moving data through WebAssembly memory","/docs/pages#moving-data-through-webassembly-memory"],["Page apps in depth","Talking to other packages","/docs/pages#talking-to-other-packages"],["Page apps in depth","Standard parts","/docs/pages#standard-parts"],["Page apps in depth","Save as web page","/docs/pages#save-as-web-page"],["Page apps in depth","Without a page","/docs/pages#without-a-page"],["Designing a suite","","/docs/suites"],["Designing a suite","One job per part","/docs/suites#one-job-per-part"],["Designing a suite","Design the data flow first","/docs/suites#design-the-data-flow-first"],["Designing a suite","Retained topics","/docs/suites#retained-topics"],["Designing a suite","Heavy work out of sight","/docs/suites#heavy-work-out-of-sight"],["Designing a suite","Shared code","/docs/suites#shared-code"],["Designing a suite","Rules the frame enforces","/docs/suites#rules-the-frame-enforces"],["Designing a suite","Debugging","/docs/suites#debugging"],["Designing a suite","A checklist","/docs/suites#a-checklist"],["Components and Arrange","","/docs/components"],["Components and Arrange","Add components","/docs/components#add-components"],["Components and Arrange","The components","/docs/components#the-components"],["Components and Arrange","Change the look","/docs/components#change-the-look"],["Components and Arrange","The progress bar","/docs/components#the-progress-bar"],["Components and Arrange","Arrange","/docs/components#arrange"],["Make apps with Claude","","/docs/with-claude"],["Make apps with Claude","Set up a provider","/docs/with-claude#set-up-a-provider"],["Make apps with Claude","The Anthropic API","/docs/with-claude#the-anthropic-api"],["Make apps with Claude","Amazon Bedrock","/docs/with-claude#amazon-bedrock"],["Make apps with Claude","Describe the app well","/docs/with-claude#describe-the-app-well"],["Make apps with Claude","What happens while it builds","/docs/with-claude#what-happens-while-it-builds"],["Make apps with Claude","History","/docs/with-claude#history"],["Make apps with Claude","Ship an app Claude made","/docs/with-claude#ship-an-app-claude-made"],["Make apps with Claude","Claude inside your app","/docs/with-claude#claude-inside-your-app"],["Build with an AI assistant","","/docs/ai-skills"],["Build with an AI assistant","Install them","/docs/ai-skills#install-them"],["Build with an AI assistant","Keep them current","/docs/ai-skills#keep-them-current"],["Build with an AI assistant","What the factory does","/docs/ai-skills#what-the-factory-does"],["Build with an AI assistant","What the doctor does","/docs/ai-skills#what-the-doctor-does"],["Build with an AI assistant","Other assistants","/docs/ai-skills#other-assistants"],["Build with an AI assistant","Make apps inside Wardian instead","/docs/ai-skills#make-apps-inside-wardian-instead"],["Check and test an app","","/docs/testing"],["Check and test an app","wardian check","/docs/testing#wardian-check"],["Check and test an app","Editor help","/docs/testing#editor-help"],["Check and test an app","Try it in a browser","/docs/testing#try-it-in-a-browser"],["Check and test an app","A smoke test you can run","/docs/testing#a-smoke-test-you-can-run"],["Check and test an app","Start a test server yourself","/docs/testing#start-a-test-server-yourself"],["Check and test an app","Test a capability that needs a service","/docs/testing#test-a-capability-that-needs-a-service"],["Keeping data","","/docs/data"],["Keeping data","Small state: storage","/docs/data#small-state-storage"],["Keeping data","Tables: db","/docs/data#tables-db"],["Keeping data","Show large tables a page at a time","/docs/data#show-large-tables-a-page-at-a-time"],["Keeping data","Always use placeholders","/docs/data#always-use-placeholders"],["Keeping data","What Wardian refuses","/docs/data#what-wardian-refuses"],["Keeping data","Share a large table with another package","/docs/data#share-a-large-table-with-another-package"],["Keeping data","Take the data with you","/docs/data#take-the-data-with-you"],["Apps that talk to each other","","/docs/channels"],["Apps that talk to each other","1. Declare the channels","/docs/channels#1-declare-the-channels"],["Apps that talk to each other","2. Send and receive","/docs/channels#2-send-and-receive"],["Apps that talk to each other","3. What Wardian guarantees","/docs/channels#3-what-wardian-guarantees"],["Apps that talk to each other","Limits","/docs/channels#limits"],["Apps that talk to each other","Large tables","/docs/channels#large-tables"],["Apps that talk to each other","Topics or channels?","/docs/channels#topics-or-channels"],["Claude inside your app","","/docs/ai"],["Claude inside your app","Ask","/docs/ai#ask"],["Claude inside your app","Always handle null","/docs/ai#always-handle-null"],["Claude inside your app","Handle every error","/docs/ai#handle-every-error"],["Claude inside your app","You are asked first","/docs/ai#you-are-asked-first"],["Claude inside your app","It runs in the background","/docs/ai#it-runs-in-the-background"],["Claude inside your app","Cost","/docs/ai#cost"],["Splunk","","/docs/splunk"],["Splunk","Set it up","/docs/splunk#set-it-up"],["Splunk","Who may search","/docs/splunk#who-may-search"],["Splunk","Search","/docs/splunk#search"],["Splunk","More than 10,000 rows","/docs/splunk#more-than-10-000-rows"],["Splunk","Long searches run in the background","/docs/splunk#long-searches-run-in-the-background"],["Example apps","","/docs/examples"],["Example apps","Which example shows what","/docs/examples#which-example-shows-what"],["Example apps","Modules","/docs/examples#modules"],["Example apps","adder","/docs/examples#adder"],["Example apps","unit-converter","/docs/examples#unit-converter"],["Example apps","number-lab","/docs/examples#number-lab"],["Example apps","Pages","/docs/examples#pages"],["Example apps","text-tools","/docs/examples#text-tools"],["Example apps","image-lab","/docs/examples#image-lab"],["Example apps","life","/docs/examples#life"],["Example apps","mandelbrot","/docs/examples#mandelbrot"],["Example apps","focus-timer","/docs/examples#focus-timer"],["Example apps","Suites","/docs/examples#suites"],["Example apps","loan-planner","/docs/examples#loan-planner"],["Example apps","habit-tracker","/docs/examples#habit-tracker"],["Example apps","csv-explorer","/docs/examples#csv-explorer"],["Example apps","meeting-notes","/docs/examples#meeting-notes"],["Example apps","monte-carlo","/docs/examples#monte-carlo"],["Example apps","focus-log","/docs/examples#focus-log"],["Example apps","usl-lab","/docs/examples#usl-lab"],["Example apps","splunk-table","/docs/examples#splunk-table"],["Example apps","Make your own","/docs/examples#make-your-own"],["Share, import and remove apps","","/docs/sharing"],["Share, import and remove apps","Send an app as a .wardian file","/docs/sharing#send-an-app-as-a-wardian-file"],["Share, import and remove apps","Import a .wardian file or a zip","/docs/sharing#import-a-wardian-file-or-a-zip"],["Share, import and remove apps","Project zips","/docs/sharing#project-zips"],["Share, import and remove apps","Limits","/docs/sharing#limits"],["Share, import and remove apps","Links","/docs/sharing#links"],["Share, import and remove apps","Save an app as a web page","/docs/sharing#save-an-app-as-a-web-page"],["Share, import and remove apps","Remove an app","/docs/sharing#remove-an-app"],["Share, import and remove apps","Ship an app in the repository","/docs/sharing#ship-an-app-in-the-repository"],["Serve apps from Google Drive","","/docs/drive"],["Serve apps from Google Drive","Connect","/docs/drive#connect"],["Serve apps from Google Drive","How it stays up to date","/docs/drive#how-it-stays-up-to-date"],["Serve apps from Google Drive","Settings from the environment","/docs/drive#settings-from-the-environment"],["Serve apps from Google Drive","What changes with Drive","/docs/drive#what-changes-with-drive"],["Run Wardian for others","","/docs/operate"],["Run Wardian for others","The default: this machine only","/docs/operate#the-default-this-machine-only"],["Run Wardian for others","With an admin token","/docs/operate#with-an-admin-token"],["Run Wardian for others","Docker","/docs/operate#docker"],["Run Wardian for others","Put it behind HTTPS","/docs/operate#put-it-behind-https"],["Run Wardian for others","Keep the data folder safe","/docs/operate#keep-the-data-folder-safe"],["Run Wardian for others","What a viewer's browser keeps","/docs/operate#what-a-viewer-s-browser-keeps"],["Run Wardian for others","Before you rely on it","/docs/operate#before-you-rely-on-it"],["Package format","","/docs/spec"],["Package format","1. Terms","/docs/spec#1-terms"],["Package format","2. Versions","/docs/spec#2-versions"],["Package format","3. Package layout","/docs/spec#3-package-layout"],["Package format","4. app.json","/docs/spec#4-app-json"],["Package format","5. Module apps","/docs/spec#5-module-apps"],["Package format","6. Suites","/docs/spec#6-suites"],["Package format","6.1. Layout","/docs/spec#6-1-layout"],["Package format","6.2. suite.json","/docs/spec#6-2-suite-json"],["Package format","6.3. The frame","/docs/spec#6-3-the-frame"],["Package format","6.4. app.js","/docs/spec#6-4-app-js"],["Package format","6.5. ctx","/docs/spec#6-5-ctx"],["Package format","6.6. Capabilities","/docs/spec#6-6-capabilities"],["Package format","6.7. Kernel guarantees","/docs/spec#6-7-kernel-guarantees"],["Package format","6.8. Frame–kernel messages (informative)","/docs/spec#6-8-frame-kernel-messages-informative"],["Package format","6.9. Channels between packages","/docs/spec#6-9-channels-between-packages"],["Package format","6.10. Standard components","/docs/spec#6-10-standard-components"],["Package format","6.11. Arrange","/docs/spec#6-11-arrange"],["Package format","7. Distribution","/docs/spec#7-distribution"],["Package format","8. Starting and checking a package","/docs/spec#8-starting-and-checking-a-package"],["Package format","9. Not in format 2","/docs/spec#9-not-in-format-2"],["Command line","","/docs/cli"],["Command line","Exit codes","/docs/cli#exit-codes"],["Command line","serve","/docs/cli#serve"],["Command line","promote","/docs/cli#promote"],["Command line","export","/docs/cli#export"],["Command line","new","/docs/cli#new"],["Command line","add","/docs/cli#add"],["Command line","check","/docs/cli#check"],["Command line","docs","/docs/cli#docs"],["Command line","skills","/docs/cli#skills"],["Command line","--version and --help","/docs/cli#version-and-help"],["Command line","rustle","/docs/cli#rustle"],["The ctx API","","/docs/ctx"],["The ctx API","The view","/docs/ctx#the-view"],["The ctx API","Topics","/docs/ctx#topics"],["The ctx API","Methods","/docs/ctx#methods"],["The ctx API","Data","/docs/ctx#data"],["The ctx API","Capabilities","/docs/ctx#capabilities"],["The ctx API","Channels","/docs/ctx#channels"],["The ctx API","Workers and inlined scripts","/docs/ctx#workers-and-inlined-scripts"],["The ctx API","Save as web page","/docs/ctx#save-as-web-page"],["The ctx API","Debugging from the console","/docs/ctx#debugging-from-the-console"],["Capabilities","","/docs/capabilities"],["Capabilities","At a glance","/docs/capabilities#at-a-glance"],["Capabilities","storage","/docs/capabilities#storage"],["Capabilities","asset","/docs/capabilities#asset"],["Capabilities","worker","/docs/capabilities#worker"],["Capabilities","source","/docs/capabilities#source"],["Capabilities","claude:downloads","/docs/capabilities#claude-downloads"],["Capabilities","claude:sample","/docs/capabilities#claude-sample"],["Capabilities","splunk","/docs/capabilities#splunk"],["Capabilities","db","/docs/capabilities#db"],["Capabilities","Long calls","/docs/capabilities#long-calls"],["Capabilities","The rule behind all of them","/docs/capabilities#the-rule-behind-all-of-them"],["Settings and environment","","/docs/config"],["Settings and environment","The data folder","/docs/config#the-data-folder"],["Settings and environment","Files in the data folder","/docs/config#files-in-the-data-folder"],["Settings and environment","Environment variables","/docs/config#environment-variables"],["Settings and environment","Which one wins","/docs/config#which-one-wins"],["Settings and environment","Settings in the browser","/docs/config#settings-in-the-browser"],["Settings and environment","First start","/docs/config#first-start"],["Settings and environment","Who is an admin","/docs/config#who-is-an-admin"],["Security model","","/docs/security"],["Security model","The short version","/docs/security#the-short-version"],["Security model","Module apps","/docs/security#module-apps"],["Security model","Page apps","/docs/security#page-apps"],["Security model","Suite apps","/docs/security#suite-apps"],["Security model","The frame","/docs/security#the-frame"],["Security model","The contract","/docs/security#the-contract"],["Security model","Kernel guarantees","/docs/security#kernel-guarantees"],["Security model","Capabilities and permissions","/docs/security#capabilities-and-permissions"],["Security model","The server checks again","/docs/security#the-server-checks-again"],["Security model","Splunk and Claude run with the server's account","/docs/security#splunk-and-claude-run-with-the-server-s-account"],["Security model","Who is an admin","/docs/security#who-is-an-admin"],["Security model","Keys and secrets","/docs/security#keys-and-secrets"],["Security model","Imports","/docs/security#imports"],["Security model","Import links","/docs/security#import-links"],["Security model","App databases","/docs/security#app-databases"],["Security model","Save as web page","/docs/security#save-as-web-page"],["Security model","What Wardian does not protect","/docs/security#what-wardian-does-not-protect"],["Security model","Three routes stay open","/docs/security#three-routes-stay-open"],["Security model","Other limits","/docs/security#other-limits"],["Security model","Open risks before 1.0","/docs/security#open-risks-before-1-0"],["Troubleshooting","","/docs/troubleshooting"],["Troubleshooting","Wardian does not start","/docs/troubleshooting#wardian-does-not-start"],["Troubleshooting","The address is in use","/docs/troubleshooting#the-address-is-in-use"],["Troubleshooting","\"Wardian will not listen on … without ADMIN_TOKEN\"","/docs/troubleshooting#wardian-will-not-listen-on-without-admin-token"],["Troubleshooting","\"Wardian cannot write its data folder\"","/docs/troubleshooting#wardian-cannot-write-its-data-folder"],["Troubleshooting","macOS stops Wardian after a rebuild","/docs/troubleshooting#macos-stops-wardian-after-a-rebuild"],["Troubleshooting","Reading wardian.log","/docs/troubleshooting#reading-wardian-log"],["Troubleshooting","An app does not start","/docs/troubleshooting#an-app-does-not-start"],["Troubleshooting","A suite app: \"the contract in app.js differs from suite.json\"","/docs/troubleshooting#a-suite-app-the-contract-in-app-js-differs-from-suite-json"],["Troubleshooting","Other faults","/docs/troubleshooting#other-faults"],["Troubleshooting","Debug in the console","/docs/troubleshooting#debug-in-the-console"],["Troubleshooting","\"Update Wardian\"","/docs/troubleshooting#update-wardian"],["Troubleshooting","Check errors","/docs/troubleshooting#check-errors"],["Troubleshooting","Common warnings","/docs/troubleshooting#common-warnings"],["Troubleshooting","Permissions","/docs/troubleshooting#permissions"],["Troubleshooting","The app says \"you did not allow this app …\"","/docs/troubleshooting#the-app-says-you-did-not-allow-this-app"],["Troubleshooting","\"settings are locked; see ADMIN_TOKEN in the README\"","/docs/troubleshooting#settings-are-locked-see-admin-token-in-the-readme"],["Troubleshooting","claude:sample is null","/docs/troubleshooting#claude-sample-is-null"],["Troubleshooting","Splunk","/docs/troubleshooting#splunk"],["Troubleshooting","Google Drive","/docs/troubleshooting#google-drive"],["Troubleshooting","Import refused","/docs/troubleshooting#import-refused"],["How Wardian is built","","/docs/architecture"],["How Wardian is built","The layers","/docs/architecture#the-layers"],["How Wardian is built","What each module does","/docs/architecture#what-each-module-does"],["How Wardian is built","Domain","/docs/architecture#domain"],["How Wardian is built","Ports","/docs/architecture#ports"],["How Wardian is built","Use cases","/docs/architecture#use-cases"],["How Wardian is built","Primary adapters","/docs/architecture#primary-adapters"],["How Wardian is built","Secondary adapters","/docs/architecture#secondary-adapters"],["How Wardian is built","How a request flows","/docs/architecture#how-a-request-flows"],["How Wardian is built","The kernel and the frame shim","/docs/architecture#the-kernel-and-the-frame-shim"],["How Wardian is built","Embedded assets","/docs/architecture#embedded-assets"],["How Wardian is built","How the docs are built","/docs/architecture#how-the-docs-are-built"],["How Wardian is built","hexa gates","/docs/architecture#hexa-gates"],["Decisions","","/docs/decisions"],["Decisions","How an ADR is written","/docs/decisions#how-an-adr-is-written"],["Decisions","Every decision","/docs/decisions#every-decision"],["Decisions","Gates","/docs/decisions#gates"],["Contributing","","/docs/contributing"],["Contributing","Build","/docs/contributing#build"],["Contributing","Tests","/docs/contributing#tests"],["Contributing","Browser suites","/docs/contributing#browser-suites"],["Contributing","CI","/docs/contributing#ci"],["Contributing","Live checks","/docs/contributing#live-checks"],["Contributing","hexa","/docs/contributing#hexa"],["Contributing","The hexa loop","/docs/contributing#the-hexa-loop"],["Contributing","Add an example app","/docs/contributing#add-an-example-app"],["Contributing","Add a docs page","/docs/contributing#add-a-docs-page"],["Contributing","Releasing","/docs/contributing#releasing"],["Changelog","","/docs/changelog"],["Changelog","Unreleased","/docs/changelog#unreleased"],["Changelog","Added","/docs/changelog#added"],["Changelog","Security","/docs/changelog#security"],["Changelog","[0.4.1] - 2026-10-08","/docs/changelog#0-4-1-2026-10-08"],["Changelog","Added","/docs/changelog#added-1"],["Changelog","Changed","/docs/changelog#changed"],["Changelog","Security","/docs/changelog#security-1"],["Changelog","Live checks","/docs/changelog#live-checks"],["Changelog","0.4.0 - 2026-10-07","/docs/changelog#0-4-0-2026-10-07"],["Changelog","Added","/docs/changelog#added-2"],["Changelog","Changed","/docs/changelog#changed-1"],["Changelog","Fixed","/docs/changelog#fixed"],["Changelog","0.3.0 - 2026-10-05","/docs/changelog#0-3-0-2026-10-05"],["Changelog","Added","/docs/changelog#added-3"],["Changelog","0.2.0 - 2026-10-05","/docs/changelog#0-2-0-2026-10-05"],["Adder","","/docs/examples/adder"],["CSV explorer","","/docs/examples/csv-explorer"],["CSV explorer","Files","/docs/examples/csv-explorer#files"],["CSV explorer","Reading a file","/docs/examples/csv-explorer#reading-a-file"],["CSV explorer","Safe SQL","/docs/examples/csv-explorer#safe-sql"],["CSV explorer","Filter","/docs/examples/csv-explorer#filter"],["CSV explorer","Saved state","/docs/examples/csv-explorer#saved-state"],["CSV explorer","Limits","/docs/examples/csv-explorer#limits"],["Focus log","","/docs/examples/focus-log"],["Focus timer","","/docs/examples/focus-timer"],["Habit tracker","","/docs/examples/habit-tracker"],["Habit tracker","The backup file","/docs/examples/habit-tracker#the-backup-file"],["Habit tracker","Limits","/docs/examples/habit-tracker#limits"],["Image lab","","/docs/examples/image-lab"],["Game of Life","","/docs/examples/life"],["Loan planner","","/docs/examples/loan-planner"],["Mandelbrot explorer","","/docs/examples/mandelbrot"],["Meeting notes","","/docs/examples/meeting-notes"],["Meeting notes","With and without Claude","/docs/examples/meeting-notes#with-and-without-claude"],["Meeting notes","Saved state","/docs/examples/meeting-notes#saved-state"],["Meeting notes","Limits","/docs/examples/meeting-notes#limits"],["Schedule risk (Monte Carlo)","","/docs/examples/monte-carlo"],["Number lab","","/docs/examples/number-lab"],["Splunk table","","/docs/examples/splunk-table"],["Splunk table","Moving data from the one-part version","/docs/examples/splunk-table#moving-data-from-the-one-part-version"],["Text tools","","/docs/examples/text-tools"],["Unit converter","","/docs/examples/unit-converter"],["USL lab as little apps","","/docs/examples/usl-lab"],["ADR-2609121400: hexa is a scaffolding system with two gates","","/docs/decisions/ADR-2609121400"],["ADR-2609121400: hexa is a scaffolding system with two gates","Context","/docs/decisions/ADR-2609121400#context"],["ADR-2609121400: hexa is a scaffolding system with two gates","Decision","/docs/decisions/ADR-2609121400#decision"],["ADR-2609121400: hexa is a scaffolding system with two gates","Consequences","/docs/decisions/ADR-2609121400#consequences"],["ADR-2609121400: hexa is a scaffolding system with two gates","Implementation","/docs/decisions/ADR-2609121400#implementation"],["ADR-2609121400: hexa is a scaffolding system with two gates","Enforced-By: hexa analyze (every run)","/docs/decisions/ADR-2609121400#enforced-by-hexa-analyze-every-run"],["ADR-2609121400: hexa is a scaffolding system with two gates","Gate","/docs/decisions/ADR-2609121400#gate"],["ADR-2609121400: hexa is a scaffolding system with two gates","References","/docs/decisions/ADR-2609121400#references"],["ADR-2609211430: the domain imports only what it is allowed","","/docs/decisions/ADR-2609211430"],["ADR-2609211430: the domain imports only what it is allowed","Context","/docs/decisions/ADR-2609211430#context"],["ADR-2609211430: the domain imports only what it is allowed","Decision","/docs/decisions/ADR-2609211430#decision"],["ADR-2609211430: the domain imports only what it is allowed","Consequences","/docs/decisions/ADR-2609211430#consequences"],["ADR-2609211430: the domain imports only what it is allowed","Implementation","/docs/decisions/ADR-2609211430#implementation"],["ADR-2609211430: the domain imports only what it is allowed","Enforced-By: hexa analyze (every run)","/docs/decisions/ADR-2609211430#enforced-by-hexa-analyze-every-run"],["ADR-2609211430: the domain imports only what it is allowed","Gate","/docs/decisions/ADR-2609211430#gate"],["ADR-2609211430: the domain imports only what it is allowed","References","/docs/decisions/ADR-2609211430#references"],["ADR-2609211600: a reference is an import","","/docs/decisions/ADR-2609211600"],["ADR-2609211600: a reference is an import","Context","/docs/decisions/ADR-2609211600#context"],["ADR-2609211600: a reference is an import","Decision","/docs/decisions/ADR-2609211600#decision"],["ADR-2609211600: a reference is an import","Consequences","/docs/decisions/ADR-2609211600#consequences"],["ADR-2609211600: a reference is an import","Implementation","/docs/decisions/ADR-2609211600#implementation"],["ADR-2609211600: a reference is an import","Enforced-By: hexa analyze (every run)","/docs/decisions/ADR-2609211600#enforced-by-hexa-analyze-every-run"],["ADR-2609211600: a reference is an import","Gate","/docs/decisions/ADR-2609211600#gate"],["ADR-2609211600: a reference is an import","References","/docs/decisions/ADR-2609211600#references"],["ADR-2610071055: viewer state lives on the server","","/docs/decisions/ADR-2610071055"],["ADR-2610071055: viewer state lives on the server","Context","/docs/decisions/ADR-2610071055#context"],["ADR-2610071055: viewer state lives on the server","Decision","/docs/decisions/ADR-2610071055#decision"],["ADR-2610071055: viewer state lives on the server","Consequences","/docs/decisions/ADR-2610071055#consequences"],["ADR-2610071055: viewer state lives on the server","Implementation","/docs/decisions/ADR-2610071055#implementation"],["ADR-2610071055: viewer state lives on the server","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610071055#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610071055: viewer state lives on the server","Gate","/docs/decisions/ADR-2610071055#gate"],["ADR-2610071055: viewer state lives on the server","References","/docs/decisions/ADR-2610071055#references"],["ADR-2610071055: viewer state lives on the server","Evidence","/docs/decisions/ADR-2610071055#evidence"],["ADR-2610071106: Claude through Amazon Bedrock","","/docs/decisions/ADR-2610071106"],["ADR-2610071106: Claude through Amazon Bedrock","Context","/docs/decisions/ADR-2610071106#context"],["ADR-2610071106: Claude through Amazon Bedrock","Decision","/docs/decisions/ADR-2610071106#decision"],["ADR-2610071106: Claude through Amazon Bedrock","Consequences","/docs/decisions/ADR-2610071106#consequences"],["ADR-2610071106: Claude through Amazon Bedrock","Implementation","/docs/decisions/ADR-2610071106#implementation"],["ADR-2610071106: Claude through Amazon Bedrock","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610071106#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610071106: Claude through Amazon Bedrock","Gate","/docs/decisions/ADR-2610071106#gate"],["ADR-2610071106: Claude through Amazon Bedrock","References","/docs/decisions/ADR-2610071106#references"],["ADR-2610071106: Claude through Amazon Bedrock","Evidence","/docs/decisions/ADR-2610071106#evidence"],["ADR-2610071110: browser notices are not app faults","","/docs/decisions/ADR-2610071110"],["ADR-2610071110: browser notices are not app faults","Context","/docs/decisions/ADR-2610071110#context"],["ADR-2610071110: browser notices are not app faults","Decision","/docs/decisions/ADR-2610071110#decision"],["ADR-2610071110: browser notices are not app faults","Consequences","/docs/decisions/ADR-2610071110#consequences"],["ADR-2610071110: browser notices are not app faults","Implementation","/docs/decisions/ADR-2610071110#implementation"],["ADR-2610071110: browser notices are not app faults","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610071110#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610071110: browser notices are not app faults","Gate","/docs/decisions/ADR-2610071110#gate"],["ADR-2610071110: browser notices are not app faults","References","/docs/decisions/ADR-2610071110#references"],["ADR-2610071110: browser notices are not app faults","Evidence","/docs/decisions/ADR-2610071110#evidence"],["ADR-2610071122: a working folder outside the source, and a history for each app","","/docs/decisions/ADR-2610071122"],["ADR-2610071122: a working folder outside the source, and a history for each app","Context","/docs/decisions/ADR-2610071122#context"],["ADR-2610071122: a working folder outside the source, and a history for each app","Decision","/docs/decisions/ADR-2610071122#decision"],["ADR-2610071122: a working folder outside the source, and a history for each app","Consequences","/docs/decisions/ADR-2610071122#consequences"],["ADR-2610071122: a working folder outside the source, and a history for each app","Implementation","/docs/decisions/ADR-2610071122#implementation"],["ADR-2610071122: a working folder outside the source, and a history for each app","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610071122#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610071122: a working folder outside the source, and a history for each app","Gate","/docs/decisions/ADR-2610071122#gate"],["ADR-2610071122: a working folder outside the source, and a history for each app","References","/docs/decisions/ADR-2610071122#references"],["ADR-2610071122: a working folder outside the source, and a history for each app","Evidence","/docs/decisions/ADR-2610071122#evidence"],["ADR-2610071200: the domain reads JSON","","/docs/decisions/ADR-2610071200"],["ADR-2610071200: the domain reads JSON","Context","/docs/decisions/ADR-2610071200#context"],["ADR-2610071200: the domain reads JSON","Decision","/docs/decisions/ADR-2610071200#decision"],["ADR-2610071200: the domain reads JSON","Consequences","/docs/decisions/ADR-2610071200#consequences"],["ADR-2610071200: the domain reads JSON","Enforced-By: hexa analyze (every run)","/docs/decisions/ADR-2610071200#enforced-by-hexa-analyze-every-run"],["ADR-2610071200: the domain reads JSON","Gate","/docs/decisions/ADR-2610071200#gate"],["ADR-2610071219: SQLite as the `db` capability, with paging","","/docs/decisions/ADR-2610071219"],["ADR-2610071219: SQLite as the `db` capability, with paging","Context","/docs/decisions/ADR-2610071219#context"],["ADR-2610071219: SQLite as the `db` capability, with paging","Decision","/docs/decisions/ADR-2610071219#decision"],["ADR-2610071219: SQLite as the `db` capability, with paging","Consequences","/docs/decisions/ADR-2610071219#consequences"],["ADR-2610071219: SQLite as the `db` capability, with paging","Implementation","/docs/decisions/ADR-2610071219#implementation"],["ADR-2610071219: SQLite as the `db` capability, with paging","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610071219#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610071219: SQLite as the `db` capability, with paging","Gate","/docs/decisions/ADR-2610071219#gate"],["ADR-2610071219: SQLite as the `db` capability, with paging","References","/docs/decisions/ADR-2610071219#references"],["ADR-2610071219: SQLite as the `db` capability, with paging","Evidence","/docs/decisions/ADR-2610071219#evidence"],["ADR-2610071248: export an app as a `.wardian` file","","/docs/decisions/ADR-2610071248"],["ADR-2610071248: export an app as a `.wardian` file","Context","/docs/decisions/ADR-2610071248#context"],["ADR-2610071248: export an app as a `.wardian` file","Decision","/docs/decisions/ADR-2610071248#decision"],["ADR-2610071248: export an app as a `.wardian` file","Consequences","/docs/decisions/ADR-2610071248#consequences"],["ADR-2610071248: export an app as a `.wardian` file","Implementation","/docs/decisions/ADR-2610071248#implementation"],["ADR-2610071248: export an app as a `.wardian` file","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610071248#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610071248: export an app as a `.wardian` file","Gate","/docs/decisions/ADR-2610071248#gate"],["ADR-2610071248: export an app as a `.wardian` file","Notes from the build","/docs/decisions/ADR-2610071248#notes-from-the-build"],["ADR-2610071248: export an app as a `.wardian` file","References","/docs/decisions/ADR-2610071248#references"],["ADR-2610071248: export an app as a `.wardian` file","Evidence","/docs/decisions/ADR-2610071248#evidence"],["ADR-2610072033: what must be true before Wardian 1.0","","/docs/decisions/ADR-2610072033"],["ADR-2610072033: what must be true before Wardian 1.0","Context","/docs/decisions/ADR-2610072033#context"],["ADR-2610072033: what must be true before Wardian 1.0","Decision","/docs/decisions/ADR-2610072033#decision"],["ADR-2610072033: what must be true before Wardian 1.0","Consequences","/docs/decisions/ADR-2610072033#consequences"],["ADR-2610072033: what must be true before Wardian 1.0","Implementation","/docs/decisions/ADR-2610072033#implementation"],["ADR-2610072033: what must be true before Wardian 1.0","References","/docs/decisions/ADR-2610072033#references"],["ADR-2610072118: long calls run as background jobs","","/docs/decisions/ADR-2610072118"],["ADR-2610072118: long calls run as background jobs","Context","/docs/decisions/ADR-2610072118#context"],["ADR-2610072118: long calls run as background jobs","Decision","/docs/decisions/ADR-2610072118#decision"],["ADR-2610072118: long calls run as background jobs","Consequences","/docs/decisions/ADR-2610072118#consequences"],["ADR-2610072118: long calls run as background jobs","Implementation","/docs/decisions/ADR-2610072118#implementation"],["ADR-2610072118: long calls run as background jobs","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610072118#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610072118: long calls run as background jobs","Gate","/docs/decisions/ADR-2610072118#gate"],["ADR-2610072118: long calls run as background jobs","References","/docs/decisions/ADR-2610072118#references"],["ADR-2610080900: a suite is made of small parts","","/docs/decisions/ADR-2610080900"],["ADR-2610080900: a suite is made of small parts","Context","/docs/decisions/ADR-2610080900#context"],["ADR-2610080900: a suite is made of small parts","Decision","/docs/decisions/ADR-2610080900#decision"],["ADR-2610080900: a suite is made of small parts","Consequences","/docs/decisions/ADR-2610080900#consequences"],["ADR-2610080900: a suite is made of small parts","Implementation","/docs/decisions/ADR-2610080900#implementation"],["ADR-2610080900: a suite is made of small parts","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610080900#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610080900: a suite is made of small parts","Gate","/docs/decisions/ADR-2610080900#gate"],["ADR-2610080900: a suite is made of small parts","References","/docs/decisions/ADR-2610080900#references"],["ADR-2610080903: a documentation site, and an example app for every capability","","/docs/decisions/ADR-2610080903"],["ADR-2610080903: a documentation site, and an example app for every capability","Context","/docs/decisions/ADR-2610080903#context"],["ADR-2610080903: a documentation site, and an example app for every capability","Decision","/docs/decisions/ADR-2610080903#decision"],["ADR-2610080903: a documentation site, and an example app for every capability","Consequences","/docs/decisions/ADR-2610080903#consequences"],["ADR-2610080903: a documentation site, and an example app for every capability","Implementation","/docs/decisions/ADR-2610080903#implementation"],["ADR-2610080903: a documentation site, and an example app for every capability","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610080903#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610080903: a documentation site, and an example app for every capability","Gate","/docs/decisions/ADR-2610080903#gate"],["ADR-2610080903: a documentation site, and an example app for every capability","References","/docs/decisions/ADR-2610080903#references"],["ADR-2610080905: save an app as a web page","","/docs/decisions/ADR-2610080905"],["ADR-2610080905: save an app as a web page","Context","/docs/decisions/ADR-2610080905#context"],["ADR-2610080905: save an app as a web page","Decision","/docs/decisions/ADR-2610080905#decision"],["ADR-2610080905: save an app as a web page","Consequences","/docs/decisions/ADR-2610080905#consequences"],["ADR-2610080905: save an app as a web page","Implementation","/docs/decisions/ADR-2610080905#implementation"],["ADR-2610080905: save an app as a web page","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610080905#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610080905: save an app as a web page","Gate","/docs/decisions/ADR-2610080905#gate"],["ADR-2610080905: save an app as a web page","References","/docs/decisions/ADR-2610080905#references"],["ADR-2610080915: install with one command","","/docs/decisions/ADR-2610080915"],["ADR-2610080915: install with one command","Context","/docs/decisions/ADR-2610080915#context"],["ADR-2610080915: install with one command","Decision","/docs/decisions/ADR-2610080915#decision"],["ADR-2610080915: install with one command","Consequences","/docs/decisions/ADR-2610080915#consequences"],["ADR-2610080915: install with one command","Implementation","/docs/decisions/ADR-2610080915#implementation"],["ADR-2610080915: install with one command","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610080915#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610080915: install with one command","Gate","/docs/decisions/ADR-2610080915#gate"],["ADR-2610080915: install with one command","References","/docs/decisions/ADR-2610080915#references"],["ADR-2610080930: a friendly first run in the terminal","","/docs/decisions/ADR-2610080930"],["ADR-2610080930: a friendly first run in the terminal","Context","/docs/decisions/ADR-2610080930#context"],["ADR-2610080930: a friendly first run in the terminal","Decision","/docs/decisions/ADR-2610080930#decision"],["ADR-2610080930: a friendly first run in the terminal","Consequences","/docs/decisions/ADR-2610080930#consequences"],["ADR-2610080930: a friendly first run in the terminal","Implementation","/docs/decisions/ADR-2610080930#implementation"],["ADR-2610080930: a friendly first run in the terminal","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610080930#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610080930: a friendly first run in the terminal","Gate","/docs/decisions/ADR-2610080930#gate"],["ADR-2610080930: a friendly first run in the terminal","References","/docs/decisions/ADR-2610080930#references"],["ADR-2610080928: Wardian ships its AI skills","","/docs/decisions/ADR-2610080928"],["ADR-2610080928: Wardian ships its AI skills","Context","/docs/decisions/ADR-2610080928#context"],["ADR-2610080928: Wardian ships its AI skills","Decision","/docs/decisions/ADR-2610080928#decision"],["ADR-2610080928: Wardian ships its AI skills","Consequences","/docs/decisions/ADR-2610080928#consequences"],["ADR-2610080928: Wardian ships its AI skills","Implementation","/docs/decisions/ADR-2610080928#implementation"],["ADR-2610080928: Wardian ships its AI skills","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610080928#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610080928: Wardian ships its AI skills","Gate","/docs/decisions/ADR-2610080928#gate"],["ADR-2610080928: Wardian ships its AI skills","References","/docs/decisions/ADR-2610080928#references"],["ADR-2610081003: a page app reaches only its own package","","/docs/decisions/ADR-2610081003"],["ADR-2610081003: a page app reaches only its own package","Context","/docs/decisions/ADR-2610081003#context"],["ADR-2610081003: a page app reaches only its own package","Decision","/docs/decisions/ADR-2610081003#decision"],["ADR-2610081003: a page app reaches only its own package","Consequences","/docs/decisions/ADR-2610081003#consequences"],["ADR-2610081003: a page app reaches only its own package","Implementation","/docs/decisions/ADR-2610081003#implementation"],["ADR-2610081003: a page app reaches only its own package","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610081003#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610081003: a page app reaches only its own package","Gate","/docs/decisions/ADR-2610081003#gate"],["ADR-2610081003: a page app reaches only its own package","References","/docs/decisions/ADR-2610081003#references"],["ADR-2610081041: every claim names its test","","/docs/decisions/ADR-2610081041"],["ADR-2610081041: every claim names its test","Context","/docs/decisions/ADR-2610081041#context"],["ADR-2610081041: every claim names its test","Decision","/docs/decisions/ADR-2610081041#decision"],["ADR-2610081041: every claim names its test","Consequences","/docs/decisions/ADR-2610081041#consequences"],["ADR-2610081041: every claim names its test","Implementation","/docs/decisions/ADR-2610081041#implementation"],["ADR-2610081041: every claim names its test","Enforced-By: hexa adr gates (run on demand)","/docs/decisions/ADR-2610081041#enforced-by-hexa-adr-gates-run-on-demand"],["ADR-2610081041: every claim names its test","Gate","/docs/decisions/ADR-2610081041#gate"],["ADR-2610081041: every claim names its test","References","/docs/decisions/ADR-2610081041#references"]];
+  const q = document.getElementById('q'), hits = document.getElementById('hits');
+  const menu = document.getElementById('menu');
+  if (matchMedia('(max-width: 900px)').matches) menu.open = false;
+  let sel = -1;
+  const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+  function show() {
+    const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) { hits.hidden = true; q.setAttribute('aria-expanded', 'false'); return; }
+    const found = index.map(([page, head, url]) => {
+      const hay = (page + ' ' + head).toLowerCase();
+      if (!words.every(w => hay.includes(w))) return null;
+      const score = words.reduce((s, w) => s + (head.toLowerCase().includes(w) ? 2 : 0) + (page.toLowerCase().includes(w) ? 1 : 0), head ? 0 : 3);
+      return { page, head, url, score };
+    }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 12);
+    sel = found.length ? 0 : -1;
+    hits.innerHTML = found.length
+      ? found.map((h, i) => `<li><a role="option" href="${esc(h.url)}" aria-selected="${i === 0}">${esc(h.head || h.page)}<small>${esc(h.head ? h.page : 'Page')}</small></a></li>`).join('')
+      : '<li><a role="option" aria-disabled="true">Nothing found</a></li>';
+    hits.hidden = false; q.setAttribute('aria-expanded', 'true');
+  }
+  function move(d) {
+    const links = [...hits.querySelectorAll('a[href]')];
+    if (!links.length) return;
+    sel = (sel + d + links.length) % links.length;
+    links.forEach((a, i) => a.setAttribute('aria-selected', String(i === sel)));
+    links[sel].scrollIntoView({ block: 'nearest' });
+  }
+  q.addEventListener('input', show);
+  q.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
+    else if (e.key === 'Enter') { const a = hits.querySelectorAll('a[href]')[sel]; if (a) location.href = a.href; }
+    else if (e.key === 'Escape') { q.value = ''; show(); q.blur(); }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && document.activeElement !== q && !/input|textarea/i.test(document.activeElement.tagName)) { e.preventDefault(); q.focus(); }
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('.search')) { hits.hidden = true; q.setAttribute('aria-expanded', 'false'); } });
+})();
+</script>
+</html>

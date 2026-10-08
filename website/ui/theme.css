@@ -1,0 +1,38 @@
+/* Wardian UI theme: the tokens every component reads. Change these to restyle them all.
+   Dark mode follows the viewer's system; set data-theme="light" or "dark" on <html> to force one. */
+:root {
+  --w-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --w-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --w-text-sm: 13px; --w-text: 14px; --w-text-lg: 16px;
+  --w-space-1: 4px; --w-space-2: 8px; --w-space-3: 12px; --w-space-4: 16px; --w-space-5: 24px; --w-space-6: 32px;
+  --w-radius: 8px;
+  --w-bg: #ffffff; --w-fg: #09090b;
+  --w-muted: #71717a; --w-muted-bg: #f4f4f5;
+  --w-border: #e4e4e7;
+  --w-primary: #18181b; --w-primary-fg: #fafafa;
+  --w-secondary: #f4f4f5; --w-secondary-fg: #18181b;
+  --w-destructive: #dc2626; --w-destructive-fg: #ffffff;
+  --w-success: #15803d;
+  --w-ring: #a1a1aa;
+  --w-shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.08);
+  --w-speed: .15s;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --w-bg: #09090b; --w-fg: #fafafa; --w-muted: #a1a1aa; --w-muted-bg: #27272a; --w-border: #27272a;
+    --w-primary: #fafafa; --w-primary-fg: #18181b; --w-secondary: #27272a; --w-secondary-fg: #fafafa;
+    --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #52525b;
+    --w-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"] {
+  --w-bg: #09090b; --w-fg: #fafafa; --w-muted: #a1a1aa; --w-muted-bg: #27272a; --w-border: #27272a;
+  --w-primary: #fafafa; --w-primary-fg: #18181b; --w-secondary: #27272a; --w-secondary-fg: #fafafa;
+  --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #52525b;
+  --w-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+}
+@media (prefers-reduced-motion: reduce) { :root { --w-speed: 0s; } }
+/* Visually hidden, still read by screen readers. */
+.w-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* The built-in progress bar follows the theme too. */
+wardian-progress { --wardian-progress-color: var(--w-primary); --wardian-progress-track: var(--w-muted-bg); --wardian-progress-error: var(--w-destructive); }

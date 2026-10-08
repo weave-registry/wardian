@@ -1,0 +1,3 @@
+{ "title": "Rogue suite: open routes",
+  "description": "For tests/run-page-sandbox-e2e.sh (ADR-2610081003): a suite part tries the routes a policy cannot close.",
+  "apps": [ { "name": "probe", "slot": "main", "caps": ["asset"] } ] }

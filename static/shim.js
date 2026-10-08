@@ -38,7 +38,7 @@ const Kernel = (() => {
   function makeCtx(){
     const allow = cap => { if (!contract.caps.includes(cap)) throw new Error(def.name + ' did not declare capability "' + cap + '"'); };
     function emit(topic, payload){
-      if (!contract.emits[topic]) throw new Error(def.name + ' may not emit "' + topic + '" (not in its contract)');
+      if (!Object.hasOwn(contract.emits, topic)) throw new Error(def.name + ' may not emit "' + topic + '" (not in its contract)');
       post({k: 'emit', topic, payload});
     }
     function on(topic, fn){

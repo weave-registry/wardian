@@ -228,6 +228,76 @@ mod tests {
         assert_eq!(uri_encode("/model/a%3A0/invoke", true), "/model/a%253A0/invoke");
     }
 
+    /// A stand-in for Bedrock that answers every request with `status`, `error_type` and `message`,
+    /// and records the paths asked for. Returns its address and the paths.
+    fn fake_bedrock(status: u16, error_type: &'static str, message: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let paths = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = std::sync::Arc::clone(&paths);
+        std::thread::spawn(move || {
+            for conn in listener.incoming().flatten() {
+                let mut reader = BufReader::new(conn.try_clone().unwrap());
+                let (mut first, mut len) = (String::new(), 0);
+                reader.read_line(&mut first).unwrap_or(0);
+                seen.lock().unwrap().push(first.split(' ').nth(1).unwrap_or("").to_string());
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                        break;
+                    }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let _ = reader.read_exact(&mut vec![0; len]);
+                let body = json!({ "message": message }).to_string();
+                let _ = write!(&conn, "HTTP/1.1 {status} X\r\nx-amzn-ErrorType: {error_type}:http://internal\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            }
+        });
+        (format!("http://{addr}"), paths)
+    }
+
+    fn api_key() -> LlmAuth {
+        LlmAuth::Bedrock { region: "eu-west-1".into(), auth: BedrockAuth::ApiKey("k".into()) }
+    }
+
+    /// ADR-2610071106 #2 (#11): Bedrock's 403 for a model the account has not enabled says to
+    /// enable it in that region; a 403 for the sign-in says the sign-in was refused.
+    #[test]
+    fn claim_a_403_says_to_enable_the_model_in_the_region() {
+        let (base, _) = fake_bedrock(403, "AccessDeniedException", "You don't have access to the model with the specified model ID.");
+        let b = Bedrock::new(Some(base), Some("my.model-v1:0".into()), None);
+        match b.messages(&api_key(), &json!({ "max_tokens": 1, "messages": [] })) {
+            Err(LlmError::Status(403, msg)) => {
+                assert!(msg.contains("cannot use my.model-v1:0 in eu-west-1") && msg.contains("enable it in the Bedrock console under Model access"), "{msg}");
+            }
+            _ => panic!("expected a 403"),
+        }
+        let (base, _) = fake_bedrock(403, "UnrecognizedClientException", "The security token included in the request is invalid.");
+        match Bedrock::new(Some(base), None, None).test_key(&api_key()) {
+            Err(LlmError::Status(403, msg)) => assert!(msg.starts_with("AWS refused the sign-in"), "{msg}"),
+            _ => panic!("expected a 403"),
+        }
+    }
+
+    /// ADR-2610071106 #2 (#12): the default models are US inference profiles, and
+    /// WARDIAN_BEDROCK_MODEL and WARDIAN_BEDROCK_QUICK_MODEL (passed in here by main.rs) replace them,
+    /// in the request's URL too.
+    #[test]
+    fn claim_the_models_can_be_overridden() {
+        let defaults = Bedrock::new(None, None, None);
+        assert_eq!((defaults.model(Tier::Main), defaults.model(Tier::Quick)), (DEFAULT_MODEL.to_string(), QUICK_MODEL.to_string()));
+        assert!(DEFAULT_MODEL.starts_with("us.anthropic.") && QUICK_MODEL.starts_with("us.anthropic."));
+        let (base, paths) = fake_bedrock(400, "ValidationException", "stop here");
+        let b = Bedrock::new(Some(base), Some("eu.anthropic.main-v1:0".into()), Some("eu.anthropic.quick-v1:0".into()));
+        assert_eq!((b.model(Tier::Main), b.model(Tier::Quick)), ("eu.anthropic.main-v1:0".to_string(), "eu.anthropic.quick-v1:0".to_string()));
+        let _ = b.messages(&api_key(), &json!({ "max_tokens": 1, "messages": [] }));
+        let _ = b.test_key(&api_key());
+        assert_eq!(*paths.lock().unwrap(), ["/model/eu.anthropic.main-v1%3A0/invoke", "/model/eu.anthropic.quick-v1%3A0/invoke"]);
+    }
+
     #[test]
     fn dates_and_hosts() {
         assert_eq!(amz_date(UNIX_EPOCH + Duration::from_secs(1_440_938_160)), "20150830T123600Z");

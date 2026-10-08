@@ -64,6 +64,12 @@ Wardian 1.0 ships when every item below is done or is written down here as delib
 
 Not in 1.0: Windows builds, more than one user per Wardian, and AWS profiles or SSO for Bedrock.
 
+The steps that are not behaviour can still fail like a test (ADR-2610081041):
+`scripts/release-check.sh 1.0.0` fails unless the review is in `docs/reviews/` with a `Reviewer:`
+line naming who did it (1), the CHANGELOG section for the version has a PASS, SKIP or FAIL line for
+every live check (2), and the version matches `Cargo.toml`; with `--tagged`, also unless `v1.0.0` is
+on both remotes (5).
+
 ## Consequences
 
 - 1.0 means "a stranger's app or file cannot reach past its package, and we would know if Wardian

@@ -1,0 +1,10 @@
+/* <div class="w-table-wrap"><table class="w-table"><caption>…</caption><thead>…</thead><tbody>…</tbody></table></div>
+   Give number cells class="num" so they line up on the right. */
+.w-table-wrap { overflow: auto; border: 1px solid var(--w-border); border-radius: var(--w-radius); }
+.w-table { width: 100%; border-collapse: collapse; font: var(--w-text)/1.4 var(--w-font); color: var(--w-fg); font-variant-numeric: tabular-nums; }
+.w-table caption { padding: var(--w-space-3); caption-side: bottom; color: var(--w-muted); font-size: var(--w-text-sm); }
+.w-table th, .w-table td { padding: 10px var(--w-space-3); text-align: left; border-bottom: 1px solid var(--w-border); }
+.w-table th { font-weight: 500; color: var(--w-muted); background: var(--w-bg); position: sticky; top: 0; }
+.w-table tbody tr:last-child td { border-bottom: 0; }
+.w-table tbody tr:hover { background: var(--w-muted-bg); }
+.w-table .num { text-align: right; }

@@ -1,2 +1,2 @@
 { "format": 2, "title": "Channel viewer",
-  "apps": [ { "name": "view", "slot": "main", "channels": { "receive": ["budget"] } } ] }
+  "apps": [ { "name": "view", "slot": "main", "channels": { "send": ["budget"], "receive": ["budget"] } } ] }

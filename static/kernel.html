@@ -79,6 +79,9 @@
   }
   const send = (app, m) => { const f = frames.get(app); if (f) f.win.postMessage(m, '*'); };
   const reply = (app, id, ok, valueOrError) => send(app, ok ? {k: 'reply', id, ok, value: valueOrError} : {k: 'reply', id, ok, error: valueOrError});
+  // A refusal is answered and recorded as a fault (SPEC.md 6.7.6). `said` is the answer's text when
+  // it differs from the fault's.
+  const refuse = (app, id, why, said = why) => { fault(app, why); reply(app, id, false, said); };
 
   // ---------- load and check suite.json ----------
   let suite;
@@ -195,8 +198,8 @@
   }
   // ---------- long calls run as background jobs (ADR-2610072118) ----------
   // A Splunk search, a load into a table, or a question to Claude can take minutes. The server runs it
-  // as a job and answers at once; the kernel asks how it is going with short requests (every second
-  // at first, then every two), so no connection stays held and other pages keep loading.
+  // as a job and answers at once; the kernel asks how it is going with short requests (after 250 ms,
+  // then every second for 10 s, then every two), so no connection stays held and other pages keep loading.
   // The app still gets one promise, which settles with the job's result (and its id, as `job`).
   async function hostGet(path){
     const headers = {};
@@ -249,7 +252,8 @@
     },
     emit(app, m){
       const f = frames.get(app);
-      if (!f.contract.emits[m.topic]) return fault(app, `may not emit "${m.topic}" (not in suite.json)`);
+      // Own keys only: "toString" is on every object's prototype, not in the contract.
+      if (!Object.hasOwn(f.contract.emits, m.topic)) return fault(app, `may not emit "${m.topic}" (not in suite.json)`);
       if (f.contract.emits[m.topic].retain) retained.set(m.topic, m.payload);
       note('emit', app, m.topic);
       (listeners.get(m.topic) || new Set()).forEach(to => send(to, {k: 'msg', topic: m.topic, payload: m.payload}));
@@ -272,9 +276,9 @@
     },
     call(app, m){
       const key = m.app + '.' + m.method;
-      if (!frames.get(app).contract.needs.includes(key)) return reply(app, m.id, false, `${app} may not call "${key}" (not in suite.json)`);
+      if (!frames.get(app).contract.needs.includes(key)) return refuse(app, m.id, `may not call "${key}" (not in suite.json)`, `${app} may not call "${key}" (not in suite.json)`);
       const target = frames.get(m.app);
-      if (!target || !target.contract.provides.includes(m.method)) return reply(app, m.id, false, key + ' is not available');
+      if (!target || !target.contract.provides.includes(m.method)) return refuse(app, m.id, key + ' is not available');
       const c = {from: app, id: m.id, app: m.app, method: m.method, args: m.args};
       if (target.provided.has(m.method)) return forwardCall(c);
       // The provider's frame has not started yet: hold the call until it does.
@@ -287,7 +291,8 @@
     },
     result(app, m){
       const p = pendingCalls.get(m.id);
-      if (!p || p.to !== app) return;   // only the app that was asked may answer
+      if (!p) return;
+      if (p.to !== app) return fault(app, 'may not answer a call it was not asked');   // only the app that was asked may answer
       pendingCalls.delete(m.id);
       reply(p.from, p.id, !!m.ok, m.ok ? m.value : String(m.error));
     },
@@ -296,6 +301,7 @@
       if (typeof m.key === 'string') saveStore(app, m.key, m.value);
     },
     async cap(app, m){
+      if (!capDeclared(app, m.name)) fault(app, `did not declare capability "${HOST_CAPS.includes(m.name) ? m.name : 'claude:' + m.name}"`);
       let impl = capDeclared(app, m.name) && CAPS[m.name];
       // Offer Claude only when this server has a key, so apps hide AI features otherwise.
       if (impl && m.name === 'sample'){ try { if (!(await hostStatus()).ai.ready) impl = null; } catch { impl = null; } }
@@ -304,15 +310,15 @@
     },
     async capop(app, m){
       const impl = capDeclared(app, m.name) && CAPS[m.name];
-      if (!impl || !Object.hasOwn(impl, m.op) || typeof impl[m.op] !== 'function') return reply(app, m.id, false, `capability ${m.name}.${m.op} is not granted`);
+      if (!impl || !Object.hasOwn(impl, m.op) || typeof impl[m.op] !== 'function') return refuse(app, m.id, `capability ${m.name}.${m.op} is not granted`);
       note('capop', app, m.name + '.' + m.op);
       try { reply(app, m.id, true, await impl[m.op](m.args, app)); }
       catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
     },
     async asset(app, m){
-      if (!frames.get(app).contract.caps.includes('asset')) return reply(app, m.id, false, 'did not declare capability "asset"');
+      if (!frames.get(app).contract.caps.includes('asset')) return refuse(app, m.id, 'did not declare capability "asset"');
       const path = String(m.path || '');
-      if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*(\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$/.test(path)) return reply(app, m.id, false, 'bad asset path: ' + path);
+      if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*(\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$/.test(path)) return refuse(app, m.id, 'bad asset path: ' + path);
       note('asset', app, path);
       try {
         const r = await fetch(`/apps/${enc(suiteName)}/${path}`, {cache: 'no-cache'});
@@ -321,13 +327,13 @@
       } catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
     },
     async chsend(app, m){
-      if (!frames.get(app).contract.channels.send.includes(m.channel)) return reply(app, m.id, false, `may not send on channel "${m.channel}" (not in suite.json)`);
+      if (!frames.get(app).contract.channels.send.includes(m.channel)) return refuse(app, m.id, `may not send on channel "${m.channel}" (not in suite.json)`);
       note('channel', app, 'send ' + m.channel);
       try { await WardianChannels.send(suiteName, m.channel, m.data); reply(app, m.id, true, null); }
       catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
     },
     async chon(app, m){
-      if (!frames.get(app).contract.channels.receive.includes(m.channel)) return reply(app, m.id, false, `may not receive on channel "${m.channel}" (not in suite.json)`);
+      if (!frames.get(app).contract.channels.receive.includes(m.channel)) return refuse(app, m.id, `may not receive on channel "${m.channel}" (not in suite.json)`);
       note('channel', app, 'receive ' + m.channel);
       try {
         await WardianChannels.receive(suiteName, m.channel, (data, info) => send(app, {k: 'chmsg', channel: m.channel, data, from: info.from, at: info.at}));

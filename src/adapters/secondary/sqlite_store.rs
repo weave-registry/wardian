@@ -354,6 +354,35 @@ mod tests {
         r.is_err_and(|e| e.contains("not allowed") || e.contains("not authorized") || e.contains("no such function"))
     }
 
+    /// ADR-2610071219 #3 (#33): statements run one at a time per package; another package's do not wait.
+    #[test]
+    fn claim_statements_run_one_at_a_time_per_package() {
+        let (db, dir) = store("one-at-a-time", MAX_DB_BYTES, 10_000);
+        let db = Arc::new(db);
+        let slow = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 3000000) SELECT count(*) FROM c";
+        db.query("a", "SELECT 1", &[]).unwrap();
+        db.query("b", "SELECT 1", &[]).unwrap();
+        let t = Instant::now();
+        db.query("a", slow, &[]).unwrap();
+        let alone = t.elapsed();
+        assert!(alone > Duration::from_millis(100), "the slow statement is too quick to measure: {alone:?}");
+        let quick_while_slow = |package: &'static str| {
+            let busy = Arc::clone(&db);
+            let worker = std::thread::spawn(move || busy.query("a", slow, &[]).unwrap());
+            std::thread::sleep(alone / 5);
+            let t = Instant::now();
+            db.query(package, "SELECT 1", &[]).unwrap();
+            let waited = t.elapsed();
+            worker.join().unwrap();
+            waited
+        };
+        let same = quick_while_slow("a");
+        assert!(same > alone / 2, "a statement of the same package waits for the running one: {same:?} of {alone:?}");
+        let other = quick_while_slow("b");
+        assert!(other < alone / 4, "another package's statement does not wait: {other:?} of {alone:?}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn the_escapes_are_refused() {
         let (db, dir) = store("escapes", MAX_DB_BYTES, 2000);

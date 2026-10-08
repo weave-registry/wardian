@@ -3,7 +3,7 @@
 
 pub use crate::domain::import_plan::MAX_ZIP_BYTES;
 pub use crate::domain::package::{safe_rel, safe_segment, AppInfo};
-pub use crate::domain::suite::FRAME_CSP;
+pub use crate::domain::suite::{page_csp, FRAME_CSP};
 pub use crate::domain::export::{file_name as export_file_name, MIME as EXPORT_MIME};
 pub use crate::domain::jobs::JobKind;
 use serde_json::Value;
@@ -98,9 +98,15 @@ pub trait Jobs: Send + Sync {
 /// The docs, the JSON Schemas and the component library, as pages.
 pub trait Pages: Send + Sync {
     fn page(&self, name: &str) -> Option<String>;
+    /// Every file of the static docs site, as (path, contents), for `wardian docs`.
+    fn site(&self) -> Vec<(String, String)>;
     fn schema(&self, name: &str) -> Option<&'static str>;
     fn ui_file(&self, name: &str) -> Option<&'static str>;
     fn gallery(&self) -> &'static str;
+    /// The AI skills' names, and every file `wardian skills` installs, as (path under
+    /// `.claude/skills/`, text) (ADR-2610080928).
+    fn skill_names(&self) -> Vec<&'static str>;
+    fn skills(&self) -> Vec<(String, String)>;
 }
 
 /// The viewer's state, kept by the host (ADR-2610071055): Arrange layouts, each suite app's saved
