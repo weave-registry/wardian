@@ -13,6 +13,12 @@ const SERVER_ONLY = ['csv-explorer', 'focus-log', 'focus-timer', 'splunk-table',
 (async () => {
   const browser = await chromium.launch(require('./browser')({ headless: true }));
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  // A protected Vercel preview: one visit with the bypass secret sets a cookie for the rest.
+  if (process.env.VERCEL_BYPASS) {
+    const first = await ctx.newPage();
+    await first.goto(`${B}/docs/?x-vercel-protection-bypass=${encodeURIComponent(process.env.VERCEL_BYPASS)}&x-vercel-set-bypass-cookie=true`);
+    await first.close();
+  }
   for (const app of RUNNABLE) {
     const page = await ctx.newPage();
     const errors = [];
