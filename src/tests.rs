@@ -2210,6 +2210,37 @@ fn keys_admin_token_set_in_settings() {
     let _ = fs::remove_dir_all(base);
 }
 
+/// A key owner whose one key comes from the environment, with nothing saved.
+struct EnvironmentKey;
+
+impl crate::usecases::keys::KeyOwner for EnvironmentKey {
+    fn entries(&self) -> Vec<crate::usecases::keys::KeyEntry> {
+        vec![crate::usecases::keys::KeyEntry { id: "splunk", name: "Splunk account", from: Some("environment"), detail: "token for https://splunk:8089".into(), error: None }]
+    }
+    fn retest(&self, id: &str) -> Option<Result<(), String>> { (id == "splunk").then_some(Ok(())) }
+    fn forget(&self, id: &str) -> Option<Result<(), String>> { (id == "splunk").then_some(Ok(())) }
+}
+
+/// ADR-2610081500 #2: a key set only in the environment cannot be removed in Settings, and asking
+/// to remove it keeps its last test.
+#[test]
+fn keys_an_environment_key_is_not_removed_and_keeps_its_test() {
+    use crate::ports::service::Keys;
+    use crate::usecases::keys::{AdminGate, Keyring};
+    let base = tmp("keys-env-remove");
+    fs::create_dir_all(&base).unwrap();
+    let (secrets, checks) = key_stores(&base);
+    checks.record::<()>("splunk", &Ok(()));
+    let admin = Arc::new(AdminGate::load(Arc::clone(&secrets), &base, None, false).unwrap());
+    let keyring = Keyring::new(vec![Arc::new(EnvironmentKey)], admin, Arc::clone(&checks), secrets);
+    let e = keyring.remove("splunk").unwrap_err();
+    assert!(e.contains("environment"), "{e}");
+    assert_eq!(checks.last("splunk")["ok"], true, "the key is still in use, so its test is kept");
+    let splunk = keyring.list()["keys"][0].clone();
+    assert_eq!((splunk["from"].as_str(), splunk["check"]["ok"].as_bool()), (Some("environment"), Some(true)), "{splunk}");
+    let _ = fs::remove_dir_all(base);
+}
+
 /// A Google that accepts any key and serves one empty folder, so Drive can be the app source.
 struct DriveWithFolder;
 

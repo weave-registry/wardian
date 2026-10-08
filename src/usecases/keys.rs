@@ -192,6 +192,10 @@ impl Keys for Keyring {
         if id == "admin" {
             self.admin.forget()?;
         } else {
+            // An environment key has nothing saved to remove, and its last test still applies.
+            if self.owners.iter().flat_map(|o| o.entries()).any(|e| e.id == id && e.from == Some("environment")) {
+                return Err(format!("the key \"{id}\" is set in the environment: unset it there"));
+            }
             self.owners.iter().find_map(|o| o.forget(id)).ok_or_else(|| format!("no key \"{id}\""))??;
         }
         self.checks.forget(id);
