@@ -6,6 +6,30 @@ Wardian keeps the small tools you make, often with AI, on a computer you control
 to your browser from a local folder or straight from Google Drive. Each app runs sealed: the
 browser blocks its network, and it cannot see your files or your other apps unless you allow it.
 
+## Install
+
+On macOS (Apple silicon or Intel) or Linux (x86_64 or aarch64), with no sudo:
+
+    curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh
+
+Then run `wardian` from any folder and open http://127.0.0.1:8000. The script puts `wardian` in
+`~/.local/bin` and the example apps in `~/.local/lib/wardian/example-apps`, checks the download
+against `SHA256SUMS`, and says the line to add if `~/.local/bin` is not on your `PATH`. It never
+runs Wardian and never edits your shell files. Settings: `WARDIAN_VERSION=0.4.0` installs that
+version, `WARDIAN_PREFIX` installs somewhere else, and `WARDIAN_DOWNLOAD` downloads from another
+folder holding the tarballs and `SHA256SUMS` (a mirror, or `dist/` served by any web server).
+
+While the repository is private, the default address works only for people with access to it,
+and curl does not sign in to GitHub. With access, download the release with the GitHub CLI and
+install from that folder:
+
+    gh release download --repo weave-registry/wardian -D wardian-release
+    WARDIAN_DOWNLOAD="file://$PWD/wardian-release" sh wardian-release/install.sh
+
+To build from source instead, see Run below.
+
+## About
+
 The name comes from the Wardian case, the sealed glass case that let living plants travel
 safely across oceans in the 1800s. Your apps are the plants; Wardian is the case.
 
@@ -117,9 +141,14 @@ Chrome. It needs Node with the `playwright` package.
     cargo run --release            # serves DATA_DIR/apps on http://127.0.0.1:8000
     cargo run --release -- /path/to/apps
 
-Wardian serves and saves apps in its **working folder**, `DATA_DIR/apps` (by default `./data/apps`).
-On the first start it fills that folder from `./apps`, the example apps in the repository, leaving out
-build output (`target/`, `node_modules/`, `Cargo.lock`). After that, apps made or changed inside
+Wardian serves and saves apps in its **working folder**, `DATA_DIR/apps`. Without `DATA_DIR`, the
+data folder is `./data` when Wardian starts in a Wardian checkout or where `./data` already exists;
+anywhere else it is `~/Library/Application Support/Wardian` on macOS and `$XDG_DATA_HOME/wardian`
+(default `~/.local/share/wardian`) on Linux. Wardian prints the one it uses at start.
+On the first start it fills the working folder from the example apps: `./apps` in a checkout,
+otherwise the ones installed beside the program (`../lib/wardian/example-apps`, or
+`../Resources/apps` in Wardian.app), leaving out build output (`target/`, `node_modules/`,
+`Cargo.lock`). After that, apps made or changed inside
 Wardian (Make an app, Change this app, imports, restores) change only the working folder, never the
 repository. To ship one of them, copy it back and commit it:
 
@@ -380,7 +409,7 @@ same machine.
 
 ## Saved state
 
-Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
+Settings live in `DATA_DIR` (in a checkout `./data`, which git ignores; see Run for the rule).
 
 - `config.json` — the chosen source and Drive folder
 - `service-account.json` — the uploaded key, readable by its owner only
@@ -401,7 +430,7 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
 | Variable | Default | Meaning |
 |---|---|---|
 | `ADDR` | `127.0.0.1:8000` | Address to listen on; anything but `127.0.0.0/8`, `::1` or `localhost` needs `ADMIN_TOKEN` |
-| `DATA_DIR` | `data` | Where settings, the working folder of apps and their history are kept |
+| `DATA_DIR` | `data` in a checkout or where it exists, else the platform's folder (see Run) | Where settings, the working folder of apps and their history are kept |
 | `ADMIN_TOKEN` | none | Whoever sends it is an admin, and nobody else; required to listen on a non-loopback address |
 | `REFRESH_SECS` | `60` | How often to re-read the Drive folder |
 | `GDRIVE_FOLDER_ID` | none | Start on this folder; wins over the saved one |
@@ -428,7 +457,10 @@ Settings live in `DATA_DIR` (default `./data`). Git ignores this folder.
     tests/run-all.sh          # what CI runs: unit tests, hexa (if installed), every browser suite
 
 Each `tests/run-*-e2e.sh` starts its own Wardian with a throwaway data folder, fakes for Splunk,
-Claude and Bedrock where it needs them, and drives the pages in a browser. They need python3 and
+Claude and Bedrock where it needs them, and drives the pages in a browser.
+`tests/run-install-e2e.sh` needs no browser: it builds a release tarball, installs it with
+`install.sh` from a local web server into a throwaway home folder, starts it, and checks that a
+tampered tarball is refused. They need python3 and
 Node with the `playwright` package (`npm i -g playwright`). They launch Google Chrome; set
 `WARDIAN_BROWSER=chromium` to use Playwright's own Chromium instead (`npx playwright install
 chromium`), as CI does. `tests/run-all.sh` stops at the first failure.
@@ -466,7 +498,7 @@ lists each check's variables and what it proves. Run them once per release.
 4. Build the packages, which land in `dist/`:
 
        scripts/package-macos.sh     # dist/Wardian.app and Wardian-<version>-macos-<arch>.zip
-       scripts/package-linux.sh     # dist/wardian-<version>-linux-<arch>.tar.gz
+       scripts/package-linux.sh     # dist/wardian-<version>-linux-<arch>-desktop.tar.gz
 
    Without credentials the macOS bundle is signed ad hoc: it runs on the Mac that built it, and
    Gatekeeper refuses it elsewhere. To sign it, set `DEVELOPER_ID` to a Developer ID Application
@@ -482,8 +514,12 @@ lists each check's variables and what it proves. Run them once per release.
        git tag -a v1.0.0 -m "Wardian 1.0.0"
        git push origin main v1.0.0 && git push upstream main v1.0.0
 
-6. Attach the zip and the tarball to the release on GitHub, with the version's `CHANGELOG.md`
-   section as its notes.
+   On GitHub the tag starts `.github/workflows/release.yml`: it builds the four tarballs the
+   one-line install uses (macOS arm64 and x86_64, Linux x86_64 and aarch64, each with
+   `scripts/release-tarball.sh`), writes one `SHA256SUMS` for them, and publishes the release
+   with them and `install.sh`. The tag must match `version` in `Cargo.toml`.
+6. Add the zip and the desktop tarball to that release, and put the version's `CHANGELOG.md`
+   section in its notes.
 
 ## License
 

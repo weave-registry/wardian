@@ -1,0 +1,87 @@
+# Release (ADR-2610080915): on a tag v*, builds Wardian on four native runners, packs each with
+# scripts/release-tarball.sh, and publishes a GitHub Release holding the four tarballs, one
+# SHA256SUMS for all of them, and install.sh, so that
+#
+#   curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh
+#
+# installs the latest release. install.sh finds its tarball by reading SHA256SUMS.
+#
+# Intel Macs: GitHub retired the macos-13 runner image in December 2025; macos-15-intel is the
+# Intel image that replaced it.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { runner: macos-14, os: macos, arch: arm64 }
+          - { runner: macos-15-intel, os: macos, arch: x86_64 }
+          - { runner: ubuntu-latest, os: linux, arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: The tag names the version in Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml's version $version"
+            exit 1
+          fi
+
+      - name: Build the tarball
+        run: scripts/release-tarball.sh
+
+      - name: The tarball is the one this runner should make
+        run: ls dist/wardian-*-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wardian-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/wardian-*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: One SHA256SUMS for all four
+        working-directory: dist
+        run: |
+          ls wardian-*.tar.gz
+          [ "$(ls wardian-*.tar.gz | wc -l)" -eq 4 ] || { echo "::error::expected four tarballs"; exit 1; }
+          sha256sum wardian-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+          cp ../scripts/install.sh .
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/wardian-*.tar.gz dist/SHA256SUMS dist/install.sh \
+            --repo "$GITHUB_REPOSITORY" --title "Wardian ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag

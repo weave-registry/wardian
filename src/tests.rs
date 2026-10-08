@@ -905,7 +905,7 @@ fn fake_upstream() -> String {
 #[test]
 fn secrets_server_child() {
     let Ok(apps) = std::env::var("WARDIAN_SECRETS_CHILD") else { return };
-    crate::serve(crate::config::Settings::from_env(Some(&apps)));
+    crate::serve(crate::config::Settings::from_env(Some(&apps), &LocalDisk));
 }
 
 /// Every key and account filled, from the environment and through Settings, then every answer

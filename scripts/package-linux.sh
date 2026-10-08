@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds dist/wardian-<version>-linux-<arch>.tar.gz (ADR-2610072033, "Release basics"): the
+# Builds dist/wardian-<version>-linux-<arch>-desktop.tar.gz (ADR-2610072033, "Release basics"): the
 # release build of `wardian`, the example apps, a desktop entry, the .wardian file type
 # (application/vnd.wardian+zip) for the shared MIME database, and install.sh.
 #
@@ -46,11 +46,12 @@ else
   BIN="$CARGO_TARGET_DIR/$TARGET/release/wardian"
 fi
 
-NAME="wardian-$VERSION-linux-$ARCH"
+# "-desktop": scripts/release-tarball.sh's wardian-<version>-linux-<arch>.tar.gz is a different file.
+NAME="wardian-$VERSION-linux-$ARCH-desktop"
 STAGE="$DIST/$NAME"
 TAR="$DIST/$NAME.tar.gz"
 rm -rf "$STAGE" "$TAR"
-mkdir -p "$STAGE/bin" "$STAGE/share/wardian" "$STAGE/share/applications" "$STAGE/share/mime/packages" "$STAGE/share/icons/hicolor/scalable/apps"
+mkdir -p "$STAGE/bin" "$STAGE/lib/wardian/example-apps" "$STAGE/share/applications" "$STAGE/share/mime/packages" "$STAGE/share/icons/hicolor/scalable/apps"
 cp "$BIN" "$STAGE/bin/wardian"
 cp scripts/linux/wardian-desktop "$STAGE/bin/"
 cp scripts/linux/wardian.desktop "$STAGE/share/applications/"
@@ -58,11 +59,13 @@ cp scripts/linux/wardian.xml "$STAGE/share/mime/packages/"
 cp static/logo.svg "$STAGE/share/icons/hicolor/scalable/apps/wardian.svg"
 cp scripts/linux/install.sh "$STAGE/"
 chmod +x "$STAGE/bin/wardian" "$STAGE/bin/wardian-desktop" "$STAGE/install.sh"
-# The example apps, as committed (not whatever else is in ./apps, which is a working folder).
+# The example apps, as committed (not whatever else is in ./apps, which is a working folder), in
+# lib/wardian/example-apps: share/wardian under ~/.local is the data folder itself
+# (ADR-2610080915).
 if git rev-parse --git-dir >/dev/null 2>&1; then
-  git archive HEAD apps | tar -x -C "$STAGE/share/wardian"
+  git archive HEAD apps | tar -x -C "$STAGE/lib/wardian/example-apps" --strip-components 1
 else
-  rsync -a --exclude target --exclude Cargo.lock --exclude node_modules apps "$STAGE/share/wardian/"
+  rsync -a --exclude target --exclude Cargo.lock --exclude node_modules apps/ "$STAGE/lib/wardian/example-apps/"
 fi
 cp LICENSE README.md "$STAGE/"
 [ -f CHANGELOG.md ] && cp CHANGELOG.md "$STAGE/"

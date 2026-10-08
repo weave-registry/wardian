@@ -96,19 +96,19 @@ fn main() {
     // `wardian export` reads the working folder and the app's data, so it gets the same parts
     // the server would use, built only when that command runs.
     let exports_for_cli = || -> Arc<dyn Exports> {
-        let data_dir = config::data_dir();
+        let data_dir = config::data_dir(&*fs);
         let apps = data_dir.join("apps");
         let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &data_dir));
         let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&data_dir));
         let history = Arc::new(History::new(Arc::clone(&fs), &data_dir, &apps));
         Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), db, state, history, &apps, &data_dir))
     };
-    let apps_folder = match cli::run(&args, &tools, &config::data_dir(), &exports_for_cli) {
+    let apps_folder = match cli::run(&args, &tools, &config::data_dir(&*fs), &exports_for_cli) {
         cli::Command::Exit(code) => std::process::exit(code),
         cli::Command::Serve(folder) => folder,
     };
 
-    serve(Settings::from_env(apps_folder.as_deref()));
+    serve(Settings::from_env(apps_folder.as_deref(), &*fs));
 }
 
 /// Builds the adapters and use cases for these settings and serves them; it does not return. The
@@ -125,15 +125,15 @@ fn serve(cfg: Settings) {
             std::process::exit(2);
         }
     }
-    // The data folder is relative to where Wardian starts, so name it in full, and stop at once
-    // if it cannot be written: everything Wardian keeps goes there.
+    // The data folder may be relative to where Wardian starts, so name it in full, and stop at
+    // once if it cannot be written: everything Wardian keeps goes there.
     let data_shown = std::env::current_dir().map(|d| d.join(&cfg.data_dir)).unwrap_or_else(|_| cfg.data_dir.clone());
     if let Err(e) = usecases::workspace::check_writable(&*fs, &cfg.data_dir) {
         eprintln!("Wardian cannot write its data folder, {}: {e}", data_shown.display());
         if cfg!(target_os = "macos") && e.contains("os error 1") {
             eprintln!("macOS blocked it. Allow your terminal app in System Settings → Privacy & Security → Files and Folders (Removable Volumes for an outside drive), or start Wardian from another folder.");
         }
-        eprintln!("Wardian keeps its data in ./data under the folder it starts in, or in DATA_DIR if set.");
+        eprintln!("Wardian keeps its data in DATA_DIR if set; otherwise in ./data in a Wardian checkout or where ./data already exists; otherwise in your user data folder.");
         std::process::exit(2);
     }
     println!("data: {}", data_shown.display());
@@ -146,18 +146,21 @@ fn serve(cfg: Settings) {
     stops.catch_panics();
     stops.catch_signals();
     stops.started(&format!("serving {} on {}", cfg.local_root.display(), cfg.addr));
-    // The working folder (ADR-2610071122): filled from the repository's apps on the first start,
-    // and the repository is never changed. A folder named on the command line is served as it is.
+    // The working folder (ADR-2610071122): filled from the example apps on the first start (found
+    // by ADR-2610080915's rule), which are never changed. A folder named on the command line is
+    // served as it is.
     if cfg.chosen_folder {
         if usecases::workspace::inside_git(&*fs, &cfg.local_root) {
             println!("note: {} is inside a git repository, so apps changed in Wardian show up there as uncommitted changes. Run without a folder to use {}.", cfg.local_root.display(), cfg.data_dir.join("apps").display());
         }
-    } else {
-        match usecases::workspace::seed(&*fs, std::path::Path::new(config::SOURCE_APPS), &cfg.local_root) {
-            Ok(Some(n)) => println!("apps: copied {n} app(s) from ./{} into {} (the working folder; ./{} is not changed)", config::SOURCE_APPS, cfg.local_root.display(), config::SOURCE_APPS),
+    } else if let Some(source) = &cfg.example_apps {
+        match usecases::workspace::seed(&*fs, source, &cfg.local_root) {
+            Ok(Some(n)) => println!("apps: copied {n} example app(s) from {} into {} (the working folder; {} is not changed)", source.display(), cfg.local_root.display(), source.display()),
             Ok(None) => {}
-            Err(e) => eprintln!("apps: could not fill {} from ./{}: {e}", cfg.local_root.display(), config::SOURCE_APPS),
+            Err(e) => eprintln!("apps: could not fill {} from {}: {e}", cfg.local_root.display(), source.display()),
         }
+    } else if let Err(e) = fs.create_dir_all(&cfg.local_root) {
+        eprintln!("apps: could not make {}: {e}", cfg.local_root.display());
     }
     let history = Arc::new(History::new(Arc::clone(&fs), &cfg.data_dir, &cfg.local_root));
     let hub = Arc::new(Hub::new(

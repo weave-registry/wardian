@@ -9,10 +9,12 @@ BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_
 TMP=$(mktemp -d)
 PIDS=()
 trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
-# A checkout-like folder with ./apps: Wardian runs there with no folder argument, so it fills its
-# working folder (DATA_DIR/apps) from ./apps, and must leave ./apps untouched (ADR-2610071122).
+# A checkout-like folder (./apps beside a Cargo.toml naming wardian, ADR-2610080915): Wardian runs
+# there with no folder argument, so it fills its working folder (DATA_DIR/apps) from ./apps, and
+# must leave ./apps untouched (ADR-2610071122).
 mkdir -p "$TMP/work/apps"
 cp -R apps/adder "$TMP/work/apps/"
+cp Cargo.toml "$TMP/work/"
 FPORT=${FAKE_PORT:-18191}
 python3 tests/fixtures/fake-builder.py "$FPORT" &
 PIDS+=($!)

@@ -13,6 +13,13 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- **Install with one command** (ADR-2610080915):
+  `curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh`
+  installs `wardian` and the example apps into `~/.local`, with no sudo, after checking the
+  download against `SHA256SUMS`. `WARDIAN_VERSION`, `WARDIAN_PREFIX` and `WARDIAN_DOWNLOAD` choose
+  the version, the folder and where to download from. A tag `v*` runs
+  `.github/workflows/release.yml`, which builds macOS arm64 and x86_64 and Linux x86_64 and aarch64
+  with `scripts/release-tarball.sh` and publishes them. `tests/run-install-e2e.sh` checks it.
 - **Save as web page** (ADR-2610080905): one `.html` file of an app as the viewer sees it, in their
   Arrange layout, that opens offline in any browser. It holds HTML and CSS only, cleaned by an
   allow-list in the browser, under a policy that blocks any request. Each suite part and page app
@@ -49,6 +56,13 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Changed
 
+- Without `DATA_DIR`, `wardian` started outside a Wardian checkout keeps its data in
+  `~/Library/Application Support/Wardian` (macOS) or `$XDG_DATA_HOME/wardian` (Linux) instead of
+  `./data`, and fills its working folder from the example apps installed beside it. In a checkout,
+  or where `./data` already exists, it uses `./data` as before (ADR-2610080915).
+- The Linux tarball (`scripts/package-linux.sh`) is now `wardian-<version>-linux-<arch>-desktop.tar.gz`,
+  and it and `install.sh` keep the example apps in `lib/wardian/example-apps`. Before, reinstalling
+  into `~/.local` replaced `~/.local/share/wardian/apps`, which is the working folder.
 - The Splunk table is five parts instead of one (ADR-2610080900): `search`, `ask`, `about`, `rows`
   and `keep`, each its own panel that Arrange can move or hide. It has both **Save search** /
   **Save table** with their saved lists and the background-job resume. The message on

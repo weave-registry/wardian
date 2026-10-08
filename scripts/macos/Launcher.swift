@@ -2,8 +2,8 @@
 // window; this launcher gives it what a Mac app needs: a Dock icon, Quit (which stops the server),
 // opening Wardian in the browser, and a place for .wardian files opened from Finder to go.
 //
-// It starts Contents/MacOS/wardian with DATA_DIR in ~/Library/Application Support/Wardian, from
-// Contents/Resources so the example apps there fill the working folder on the first start, and
+// It starts Contents/MacOS/wardian with DATA_DIR in ~/Library/Application Support/Wardian (wardian
+// finds the example apps in ../Resources/apps beside itself for the first start, ADR-2610080915), and
 // logs the server's output to <data dir>/wardian.log. If a Wardian already answers on the address,
 // it opens that one instead of starting a second.
 import AppKit

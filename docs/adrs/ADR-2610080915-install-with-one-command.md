@@ -43,6 +43,15 @@ GitHub Release has been published, and the repository is private.
    script. While the repository is private, the default address works only for people with access;
    making the releases public is the owner's decision, not this ADR's.
 
+**Amended while implementing (2026-10-08):** the example apps are installed in
+`lib/wardian/example-apps`, not `share/wardian/apps`, and the rule in 2 looks for
+`../lib/wardian/example-apps`. With the default prefix `~/.local`, `share/wardian` is
+`~/.local/share/wardian`, the Linux data folder itself: installing would replace the user's
+working folder (`apps/`), and a data folder that is never empty never shows the first-run setup.
+The tarball and `install.sh` (3, 4) and the Linux package use the same layout.
+`install.sh` finds its tarball through `SHA256SUMS`, which lists one file per platform, so the
+"latest" address needs no version and the tarballs keep the version in their names.
+
 ## Consequences
 
 - A user installs with one line, then runs `wardian` from anywhere and finds the example apps.
