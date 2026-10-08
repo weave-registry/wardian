@@ -30,8 +30,15 @@ const FILES: &[(&str, &str)] = &[
     ui!("arrange.js"),
 ];
 
-/// The script that plays `Kernel` inside each suite frame, and the standard components every app may use.
-const FRAME_SHIM: &str = concat!(include_str!("../../../static/shim.js"), "\n", include_str!("../../../static/ui/progress.js"));
+/// The script that plays `Kernel` inside each suite frame, with the default rendering for Save as web
+/// page, and the standard components every app may use.
+const FRAME_SHIM: &str = concat!(
+    include_str!("../../../static/snapshot.js"),
+    "\n",
+    include_str!("../../../static/shim.js"),
+    "\n",
+    include_str!("../../../static/ui/progress.js")
+);
 const GALLERY: &str = include_str!("../../../static/ui/index.html");
 const SPEC_MD: &str = include_str!("../../../SPEC.md");
 const GUIDE_MD: &str = include_str!("../../../GUIDE.md");

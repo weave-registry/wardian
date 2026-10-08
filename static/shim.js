@@ -5,7 +5,7 @@
    The frame itself can reach nothing else: the browser blocks the network, the host page and storage. */
 const Kernel = (() => {
   'use strict';
-  let def = null, contract = null, nextId = 1, root = null, booted = false;
+  let def = null, contract = null, nextId = 1, root = null, booted = false, appCtx = null;
   const pending = new Map(), handlers = new Map(), methods = new Map(), chans = new Map();
   let saved = {};
   const HOST_CAPS = ['splunk', 'db'];   // capabilities the host provides under their own name (not "claude:…")
@@ -141,7 +141,8 @@ const Kernel = (() => {
       contract = m.contract; saved = m.store || {};
       if (!def) return fault('no app registered in this frame');
       if (shape(def) !== shape(contract)) return fault(def.name + ': the contract in app.js differs from suite.json, so the app was not started');
-      safe(() => def.init(makeCtx()));
+      appCtx = makeCtx();
+      safe(() => def.init(appCtx));
     } else if (m.k === 'msg'){
       (handlers.get(m.topic) || []).forEach(fn => safe(() => fn(m.payload)));
     } else if (m.k === 'invoke'){
@@ -152,6 +153,17 @@ const Kernel = (() => {
               err => post({k: 'result', id: m.id, ok: false, error: String(err && err.message || err)}));
     } else if (m.k === 'chmsg'){
       (chans.get(m.channel) || []).forEach(fn => safe(() => fn(m.data, {from: m.from, at: m.at})));
+    } else if (m.k === 'snapshot'){
+      // Save as web page (ADR-2610080905): the app's own snapshot(ctx) if it has one, else a copy
+      // of what the frame shows. If its own fails, the copy is used instead.
+      (async () => {
+        let custom = null;
+        if (def && appCtx && typeof def.snapshot === 'function'){
+          try { custom = await def.snapshot(appCtx); } catch (e) { console.error(e); custom = null; }
+        }
+        const r = await WardianSnapshot.answer(root, custom, !!m.css);
+        post({k: 'snapshot', id: m.id, html: r.html, css: r.css});
+      })().catch(e => post({k: 'snapshot', id: m.id, error: String(e && e.message || e)}));
     } else if (m.k === 'reply'){
       const p = pending.get(m.id); if (!p) return;
       pending.delete(m.id);

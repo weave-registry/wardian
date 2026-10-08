@@ -349,6 +349,7 @@
       if (m.bg && m.bg !== 'rgba(0, 0, 0, 0)') document.body.style.background = m.bg;
       return;
     }
+    if (m.k === 'snapshot'){ snapshotAnswer(e.source, m); return; }
     if (!app) return;                          // the header frame only reports its size
     const h = handlers[m.k];
     if (h) h(app, m); else fault(app, 'unknown message: ' + String(m.k));
@@ -409,6 +410,47 @@
   if (!aside.children.length) aside.hidden = true;
   // A frame has a window only once it is in the page, so the kernel learns the windows now.
   for (const [n, f] of frames){ f.win = f.el.contentWindow; byWin.set(f.win, n); }
+
+  // ---------- Save as web page (ADR-2610080905) ----------
+  // Wardian's page asks for a rendering of what this viewer sees. Each visible panel's frame renders
+  // itself (the shim: the app's snapshot(ctx), or a copy of the frame); hidden panels and apps with
+  // no panel are left out. The answers are not trusted: Wardian's page cleans them.
+  const snapWaits = new Map();   // id -> {win, resolve, timer}
+  function snapshotAnswer(win, m){
+    const w = snapWaits.get(m.id);
+    if (!w || w.win !== win) return;            // only the frame that was asked may answer
+    snapWaits.delete(m.id); clearTimeout(w.timer);
+    w.resolve(typeof m.html === 'string' ? {html: m.html, css: typeof m.css === 'string' ? m.css : ''} : {error: String(m.error || 'no answer')});
+  }
+  function askPart(win, withCss){
+    return new Promise(resolve => {
+      const id = nextId++;
+      const timer = setTimeout(() => { snapWaits.delete(id); resolve({error: 'it did not answer within 10 seconds'}); }, 10000);
+      snapWaits.set(id, {win, resolve, timer});
+      win.postMessage({k: 'snapshot', id, css: withCss}, '*');
+    });
+  }
+  async function snapshot(){
+    const visible = col => col.hidden ? [] : [...col.children].filter(p => !p.hasAttribute('data-arrange-hidden'))
+      .map(p => p.querySelector('iframe')).filter(Boolean);
+    const want = [];
+    if (headerEl) want.push({name: 'header', slot: 'header', win: headerEl.contentWindow});
+    for (const [slot, col] of [['aside', aside], ['main', main]])
+      for (const f of visible(col)) want.push({name: f.title, slot, win: f.contentWindow});
+    // The styles are the same in every frame (SPEC.md 6.3), so only the first part sends them.
+    const got = await Promise.all(want.map((p, i) => askPart(p.win, i === 0)));
+    const parts = want.map((p, i) => ({name: p.name, slot: p.slot, html: got[i].html ?? null, error: got[i].error}));
+    return {title: suite.title || suiteName, parts, css: (got[0] && got[0].css) || '',
+      mode: grid.classList.contains('w-arrange-one') || aside.hidden ? 'one' : grid.classList.contains('w-arrange-swap') ? 'swap' : 'two',
+      columns: grid.style.getPropertyValue('--suite-columns') || ''};
+  }
+  // Only Wardian's own page, the one around this kernel, may ask.
+  addEventListener('message', async e => {
+    const m = e.data;
+    if (e.source !== parent || parent === window || e.origin !== location.origin || !m || m.wardian !== 'snapshot' || m.k !== 'ask') return;
+    const out = await snapshot();
+    parent.postMessage(Object.assign({wardian: 'snapshot', k: 'answer', id: m.id}, out), location.origin);
+  });
 
   window.Kernel = Object.freeze({
     apps: () => suite.apps.map(a => Object.assign({name: a.name}, contractOf(a))),
