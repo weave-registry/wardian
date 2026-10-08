@@ -141,7 +141,8 @@ async function answer(page, re, yes, what) {
   ok(await inputs.locator('#colN').inputValue() === 'concurrency' && await inputs.locator('#colX').inputValue() === 'x' && await inputs.locator('#colR').inputValue() === 'r', 'the first three columns are suggested');
   await useTable(inputs);
   // Wait for the chart rather than a fixed time: Playwright's headless Chromium can take longer.
-  await frameOf(lab, 'chart').locator('#chart circle.pt').nth(7).waitFor({ timeout: 10000 }).catch(() => {});
+  // The lab's engine fits first: seconds here, up to a minute on GitHub's two-core runners.
+  await frameOf(lab, 'chart').locator('#chart circle.pt').nth(7).waitFor({ timeout: 60000 }).catch(() => {});
   await sleep(500);
   const data = await inputs.locator('#data').inputValue();
   ok(data.split('\n')[0] === '# threads, req/s, response time (ms)' && data.split('\n').length === 9, 'measurements filled, with a readable header');
@@ -163,10 +164,11 @@ async function answer(page, re, yes, what) {
   ok(await inputs.locator('#colN').inputValue() === 'n' && await inputs.locator('#colR').inputValue() === 'r', 'the lab picks n, x, r');
   await useTable(inputs); await sleep(1500);
   ok(await inputs.locator('#nUnit').inputValue() === 'requests in progress', 'and the units');
+  await frameOf(lab, 'chart').locator('#about', { hasText: 'Requests in production' }).waitFor({ timeout: 60000 }).catch(() => {});
   aboutText = await frameOf(lab, 'chart').locator('#about').textContent();
   ok(/Requests in production/.test(aboutText) && /Little's Law/.test(aboutText) && /Last 7 days/.test(aboutText), 'the traffic data is labelled');
   await inputs.locator('#data').fill((await inputs.locator('#data').inputValue()) + '\n70, 9000');
-  await sleep(1200);
+  await frameOf(lab, 'chart').locator('#about', { hasText: 'changed the numbers by hand' }).waitFor({ timeout: 60000 }).catch(() => {});
   ok(/changed the numbers by hand/.test(await frameOf(lab, 'chart').locator('#about').textContent()), 'editing by hand is noted');
   await lab.reload(); await sleep(3000);
   inputs = frameOf(lab, 'inputs');
