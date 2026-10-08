@@ -97,7 +97,11 @@ impl Docs {
         let at = pages.iter().position(|p| p.name == name)?;
         let page = &pages[at];
         let (mut body, toc) = render(page.md);
-        // On the website, an example's page shows the app running, and its download.
+        // On the website, the examples page opens with every example to try, and an example's page
+        // shows the app running, and its download.
+        if let (Site::Static, "examples", Some(end)) = (site, name, body.find("</h1>")) {
+            body.insert_str(end + "</h1>".len(), &demos::gallery(&*self.assets));
+        }
         if let (Site::Static, Some(app)) = (site, name.strip_prefix("examples/")) {
             if let (Some(boxed), Some(end)) = (demos::try_box(&*self.assets, app), body.find("</h1>")) {
                 body.insert_str(end + "</h1>".len(), &boxed);
@@ -318,6 +322,15 @@ fn layout(pages: &[DocPage], at: usize, body: &str, toc: &[(u8, String, String)]
   .try h2 {{ margin-top: 0; padding-top: 0; border-top: 0; }}
   .try-frame {{ width: 100%; height: 560px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }}
   .try .muted {{ color: var(--muted); font-size: .88rem; }}
+  .gallery {{ margin: 1rem 0 2.5rem; }}
+  .gallery h2 {{ margin-top: 0; padding-top: 0; border-top: 0; }}
+  .gallery ul {{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .8rem; }}
+  .gallery li {{ display: flex; flex-direction: column; justify-content: space-between; gap: .6rem; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }}
+  .gallery .card-link {{ display: grid; gap: .2rem; text-decoration: none; color: var(--ink); }}
+  .gallery .card-link small {{ color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: .7rem; }}
+  .gallery .card-link span {{ color: var(--muted); font-size: .88rem; }}
+  .gallery .go {{ align-self: flex-start; padding: .35rem .9rem; border-radius: 6px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }}
+  .gallery .needs {{ color: var(--muted); font-size: .85rem; }}
   @media (max-width: 900px) {{
     .wrap {{ grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: .5rem; }}
     nav.side {{ position: static; max-height: none; border-bottom: 1px solid var(--line); padding-bottom: .5rem; margin-bottom: 1rem; }}
