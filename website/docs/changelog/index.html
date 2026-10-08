@@ -94,6 +94,11 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Wardian 1.0") is done or written down there as left out.</p>
 <h3 id="added">Added<a class="anchor" href="#added" aria-label="Link to this section">#</a></h3>
 <ul>
+<li><strong>Folders in the app list</strong> (ADR-2610081830): apps in no folder first, then folders that open and
+close and say how many apps they hold. The example apps start in an "Examples" folder, closed
+when you have apps of your own. New folder, rename, delete (its apps stay), Move to… on every app
+from the mouse or the keyboard, and drag and drop for apps and folders. The filter opens folders
+with a match. Kept per data folder in <code>state/folders.json</code>, through <code>GET/POST /api/state/folders</code>.</li>
 <li><strong>Saved keys are sealed</strong> (ADR-2610081501) with AES-256-GCM under a master key kept in a file
 outside the data folder, <code>~/.config/wardian/master.key</code>, or where <code>WARDIAN_MASTER_KEY</code> or
 <code>WARDIAN_MASTER_KEY_FILE</code> says. Keys saved before are sealed on the first start. Docker keeps the
