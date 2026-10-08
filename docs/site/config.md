@@ -86,6 +86,7 @@ the setup again and fills `apps/` from `./apps`.
 | `SPLUNK_CA_FILE` | none | A PEM file of extra certificate authorities to trust for Splunk. |
 | `WARDIAN_MASTER_KEY` | none | The master key that seals saved keys, as 64 hex digits. When set, no other place is used ([Keys and Claude settings](/docs/keys#sealed-at-rest)). |
 | `WARDIAN_MASTER_KEY_FILE` | `~/.config/wardian/master.key` | The file for the master key, outside the data folder. Made on the first start. |
+| `WARDIAN_SERVICE_LABEL` | `studio.wardian` | The service `wardian start`, `stop` and `status` manage ([Command line](/docs/cli#start-stop-status)). Must start with `studio.wardian`; tests use one of their own. |
 | `GDRIVE_API_BASE` | Google | For tests only. |
 | `ANTHROPIC_BASE_URL` | Anthropic | For tests only. |
 | `WARDIAN_BEDROCK_BASE_URL` | the region's endpoint | For tests only. |

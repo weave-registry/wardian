@@ -5,6 +5,9 @@ one job and exits. Run `wardian --help` to see the list.
 
 ```
 wardian [APPS_FOLDER]                serve the apps
+wardian start [--at-login]           run Wardian in the background as a service, and open it
+wardian stop                         stop the background Wardian
+wardian status                       whether Wardian runs, how, where, and whether it starts at login
 wardian promote APP [FOLDER]         copy an app from the working folder into FOLDER
 wardian export APP [FILE] [--with-data]
                                      write an app as a .wardian file
@@ -27,6 +30,7 @@ lists them all.
 | `0` | The command did its job. For `check`, `new` and `add`: no package has errors. |
 | `1` | The command failed, or a checked package has errors. The server also exits with `1` when it stops on its own, for example when its port is in use. |
 | `2` | Bad usage: a missing argument, an unknown kind or an unknown option. The server exits with `2` when it refuses to start (see [serve](#serve)). |
+| `3` | `status` only: Wardian is not running. |
 | `128 + n` | The server was stopped by signal `n`: `130` for Ctrl-C, `143` for SIGTERM, `129` for SIGHUP. |
 
 ## serve
@@ -70,6 +74,47 @@ Wardian refuses to start, with exit code `2`, in two cases:
 
 > Any first argument that is not a command or an option is taken as a folder to serve. So a
 > mistyped command, such as `wardian chek`, starts the server on a folder called `chek`.
+
+## start, stop, status
+
+```
+wardian start [--at-login] [--no-open]
+wardian stop
+wardian status
+```
+
+`start` hands Wardian to the system's service manager, so it runs without a terminal and comes back
+after a crash (ADR-2610081800): a launchd agent on macOS (`studio.wardian`), a systemd user service
+on Linux (`wardian.service`). Neither needs `sudo`. The service runs this program by its full
+path, with the data folder written in full, `WARDIAN_NO_OPEN=1`, and its output appended to
+`DATA_DIR/wardian.log`. `--at-login` also starts it when you log in; without it, a start at login
+set before is kept. `start` waits up to 15 seconds for Wardian to answer `/api/status`, then opens
+it in the browser (not with `--no-open`) and says where it runs. When this same Wardian already
+answers, `start` opens it and starts nothing; another Wardian on the port is named and left alone.
+Without launchd or systemd, `start` runs Wardian detached and keeps its process id in
+`DATA_DIR/wardian.pid`; it then does not come back after a crash or start at login.
+
+`stop` unloads the service (`launchctl bootout`, or `systemctl --user stop` and `disable`) or ends
+the process in `wardian.pid`, and removes the service file. A Wardian started in a terminal is left
+alone; `stop` says where it answers.
+
+`status` says whether Wardian runs, how (launchd, systemd, plain or a terminal), its address and
+version, the apps folder, and whether it starts at login. It exits `0` when Wardian runs and `3`
+when not. In a terminal all three print a short block; otherwise `name: value` lines:
+
+```
+running: yes
+how: launchd
+address: http://127.0.0.1:8000
+version: 0.4.4
+apps: /Users/you/Library/Application Support/Wardian/apps
+at login: yes
+log: /Users/you/Library/Application Support/Wardian/wardian.log
+```
+
+The service file is `~/Library/LaunchAgents/studio.wardian.plist` with `--at-login` and
+`~/.config/wardian/studio.wardian.plist` without (launchd loads every file in LaunchAgents at
+login), or `~/.config/systemd/user/wardian.service`. `WARDIAN_SERVICE_LABEL` changes the name.
 
 ## promote
 

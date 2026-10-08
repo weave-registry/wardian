@@ -52,6 +52,13 @@ and start them at login. Neither needs `sudo` for a user's own service.
   launchd, systemd and the plain fallback, the unit and plist text as pure functions with tests.
 - `cli.rs`: the three commands; `main.rs` wires them. `scripts/install.sh`: restart on update.
 - README (Run), CHANGELOG, `wardian --help`.
+- Found in implementing it: launchd starts any job with `KeepAlive` when it loads it, whatever
+  `RunAtLoad` says (`man launchd.plist`), and it loads every file in `~/Library/LaunchAgents` at
+  login. So the plist is kept there only with `--at-login`; a service that runs now only keeps it
+  in `~/.config/wardian/<label>.plist` and is bootstrapped from there. `stop` removes the file (and
+  the systemd unit), so a stopped service stays stopped after the next login, and the installer
+  restarts only a service whose file is there. `WARDIAN_SERVICE_LABEL` (default `studio.wardian`)
+  lets a test use a label of its own.
 
 ## Enforced-By: hexa adr gates (run on demand)
 

@@ -3,6 +3,7 @@
 //! of its inputs (the colour choice included), except `open_browser`, which starts the system's
 //! opener. When standard output is not a terminal, main.rs prints the plain lines instead.
 
+use crate::ports::service_manager::{How, Started, Status, Stopped};
 use std::path::Path;
 
 /// The tagline under the name.
@@ -137,6 +138,166 @@ pub fn already_running(url: &str, opened: bool, c: Colour) -> String {
     out
 }
 
+/// How Wardian runs, in a few words, with whether it starts at login (ADR-2610081800).
+fn runs_as(how: How, at_login: bool) -> String {
+    let login = if at_login { "starts at login" } else { "not at login" };
+    match how {
+        How::Launchd => format!("a launchd service · {login}"),
+        How::Systemd => format!("a systemd user service · {login}"),
+        How::Plain => "a background process · no restart after a crash, not at login".into(),
+        How::Terminal => "a terminal (plain `wardian`)".into(),
+    }
+}
+
+fn how_word(how: Option<How>) -> &'static str {
+    match how {
+        Some(How::Launchd) => "launchd",
+        Some(How::Systemd) => "systemd",
+        Some(How::Plain) => "plain",
+        Some(How::Terminal) => "terminal",
+        None => "none",
+    }
+}
+
+fn how_to_stop(how: How) -> &'static str {
+    if how == How::Terminal {
+        "Stop it with Ctrl-C where it runs"
+    } else {
+        "Stop it with wardian stop"
+    }
+}
+
+fn yes(b: bool) -> &'static str {
+    if b {
+        "yes"
+    } else {
+        "no"
+    }
+}
+
+/// The block `wardian start` prints in a terminal.
+pub fn started_block(s: &Started, opened: bool, home: Option<&Path>, c: Colour) -> String {
+    let title = if s.already { "Wardian is already running" } else { "Wardian started" };
+    let mut out = header(c, title, &format!(" {}", c.dim(&s.version)));
+    out.push('\n');
+    let note = if opened { c.dim(" · opened in your browser") } else { String::new() };
+    out.push_str(&row(c, "Ready at", &format!("{}{note}", c.link(&s.url))));
+    out.push_str(&row(c, "Apps", &tilde(&s.apps, home)));
+    out.push_str(&row(c, "Runs as", &runs_as(s.how, s.at_login)));
+    if let Some(n) = &s.other {
+        out.push_str(&row(c, "Note", n));
+    }
+    out.push_str(&format!("\n    {}\n", c.dim(&format!("{} · log: {}", how_to_stop(s.how), tilde(&s.log, home)))));
+    out
+}
+
+/// What `wardian start` prints when the output is not a terminal: one `name: value` per line.
+pub fn started_lines(s: &Started) -> String {
+    let what = if s.already { "already running" } else { "started" };
+    let mut out = format!("wardian: {what} ({})\naddress: {}\nversion: {}\napps: {}\nat login: {}\nlog: {}\n", how_word(Some(s.how)), s.url, s.version, s.apps.display(), yes(s.at_login), s.log.display());
+    if let Some(f) = &s.file {
+        out.push_str(&format!("file: {}\n", f.display()));
+    }
+    if let Some(n) = &s.other {
+        out.push_str(&format!("note: {n}\n"));
+    }
+    out
+}
+
+/// The block `wardian status` prints in a terminal.
+pub fn status_block(s: &Status, home: Option<&Path>, c: Colour) -> String {
+    let mut out = match (s.running(), &s.version) {
+        (true, Some(v)) => header(c, "Wardian is running", &format!(" {}", c.dim(v))),
+        (true, None) => header(c, "Wardian is running", ""),
+        (false, _) => header(c, "Wardian is not running", ""),
+    };
+    out.push('\n');
+    if let Some(url) = &s.url {
+        out.push_str(&row(c, "Ready at", &c.link(url)));
+    }
+    out.push_str(&row(c, "Apps", &tilde(&s.apps, home)));
+    match s.how {
+        Some(how) => out.push_str(&row(c, "Runs as", &runs_as(how, s.at_login))),
+        None if s.at_login => out.push_str(&row(c, "At login", "starts at login")),
+        None => {}
+    }
+    if s.how.is_some() && s.url.is_none() {
+        out.push_str(&row(c, "Note", "the service is there but does not answer; see the log"));
+    }
+    if let Some(n) = &s.other {
+        out.push_str(&row(c, "Note", n));
+    }
+    let next = match s.how {
+        Some(how) if s.running() => how_to_stop(how).to_string(),
+        Some(_) => "Start it again with wardian start".into(),
+        None => "Start it with wardian start (--at-login: also when you log in)".into(),
+    };
+    out.push_str(&format!("\n    {}\n", c.dim(&format!("{next} · log: {}", tilde(&s.log, home)))));
+    out
+}
+
+/// What `wardian status` prints when the output is not a terminal.
+pub fn status_lines(s: &Status) -> String {
+    let mut out = format!("running: {}\nhow: {}\n", yes(s.running()), how_word(s.how));
+    if let Some(url) = &s.url {
+        out.push_str(&format!("address: {url}\n"));
+    }
+    if let Some(v) = &s.version {
+        out.push_str(&format!("version: {v}\n"));
+    }
+    out.push_str(&format!("apps: {}\nat login: {}\nlog: {}\n", s.apps.display(), yes(s.at_login), s.log.display()));
+    if let Some(n) = &s.other {
+        out.push_str(&format!("note: {n}\n"));
+    }
+    out
+}
+
+/// What `wardian stop` prints: styled in a terminal (`c` not Off), plain lines otherwise.
+pub fn stopped_text(s: &Stopped, home: Option<&Path>, c: Colour, tty: bool) -> String {
+    let removed = |list: &[std::path::PathBuf]| list.iter().map(|p| tilde(p, home)).collect::<Vec<_>>().join(", ");
+    match (s, tty) {
+        (Stopped::Stopped(how, files), true) => {
+            let mut out = header(c, "Wardian stopped", "");
+            out.push('\n');
+            out.push_str(&row(c, "Was", &runs_as(*how, false).replace(" · not at login", "")));
+            if !files.is_empty() {
+                out.push_str(&row(c, "Removed", &removed(files)));
+            }
+            out
+        }
+        (Stopped::NotRunning { removed: files, terminal }, true) => {
+            let mut out = header(c, "Wardian is not running", "");
+            if !files.is_empty() || terminal.is_some() {
+                out.push('\n');
+            }
+            if !files.is_empty() {
+                out.push_str(&row(c, "Removed", &removed(files)));
+            }
+            if let Some(url) = terminal {
+                out.push_str(&row(c, "Note", &format!("a Wardian started in a terminal answers at {url}; stop it with Ctrl-C there")));
+            }
+            out
+        }
+        (Stopped::Stopped(how, files), false) => {
+            let mut out = format!("wardian: stopped ({})\n", how_word(Some(*how)));
+            for f in files {
+                out.push_str(&format!("removed: {}\n", f.display()));
+            }
+            out
+        }
+        (Stopped::NotRunning { removed: files, terminal }, false) => {
+            let mut out = "wardian: not running\n".to_string();
+            for f in files {
+                out.push_str(&format!("removed: {}\n", f.display()));
+            }
+            if let Some(url) = terminal {
+                out.push_str(&format!("note: a Wardian started in a terminal answers at {url}; stop it with Ctrl-C there\n"));
+            }
+            out
+        }
+    }
+}
+
 /// An error: what went wrong, then what to do, for standard error.
 pub fn error_block(what: &str, todo: &str, c: Colour) -> String {
     format!("\n  {} {what}\n    {todo}\n", c.bad("✗"))
@@ -239,6 +400,59 @@ mod tests {
         let e = error_block("Wardian cannot listen on [::1]:9: in use.", "Stop it.", Colour::Off);
         assert_eq!(e, "\n  ✗ Wardian cannot listen on [::1]:9: in use.\n    Stop it.\n");
         assert!(error_block("a", "b", Colour::Basic).contains("\x1b[1;31m✗\x1b[0m"));
+    }
+
+    fn started(already: bool, how: How) -> Started {
+        Started {
+            url: "http://127.0.0.1:8000".into(),
+            how,
+            already,
+            at_login: true,
+            other: None,
+            version: "0.4.5".into(),
+            apps: PathBuf::from("/u/a/Library/Application Support/Wardian/apps"),
+            log: PathBuf::from("/u/a/Library/Application Support/Wardian/wardian.log"),
+            file: Some(PathBuf::from("/u/a/Library/LaunchAgents/studio.wardian.plist")),
+        }
+    }
+
+    #[test]
+    fn service_start_and_status_blocks_read_like_the_start_block() {
+        let home = PathBuf::from("/u/a");
+        let b = started_block(&started(false, How::Launchd), true, Some(&home), Colour::Off);
+        assert_eq!(
+            b,
+            "
+  ◆ Wardian started 0.4.5
+
+    Ready at  http://127.0.0.1:8000 · opened in your browser
+    Apps      ~/Library/Application Support/Wardian/apps
+    Runs as   a launchd service · starts at login
+
+    Stop it with wardian stop · log: ~/Library/Application Support/Wardian/wardian.log
+"
+        );
+        assert_eq!(strip(&started_block(&started(false, How::Launchd), true, Some(&home), Colour::Rich)), b);
+        assert!(started_block(&started(true, How::Terminal), false, Some(&home), Colour::Off).contains("◆ Wardian is already running 0.4.5\n"));
+        assert!(started_block(&started(true, How::Terminal), false, Some(&home), Colour::Off).contains("Stop it with Ctrl-C where it runs"));
+        let lines = started_lines(&started(false, How::Launchd));
+        assert!(lines.starts_with("wardian: started (launchd)\naddress: http://127.0.0.1:8000\nversion: 0.4.5\n"), "{lines}");
+        assert!(lines.contains("at login: yes\n") && lines.contains("file: /u/a/Library/LaunchAgents/studio.wardian.plist\n"), "{lines}");
+
+        let running = Status { how: Some(How::Systemd), url: Some("http://127.0.0.1:8000".into()), version: Some("0.4.5".into()), apps: "/u/a/apps".into(), at_login: false, log: "/u/a/wardian.log".into(), other: None };
+        assert_eq!(
+            status_block(&running, Some(&home), Colour::Off),
+            "\n  ◆ Wardian is running 0.4.5\n\n    Ready at  http://127.0.0.1:8000\n    Apps      ~/apps\n    Runs as   a systemd user service · not at login\n\n    Stop it with wardian stop · log: ~/wardian.log\n"
+        );
+        assert_eq!(status_lines(&running), "running: yes\nhow: systemd\naddress: http://127.0.0.1:8000\nversion: 0.4.5\napps: /u/a/apps\nat login: no\nlog: /u/a/wardian.log\n");
+        let stopped = Status { how: None, url: None, version: None, at_login: true, ..running };
+        let b = status_block(&stopped, Some(&home), Colour::Off);
+        assert!(b.starts_with("\n  ◆ Wardian is not running\n") && b.contains("At login  starts at login\n") && b.contains("Start it with wardian start"), "{b}");
+        assert!(status_lines(&stopped).starts_with("running: no\nhow: none\napps:"));
+
+        let s = stopped_text(&Stopped::Stopped(How::Launchd, vec![PathBuf::from("/u/a/Library/LaunchAgents/studio.wardian.plist")]), Some(&home), Colour::Off, true);
+        assert_eq!(s, "\n  ◆ Wardian stopped\n\n    Was       a launchd service\n    Removed   ~/Library/LaunchAgents/studio.wardian.plist\n");
+        assert_eq!(stopped_text(&Stopped::NotRunning { removed: vec![], terminal: None }, Some(&home), Colour::Off, false), "wardian: not running\n");
     }
 
     #[test]

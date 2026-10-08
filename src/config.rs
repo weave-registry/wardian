@@ -215,6 +215,35 @@ pub fn is_loopback(addr: &str) -> bool {
     host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
+/// The user's config folder: XDG_CONFIG_HOME, or `~/.config`.
+pub fn config_home() -> Option<PathBuf> {
+    env("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".config")))
+}
+
+/// The service's launchd label (ADR-2610081800); the systemd unit is named after it. Tests set
+/// WARDIAN_SERVICE_LABEL to a label of their own, so they never touch the user's service.
+const SERVICE_LABEL: &str = "studio.wardian";
+
+/// WARDIAN_SERVICE_LABEL, or `studio.wardian`. Err for a label that is not letters, digits, dots
+/// and dashes starting with `studio.wardian`.
+pub fn service_label() -> Result<String, String> {
+    match env("WARDIAN_SERVICE_LABEL") {
+        None => Ok(SERVICE_LABEL.into()),
+        Some(l) if valid_label(&l) => Ok(l),
+        Some(l) => Err(format!("WARDIAN_SERVICE_LABEL={l} is not a label Wardian uses: it must start with {SERVICE_LABEL} and hold only letters, digits, dots and dashes")),
+    }
+}
+
+fn valid_label(l: &str) -> bool {
+    l.starts_with(SERVICE_LABEL) && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+}
+
+/// The service's variables beside DATA_DIR and WARDIAN_NO_OPEN (ADR-2610081800): the address, the
+/// home folder (which places the master key) and where the master key is, when set. Never a secret.
+pub fn service_env() -> Vec<(String, String)> {
+    ["ADDR", "HOME", "XDG_CONFIG_HOME", "WARDIAN_MASTER_KEY_FILE"].iter().filter_map(|k| env(k).map(|v| (k.to_string(), v))).collect()
+}
+
 /// The repository's example apps, which seed the working folder on the first start.
 const SOURCE_APPS: &str = "apps";
 
@@ -305,10 +334,7 @@ impl Settings {
             }),
             master_key: env("WARDIAN_MASTER_KEY"),
             master_key_file: env("WARDIAN_MASTER_KEY_FILE").map(PathBuf::from),
-            user_key_file: env("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".config")))
-                .map(|d| d.join("wardian").join("master.key")),
+            user_key_file: config_home().map(|d| d.join("wardian").join("master.key")),
         }
     }
 }
@@ -359,6 +385,15 @@ mod tests {
         assert_eq!(choose_data_dir(&LocalDisk, &older, None, platform), older.join("data"));
         let _ = fs::remove_dir_all(here);
         let _ = fs::remove_dir_all(older);
+    }
+
+    #[test]
+    fn service_label_is_wardians_own() {
+        assert!(valid_label("studio.wardian"));
+        assert!(valid_label("studio.wardian.test-1a2b"));
+        assert!(!valid_label("com.apple.Finder"));
+        assert!(!valid_label("studio.wardian/../x"));
+        assert!(!valid_label("studio.wardian x"));
     }
 
     #[test]
