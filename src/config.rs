@@ -11,7 +11,7 @@ use std::{
 /// Where the server listens unless ADDR says otherwise.
 const DEFAULT_ADDR: &str = "127.0.0.1:8000";
 /// The example in the message shown when the address is taken.
-pub const ADDR_EXAMPLE: &str = "127.0.0.1:8001";
+const ADDR_EXAMPLE: &str = "127.0.0.1:8001";
 const DRIVE_API: &str = "https://www.googleapis.com";
 
 fn env(k: &str) -> Option<String> {
@@ -111,6 +111,78 @@ pub fn admins(addr: &str, token_set: bool) -> Result<String, String> {
     ))
 }
 
+/// Who counts as an admin, in the few words the terminal start block shows (ADR-2610080930).
+/// Only a loopback address starts without a token, so "this computer only" is exact.
+pub fn admins_in_short(token_set: bool) -> &'static str {
+    if token_set {
+        "whoever sends ADMIN_TOKEN"
+    } else {
+        "this computer only"
+    }
+}
+
+/// When ADDR is not set and the usual port is taken by another program, the ports after it are
+/// tried up to this one (ADR-2610080930).
+pub const LAST_PORT: u16 = 8010;
+
+/// What a port turned out to be when Wardian tried to take it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Port {
+    /// Free, and now Wardian's.
+    Free,
+    /// Taken by a Wardian, which answered `/api/status`.
+    Wardian,
+    /// Taken by something else.
+    Other,
+}
+
+/// The outcome of the port rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PortChoice {
+    /// Listen on this port.
+    Use(u16),
+    /// A Wardian already runs on this port: open it instead.
+    Running(u16),
+    /// Every port in the range is held by other programs.
+    NoneFree,
+}
+
+/// The port rule, when ADDR is not set (ADR-2610080930): the ports from `first` to `last` in
+/// order; the first free one is used, unless a Wardian is found first, which is then opened.
+/// `ask` tries a port and says what it is; it is asked about each port at most once, in order.
+pub fn choose_port(first: u16, last: u16, mut ask: impl FnMut(u16) -> Port) -> PortChoice {
+    for port in first..=last {
+        match ask(port) {
+            Port::Free => return PortChoice::Use(port),
+            Port::Wardian => return PortChoice::Running(port),
+            Port::Other => {}
+        }
+    }
+    PortChoice::NoneFree
+}
+
+/// `host:port` split at the last colon, for the port rule. None when there is no number.
+pub fn host_and_port(addr: &str) -> Option<(&str, u16)> {
+    let (host, port) = addr.rsplit_once(':')?;
+    Some((host, port.parse().ok()?))
+}
+
+/// Why Wardian cannot listen on `addr`, and what to do, as two sentences. `error` is the system's
+/// reason, or None when the address is in use.
+pub fn cannot_listen(addr: &str, error: Option<&str>, tried_up_to: Option<u16>) -> (String, String) {
+    match (tried_up_to, error) {
+        (Some(last), _) => (
+            format!("Wardian cannot listen on {addr} or the ports after it up to {last}: other programs are using them."),
+            format!("Stop one of them, or choose a port with ADDR, e.g. ADDR={}:{} wardian", host_and_port(addr).map_or("127.0.0.1", |(h, _)| h), last.saturating_add(10)),
+        ),
+        (None, None) => (
+            format!("Wardian cannot listen on {addr}: another program (perhaps another Wardian) is using that address."),
+            format!("Stop it, or pick another port, e.g. ADDR={ADDR_EXAMPLE} wardian"),
+        ),
+        (None, Some(e)) => (format!("Wardian cannot listen on {addr}: {e}."), format!("Pick another address, e.g. ADDR={ADDR_EXAMPLE} wardian")),
+    }
+}
+
 /// Whether ADDR names a loopback address: 127.0.0.0/8, ::1 or localhost.
 fn is_loopback(addr: &str) -> bool {
     let host = match addr.strip_prefix('[') {
@@ -135,6 +207,8 @@ pub struct Settings {
     /// Where the first start copies example apps from, if anywhere (ADR-2610080915).
     pub example_apps: Option<PathBuf>,
     pub addr: String,
+    /// True when ADDR was set: then a busy port is an error, not a reason to try the next one.
+    pub addr_set: bool,
     pub admin_token: Option<String>,
     /// Google Drive: the API address (GDRIVE_API_BASE, for tests), how often to refresh a served
     /// folder, a key file and a folder to serve at start.
@@ -176,6 +250,7 @@ impl Settings {
             chosen_folder: apps_folder.is_some(),
             data_dir: data,
             addr: env("ADDR").unwrap_or_else(|| DEFAULT_ADDR.into()),
+            addr_set: env("ADDR").is_some(),
             admin_token: env("ADMIN_TOKEN"),
             drive_api: env("GDRIVE_API_BASE").unwrap_or_else(|| DRIVE_API.into()),
             refresh_every: Duration::from_secs(secs.max(5)),
@@ -315,6 +390,48 @@ mod tests {
             assert!(why.contains("set ADMIN_TOKEN") || why.contains("Set ADMIN_TOKEN"), "{addr}: {why}");
             assert!(why.contains(&format!("listen on {addr} ")), "{addr}: {why}");
         }
+    }
+
+    /// The port rule over a fixed set of answers, with the ports asked about in order.
+    fn rule(answers: &[(u16, Port)]) -> (PortChoice, Vec<u16>) {
+        let mut asked = Vec::new();
+        let choice = choose_port(8000, 8003, |p| {
+            asked.push(p);
+            answers.iter().find(|(q, _)| *q == p).map_or(Port::Free, |(_, a)| *a)
+        });
+        (choice, asked)
+    }
+
+    #[test]
+    fn start_port_rule_uses_the_first_free_port_or_opens_a_running_wardian() {
+        assert_eq!(rule(&[]), (PortChoice::Use(8000), vec![8000]));
+        // Another Wardian on the usual port: open it, try nothing else.
+        assert_eq!(rule(&[(8000, Port::Wardian)]), (PortChoice::Running(8000), vec![8000]));
+        // Something else holds it: the next free port.
+        assert_eq!(rule(&[(8000, Port::Other)]), (PortChoice::Use(8001), vec![8000, 8001]));
+        assert_eq!(rule(&[(8000, Port::Other), (8001, Port::Other)]), (PortChoice::Use(8002), vec![8000, 8001, 8002]));
+        // A Wardian that moved up a port earlier is found again.
+        assert_eq!(rule(&[(8000, Port::Other), (8001, Port::Wardian)]), (PortChoice::Running(8001), vec![8000, 8001]));
+        let all: Vec<(u16, Port)> = (8000..=8003).map(|p| (p, Port::Other)).collect();
+        assert_eq!(rule(&all), (PortChoice::NoneFree, vec![8000, 8001, 8002, 8003]));
+        assert_eq!(choose_port(u16::MAX, u16::MAX, |_| Port::Other), PortChoice::NoneFree);
+    }
+
+    #[test]
+    fn start_address_parts_and_messages() {
+        assert_eq!(host_and_port(DEFAULT_ADDR), Some(("127.0.0.1", 8000)));
+        assert_eq!(host_and_port("[::1]:8000"), Some(("[::1]", 8000)));
+        assert_eq!(host_and_port("localhost"), None);
+        assert_eq!(host_and_port("x:port"), None);
+        let (what, todo) = cannot_listen("127.0.0.1:9000", None, None);
+        assert_eq!(what, "Wardian cannot listen on 127.0.0.1:9000: another program (perhaps another Wardian) is using that address.");
+        assert!(todo.contains(&format!("ADDR={ADDR_EXAMPLE} wardian")), "{todo}");
+        let (what, _) = cannot_listen("127.0.0.1:80", Some("Permission denied (os error 13)"), None);
+        assert_eq!(what, "Wardian cannot listen on 127.0.0.1:80: Permission denied (os error 13).");
+        let (what, todo) = cannot_listen(DEFAULT_ADDR, None, Some(LAST_PORT));
+        assert!(what.contains("up to 8010"), "{what}");
+        assert!(todo.contains("ADDR=127.0.0.1:8020 wardian"), "{todo}");
+        assert_eq!(admins_in_short(false), "this computer only");
     }
 
     #[test]

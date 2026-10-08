@@ -6,26 +6,28 @@ use serde_json::{json, Value};
 use super::http_server::{Header, Method, Request, Response, Server};
 use std::{io::Read, path::Path, sync::Arc};
 
-/// Listens on `addr` and answers every connection in its own thread. `admin_token` (ADMIN_TOKEN)
-/// lets other machines change settings; without it, only a browser on this machine may.
-/// Returns why it stopped: the address could not be taken (with `addr_example` in the message),
-/// or the system stopped accepting connections.
-pub fn serve(addr: &str, addr_example: &str, admin_token: Option<String>, services: Services) -> String {
-    let server = match Server::bind(addr) {
-        Ok(s) => s,
-        Err(e) => {
-            return format!(
-                "cannot listen on {addr}: {e}. Another program (perhaps another Wardian) is using that address. \
-                 Stop it, or pick another port, e.g. ADDR={addr_example} wardian"
-            )
-        }
-    };
-    // Print the address actually bound: with port 0 the system picks a free port.
-    match server.local_addr() {
-        Ok(bound) => println!("listening on http://{bound}"),
-        Err(_) => println!("listening on http://{addr}"),
+/// The address Wardian listens on, taken before the server is built so a busy port is known at
+/// once (ADR-2610080930).
+pub struct Listener(Server);
+
+/// Takes `addr`. Port 0 lets the system pick a free port.
+pub fn listen(addr: &str) -> std::io::Result<Listener> {
+    Server::bind(addr).map(Listener)
+}
+
+impl Listener {
+    /// The address actually taken, with the system's port when port 0 was asked for.
+    pub fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
+        self.0.local_addr()
     }
-    let e = server.run(Arc::new(move |req: &mut Request<'_>| handle(req, &services, admin_token.as_deref())));
+}
+
+/// Answers every connection on `listener` in its own thread. `admin_token` (ADMIN_TOKEN) lets
+/// other machines change settings; without it, only a browser on this machine may. Returns why
+/// it stopped: the system stopped accepting connections.
+pub fn serve(listener: Listener, admin_token: Option<String>, services: Services) -> String {
+    let addr = listener.local_addr().map(|a| a.to_string()).unwrap_or_default();
+    let e = listener.0.run(Arc::new(move |req: &mut Request<'_>| handle(req, &services, admin_token.as_deref())));
     format!("stopped accepting connections on {addr}: {e}")
 }
 

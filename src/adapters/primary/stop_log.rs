@@ -1,6 +1,6 @@
 //! The stop log (ADR-2610072033): every start and every stop of the server, with the time in UTC,
-//! on stderr and in `<data dir>/wardian.log`. A panic, a signal, a failed bind and the server
-//! giving up are each written as they happen. A start that follows a start with no stop between
+//! in `<data dir>/wardian.log`, and on stderr unless Wardian runs in a terminal (ADR-2610080930).
+//! A panic, a signal, a failed bind and the server giving up are each written as they happen. A start that follows a start with no stop between
 //! them says so, since only a kill that cannot be caught (SIGKILL, running out of memory, the
 //! machine stopping) leaves no record.
 //!
@@ -19,11 +19,19 @@ const STARTED: &str = "started";
 #[derive(Clone)]
 pub struct StopLog {
     path: Arc<PathBuf>,
+    /// Whether records are also written to stderr. In a terminal (ADR-2610080930) they go to the
+    /// file only, and a stop by Ctrl-C says so in a few words.
+    echo: bool,
 }
 
 impl StopLog {
     pub fn new(data_dir: &Path) -> StopLog {
-        StopLog { path: Arc::new(data_dir.join("wardian.log")) }
+        StopLog { path: Arc::new(data_dir.join("wardian.log")), echo: true }
+    }
+
+    /// The same log, writing records to the file only.
+    pub fn quiet(self) -> StopLog {
+        StopLog { echo: false, ..self }
     }
 
     /// Writes one line, to stderr and the file. A file that cannot be written is reported on
@@ -31,15 +39,25 @@ impl StopLog {
     pub fn record(&self, what: &str) {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         let line = format!("{} wardian {} pid {}: {what}", Utc::from_unix(now).iso(), env!("CARGO_PKG_VERSION"), std::process::id());
-        eprintln!("{line}");
-        if let Err(e) = append(&self.path, &line) {
+        if self.echo {
+            eprintln!("{line}");
+        }
+        self.note(&line);
+    }
+
+    /// Writes a line to the file as it is: the start details Wardian prints when its output is
+    /// not a terminal.
+    pub fn note(&self, line: &str) {
+        if let Err(e) = append(&self.path, line) {
             eprintln!("wardian: cannot write {}: {e}", self.path.display());
         }
     }
 
-    /// Records the start, and before it the previous run's end if that left no record.
+    /// Records the start, and before it the previous run's end if that left no record. Other
+    /// lines (notes, and a launcher's copy of the output) may follow a record, so the last
+    /// record is the one read.
     pub fn started(&self, detail: &str) {
-        let last = fs::read_to_string(&*self.path).ok().and_then(|t| t.lines().last().map(String::from));
+        let last = fs::read_to_string(&*self.path).ok().and_then(|t| t.lines().rev().find(|l| is_record(l)).map(String::from));
         if let Some(last) = last.filter(|l| is_start(l)) {
             let when = last.split(' ').next().unwrap_or("?");
             let pid = last.split(" pid ").nth(1).and_then(|r| r.split(':').next()).unwrap_or("?");
@@ -99,6 +117,9 @@ impl StopLog {
                     _ => "a signal",
                 };
                 log.record(&format!("stopped by {name}"));
+                if !log.echo && sig == SIGINT {
+                    eprintln!("\n  Wardian stopped.");
+                }
                 std::process::exit(128 + sig);
             }
         });
@@ -106,6 +127,13 @@ impl StopLog {
 
     #[cfg(not(unix))]
     pub fn catch_signals(&self) {}
+}
+
+/// Whether a line is a record: `2026-10-07T11:31:05Z wardian 0.4.0 pid 1: ...`.
+fn is_record(line: &str) -> bool {
+    let mut words = line.split(' ');
+    let time = words.next().unwrap_or("");
+    time.len() == 20 && time.ends_with('Z') && time.as_bytes()[10] == b'T' && words.next() == Some("wardian") && words.nth(1) == Some("pid")
 }
 
 fn is_start(line: &str) -> bool {
@@ -151,6 +179,20 @@ mod tests {
         // 2026-10-07T11:31:05Z wardian 0.4.0 pid 1: ...
         let first = lines[0].split(' ').next().unwrap();
         assert!(first.len() == 20 && first.ends_with('Z') && first.as_bytes()[10] == b'T', "{first}");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn start_notes_after_a_start_do_not_hide_an_unrecorded_end() {
+        let dir = tmp("notes");
+        let log = StopLog::new(&dir).quiet();
+        log.started("first");
+        log.note("source: local dir apps");
+        log.note("listening on http://x");
+        log.started("second");
+        let text = fs::read_to_string(dir.join("wardian.log")).unwrap();
+        assert!(text.lines().nth(3).is_some_and(|l| l.contains("has no stop record")), "{text}");
+        assert!(text.lines().nth(1) == Some("source: local dir apps"), "{text}");
         fs::remove_dir_all(dir).unwrap();
     }
 

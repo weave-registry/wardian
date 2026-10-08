@@ -55,6 +55,7 @@ mod adapters {
         pub mod http;
         mod http_server;
         pub mod stop_log;
+        pub mod terminal;
     }
     pub mod secondary {
         pub mod anthropic_inference;
@@ -65,11 +66,12 @@ mod adapters {
         pub mod local_disk;
         pub mod splunk_rest;
         pub mod sqlite_store;
+        pub mod wardian_probe;
     }
 }
 
-use adapters::primary::{cli, http, stop_log::StopLog};
-use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest, sqlite_store::SqliteStore};
+use adapters::primary::{cli, http, stop_log::StopLog, terminal};
+use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, splunk_rest::SplunkRest, sqlite_store::SqliteStore, wardian_probe};
 use config::Settings;
 use ports::{assets::Assets, db::Database, llm::BedrockAuth, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
 use std::sync::Arc;
@@ -103,28 +105,107 @@ fn main() {
         let history = Arc::new(History::new(Arc::clone(&fs), &data_dir, &apps));
         Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), db, state, history, &apps, &data_dir))
     };
-    let apps_folder = match cli::run(&args, &tools, &config::data_dir(&*fs), &exports_for_cli) {
+    let (apps_folder, no_open) = match cli::run(&args, &tools, &config::data_dir(&*fs), &exports_for_cli) {
         cli::Command::Exit(code) => std::process::exit(code),
-        cli::Command::Serve(folder) => folder,
+        cli::Command::Serve { folder, no_open } => (folder, no_open),
     };
 
-    serve(Settings::from_env(apps_folder.as_deref(), &*fs));
+    serve(Settings::from_env(apps_folder.as_deref(), &*fs), no_open);
+}
+
+/// Where the server listens, decided before anything else starts (ADR-2610080930).
+enum Address {
+    /// Listening; with the usual port when that was busy and a later one was taken.
+    Ready(http::Listener, Option<u16>),
+    /// A Wardian already answers at this host:port.
+    Running(String),
+    /// Nothing could be taken: what went wrong, and what to do.
+    Failed(String, String),
+}
+
+/// Takes `addr`. When ADDR was not set (`addr_set` false), a busy port is not the end: a Wardian
+/// answering there is reported as running, and a port held by anything else moves Wardian to the
+/// next free one, up to `last_port`. With ADDR set, a busy port is an error.
+fn take_address(addr: &str, addr_set: bool, last_port: u16) -> Address {
+    match config::host_and_port(addr).filter(|&(_, port)| !addr_set && port != 0) {
+        Some((host, first)) => {
+            let (mut taken, mut why) = (None, None);
+            let choice = config::choose_port(first, last_port.max(first), |port| {
+                let at = format!("{host}:{port}");
+                match http::listen(&at) {
+                    Ok(listener) => {
+                        taken = Some(listener);
+                        config::Port::Free
+                    }
+                    Err(e) => {
+                        if e.kind() != std::io::ErrorKind::AddrInUse {
+                            why.get_or_insert_with(|| e.to_string());
+                        }
+                        if wardian_probe::is_wardian(&at) {
+                            config::Port::Wardian
+                        } else {
+                            config::Port::Other
+                        }
+                    }
+                }
+            });
+            match (choice, taken) {
+                (config::PortChoice::Use(port), Some(listener)) => Address::Ready(listener, (port != first).then_some(first)),
+                (config::PortChoice::Running(port), _) => Address::Running(format!("{host}:{port}")),
+                _ => {
+                    let (what, todo) = config::cannot_listen(addr, why.as_deref(), why.is_none().then_some(last_port.max(first)));
+                    Address::Failed(what, todo)
+                }
+            }
+        }
+        None => match http::listen(addr) {
+            Ok(listener) => Address::Ready(listener, None),
+            Err(e) => {
+                let error = (e.kind() != std::io::ErrorKind::AddrInUse).then(|| e.to_string());
+                let (what, todo) = config::cannot_listen(addr, error.as_deref(), None);
+                Address::Failed(what, todo)
+            }
+        },
+    }
 }
 
 /// Builds the adapters and use cases for these settings and serves them; it does not return. The
 /// secrets test starts the same server in a child process.
-fn serve(cfg: Settings) {
+///
+/// In a terminal (ADR-2610080930) it prints a short block once it listens and keeps the detail
+/// lines in `<data dir>/wardian.log`; otherwise it prints the detail lines as it always has, for
+/// the scripts, launchers and tests that read them. Errors go to stderr either way.
+fn serve(cfg: Settings, no_open: bool) {
+    use std::io::{IsTerminal, Write};
+    let tty = std::io::stdout().is_terminal();
+    let colour = terminal::Colour::from_env(tty);
+    let open = terminal::should_open(tty, no_open, std::env::var("WARDIAN_NO_OPEN").ok().as_deref());
     let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
     let assets: Arc<dyn Assets> = Arc::new(Embedded);
     let checker = Arc::new(Checker::new(Arc::clone(&fs)));
     // Before anything else: an address other machines can reach needs ADMIN_TOKEN (ADR-2610072033).
-    match config::admins(&cfg.addr, cfg.admin_token.is_some()) {
-        Ok(who) => println!("{who}"),
+    let who = match config::admins(&cfg.addr, cfg.admin_token.is_some()) {
+        Ok(who) => who,
         Err(why) => {
             eprintln!("{why}");
             std::process::exit(2);
         }
-    }
+    };
+    // Then the address, so a Wardian already running is opened before anything is changed.
+    let address = match take_address(&cfg.addr, cfg.addr_set, config::LAST_PORT) {
+        Address::Running(at) => {
+            let url = format!("http://{at}");
+            if tty {
+                let opened = open && terminal::open_browser(&url);
+                println!("{}", terminal::already_running(&url, opened, colour));
+            } else {
+                println!("wardian: a Wardian is already running at {url}, so this one stops");
+            }
+            std::process::exit(0);
+        }
+        Address::Ready(listener, busy) => Ok((listener, busy)),
+        Address::Failed(what, todo) => Err((what, todo)),
+    };
     // The data folder may be relative to where Wardian starts, so name it in full, and stop at
     // once if it cannot be written: everything Wardian keeps goes there.
     let data_shown = std::env::current_dir().map(|d| d.join(&cfg.data_dir)).unwrap_or_else(|_| cfg.data_dir.clone());
@@ -136,26 +217,47 @@ fn serve(cfg: Settings) {
         eprintln!("Wardian keeps its data in DATA_DIR if set; otherwise in ./data in a Wardian checkout or where ./data already exists; otherwise in your user data folder.");
         std::process::exit(2);
     }
-    println!("data: {}", data_shown.display());
+    // From here on Wardian is a server, and every way it stops is written down (ADR-2610072033).
+    let stops = if tty { StopLog::new(&cfg.data_dir).quiet() } else { StopLog::new(&cfg.data_dir) };
+    // The detail lines: printed when the output is not a terminal, else kept in the log only.
+    let detail = |line: &str| if tty { stops.note(line) } else { println!("{line}") };
+    detail(&who);
+    detail(&format!("data: {}", data_shown.display()));
     // A first start with an empty data folder shows the first-run setup once (ADR-2610072033).
     if let Err(e) = usecases::workspace::mark_first_run(&*fs, &cfg.data_dir) {
         eprintln!("data: could not prepare {}: {e}", cfg.data_dir.display());
     }
-    // From here on Wardian is a server, and every way it stops is written down (ADR-2610072033).
-    let stops = StopLog::new(&cfg.data_dir);
     stops.catch_panics();
     stops.catch_signals();
-    stops.started(&format!("serving {} on {}", cfg.local_root.display(), cfg.addr));
+    let (listener, busy_port) = match address {
+        Ok(taken) => taken,
+        Err((what, todo)) => {
+            stops.started(&format!("serving {} on {}", cfg.local_root.display(), cfg.addr));
+            stops.record(&format!("stopped: {what} {todo}"));
+            if tty {
+                let stderr_colour = terminal::Colour::from_env(std::io::stderr().is_terminal());
+                eprintln!("{}", terminal::error_block(&what, &todo, stderr_colour));
+            }
+            std::process::exit(1);
+        }
+    };
+    let bound = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| cfg.addr.clone());
+    stops.started(&format!("serving {} on {bound}", cfg.local_root.display()));
     // The working folder (ADR-2610071122): filled from the example apps on the first start (found
     // by ADR-2610080915's rule), which are never changed. A folder named on the command line is
     // served as it is.
+    let (mut added, mut git_note) = (None, None);
     if cfg.chosen_folder {
         if usecases::workspace::inside_git(&*fs, &cfg.local_root) {
-            println!("note: {} is inside a git repository, so apps changed in Wardian show up there as uncommitted changes. Run without a folder to use {}.", cfg.local_root.display(), cfg.data_dir.join("apps").display());
+            detail(&format!("note: {} is inside a git repository, so apps changed in Wardian show up there as uncommitted changes. Run without a folder to use {}.", cfg.local_root.display(), cfg.data_dir.join("apps").display()));
+            git_note = Some("inside a git repository: changes show up there");
         }
     } else if let Some(source) = &cfg.example_apps {
         match usecases::workspace::seed(&*fs, source, &cfg.local_root) {
-            Ok(Some(n)) => println!("apps: copied {n} example app(s) from {} into {} (the working folder; {} is not changed)", source.display(), cfg.local_root.display(), source.display()),
+            Ok(Some(n)) => {
+                added = Some(n);
+                detail(&format!("apps: copied {n} example app(s) from {} into {} (the working folder; {} is not changed)", source.display(), cfg.local_root.display(), source.display()));
+            }
             Ok(None) => {}
             Err(e) => eprintln!("apps: could not fill {} from {}: {e}", cfg.local_root.display(), source.display()),
         }
@@ -186,14 +288,37 @@ fn serve(cfg: Settings) {
     let studio = Studio::new(Arc::clone(&fs), providers, Arc::clone(&assets), Arc::clone(&hub), Arc::clone(&checker), &cfg.data_dir);
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&cfg.data_dir));
     let splunk = Splunk::new(Arc::clone(&fs), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone());
-    hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone());
+    detail(&hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone()));
 
     let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir));
     let exports = Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), Arc::clone(&db), Arc::clone(&state), Arc::clone(&history), &cfg.local_root, &cfg.data_dir));
     let (builder, searches): (Arc<dyn Builder>, Arc<dyn Searches>) = (Arc::new(studio), Arc::new(splunk));
     let jobs = Arc::new(JobRunner::new(Arc::clone(&searches), Arc::clone(&builder)));
+    detail(JobRunner::NOTE);
     let services = Services { exports, tables: Arc::new(Db::new(db)), history, state, catalog: hub, builder, searches, jobs, pages: Arc::new(Docs::new(assets)) };
-    let why = http::serve(&cfg.addr, config::ADDR_EXAMPLE, cfg.admin_token.clone(), services);
+    // The address actually taken: with port 0 the system picks a free port.
+    let url = format!("http://{bound}");
+    detail(&format!("listening on {url}"));
+    if tty {
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let apps_shown = std::env::current_dir().map(|d| d.join(&cfg.local_root)).unwrap_or_else(|_| cfg.local_root.clone());
+        let start = terminal::Start {
+            version: env!("CARGO_PKG_VERSION"),
+            url: &url,
+            busy_port,
+            apps: &terminal::tilde(&apps_shown, home.as_deref()),
+            added,
+            admin: config::admins_in_short(cfg.admin_token.is_some()),
+            log: &terminal::tilde(&data_shown.join("wardian.log"), home.as_deref()),
+            note: git_note,
+        };
+        print!("{}", terminal::start_block(&start, colour));
+        let _ = std::io::stdout().flush();
+        if open {
+            terminal::open_browser(&url);
+        }
+    }
+    let why = http::serve(listener, cfg.admin_token.clone(), services);
     stops.record(&format!("stopped: {why}"));
     std::process::exit(1);
 }

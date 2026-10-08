@@ -9,6 +9,7 @@
 # Chrome or Playwright's Chromium. hexa is optional: without it its two steps are skipped, loudly.
 # Each browser suite starts its own Wardian; set the PORT variables the runners read to move them.
 set -euo pipefail
+export WARDIAN_NO_OPEN=1   # never open a browser tab from a test (ADR-2610080930)
 cd "$(dirname "$0")/.."
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target}"
 

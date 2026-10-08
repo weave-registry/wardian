@@ -905,7 +905,7 @@ fn fake_upstream() -> String {
 #[test]
 fn secrets_server_child() {
     let Ok(apps) = std::env::var("WARDIAN_SECRETS_CHILD") else { return };
-    crate::serve(crate::config::Settings::from_env(Some(&apps), &LocalDisk));
+    crate::serve(crate::config::Settings::from_env(Some(&apps), &LocalDisk), true);
 }
 
 /// Every key and account filled, from the environment and through Settings, then every answer
@@ -1080,4 +1080,52 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
     }
     assert!(searched.len() > 30, "{} answers searched", searched.len());
     let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610080930: with ADDR unset, a port held by a plain listener (not a Wardian) moves Wardian
+/// to the next free port, and the usual port is named as busy.
+#[test]
+fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
+    let held = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = held.local_addr().unwrap().port();
+    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5)) {
+        crate::Address::Ready(listener, busy) => {
+            let got = listener.local_addr().unwrap().port();
+            assert!(got > port && got <= port.saturating_add(5), "took {got}, held {port}");
+            assert_eq!(busy, Some(port));
+        }
+        crate::Address::Running(at) => panic!("a plain listener is not a Wardian: {at}"),
+        crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
+    }
+    // With ADDR set, the same busy port is an error that says what to do.
+    match crate::take_address(&format!("127.0.0.1:{port}"), true, port.saturating_add(5)) {
+        crate::Address::Failed(what, todo) => {
+            assert!(what.contains(&format!("cannot listen on 127.0.0.1:{port}")), "{what}");
+            assert!(todo.contains("ADDR="), "{todo}");
+        }
+        _ => panic!("ADDR set: a busy port must be an error"),
+    }
+    drop(held);
+}
+
+/// ADR-2610080930: with ADDR unset, a Wardian answering /api/status on the port is reported as
+/// running, and nothing is taken.
+#[test]
+fn start_finds_a_wardian_already_running() {
+    use std::io::{Read, Write};
+    let fake = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = fake.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for mut stream in fake.incoming().flatten().take(4) {
+            let mut buf = [0u8; 2048];
+            let _ = stream.read(&mut buf);
+            let body = r#"{"source":"local","local_root":"apps","apps":5,"first_run":false,"admin":true}"#;
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        }
+    });
+    match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5)) {
+        crate::Address::Running(at) => assert_eq!(at, format!("127.0.0.1:{port}")),
+        crate::Address::Ready(l, _) => panic!("took {:?} although a Wardian runs on {port}", l.local_addr()),
+        crate::Address::Failed(what, todo) => panic!("{what} {todo}"),
+    }
 }

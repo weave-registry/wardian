@@ -5,6 +5,7 @@
 # keeps its data in the platform's folder (ADR-2610080915), under a throwaway HOME, never the real one.
 # Needs: Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
 set -euo pipefail
+export WARDIAN_NO_OPEN=1   # never open a browser tab from a test (ADR-2610080930)
 cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian
 BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_DIR

@@ -13,6 +13,17 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- **A friendly first run in the terminal** (ADR-2610080930): in a terminal, `wardian` prints a
+  short styled block (name and version, `Ready at <url>`, the apps folder and how many example apps
+  were added, who is an admin, Ctrl-C and the log) and opens the address in the browser
+  (`--no-open` or `WARDIAN_NO_OPEN=1` to not). The detail lines go to `wardian.log`; output that is
+  not a terminal is unchanged. Without `ADDR`, a second `wardian` opens the Wardian already
+  running (one that answers `/api/status` with Wardian's shape) and exits 0, and a port held by
+  another program moves Wardian to the next free one up to 8010. Errors are one sentence with what
+  to do. `install.sh` shows one line per step with ✓ or ✗ and a short "Next" block. Colour is off
+  with `NO_COLOR`, `TERM=dumb` or when the output is not a terminal. `scripts/preview-terminal.sh`
+  shows the block from a throwaway first start. The stop log now finds the previous start record
+  even when other lines follow it.
 - **Install with one command** (ADR-2610080915):
   `curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh`
   installs `wardian` and the example apps into `~/.local`, with no sudo, after checking the

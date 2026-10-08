@@ -13,10 +13,11 @@ Debian 13, Fedora 40 and later), with no sudo:
 
     curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh
 
-Then run `wardian` from any folder and open http://127.0.0.1:8000. The script puts `wardian` in
-`~/.local/bin` and the example apps in `~/.local/lib/wardian/example-apps`, checks the download
-against `SHA256SUMS`, and says the line to add if `~/.local/bin` is not on your `PATH`. It never
-runs Wardian and never edits your shell files. Settings: `WARDIAN_VERSION=0.4.0` installs that
+Then run `wardian` from any folder; it opens http://127.0.0.1:8000 in your browser. The script
+puts `wardian` in `~/.local/bin` and the example apps in `~/.local/lib/wardian/example-apps`,
+checks the download against `SHA256SUMS`, and says the line to add if `~/.local/bin` is not on your
+`PATH`. It shows each step on one line with ✓ (or ✗ and why), in colour on a terminal, and ends
+with what to run next. It never runs Wardian and never edits your shell files. Settings: `WARDIAN_VERSION=0.4.0` installs that
 version, `WARDIAN_PREFIX` installs somewhere else, and `WARDIAN_DOWNLOAD` downloads from another
 folder holding the tarballs and `SHA256SUMS` (a mirror, or `dist/` served by any web server).
 
@@ -134,6 +135,27 @@ Chrome. It needs Node with the `playwright` package.
 
     cargo run --release            # serves DATA_DIR/apps on http://127.0.0.1:8000
     cargo run --release -- /path/to/apps
+
+In a terminal, Wardian prints a short block and opens the address in your browser:
+
+      ◆ Wardian 0.4.0
+        Small apps, sealed. On your machine.
+
+        Ready at  http://127.0.0.1:8000
+        Apps      ~/Library/Application Support/Wardian/apps · 5 example apps added
+        Admin     this computer only
+
+        Press Ctrl-C to stop · log: ~/Library/Application Support/Wardian/wardian.log
+
+The details (who counts as an admin, the data folder, where apps come from, the start and stop
+records) go to `wardian.log` in the data folder. `--no-open` or `WARDIAN_NO_OPEN=1` keeps the
+browser closed; `NO_COLOR=1` or `TERM=dumb` turns colour off. When the output is not a terminal (a
+script, a service, the desktop launchers), Wardian prints the detail lines instead (`admin: …`,
+`data: …`, `listening on http://…`) and never opens a browser. `scripts/preview-terminal.sh`
+shows the block from a throwaway first start without touching your data. Without `ADDR`, a second
+`wardian` finds the one already running (it answers `/api/status`), opens it and exits; if another
+program holds port 8000, Wardian takes the next free port up to 8010 and says so. With `ADDR` set,
+a busy address is an error.
 
 Wardian serves and saves apps in its **working folder**, `DATA_DIR/apps`. Without `DATA_DIR`, the
 data folder is `./data` when Wardian starts in a Wardian checkout or where `./data` already exists;
@@ -423,7 +445,9 @@ Settings live in `DATA_DIR` (in a checkout `./data`, which git ignores; see Run 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ADDR` | `127.0.0.1:8000` | Address to listen on; anything but `127.0.0.0/8`, `::1` or `localhost` needs `ADMIN_TOKEN` |
+| `ADDR` | `127.0.0.1:8000` | Address to listen on; anything but `127.0.0.0/8`, `::1` or `localhost` needs `ADMIN_TOKEN`. Unset, a busy 8000 moves Wardian up to 8010, or opens the Wardian already there |
+| `WARDIAN_NO_OPEN` | unset | `1`: a start in a terminal does not open the browser (as `--no-open`) |
+| `NO_COLOR` | unset | Any value: no colour in the terminal output |
 | `DATA_DIR` | `data` in a checkout or where it exists, else the platform's folder (see Run) | Where settings, the working folder of apps and their history are kept |
 | `ADMIN_TOKEN` | none | Whoever sends it is an admin, and nobody else; required to listen on a non-loopback address |
 | `REFRESH_SECS` | `60` | How often to re-read the Drive folder |

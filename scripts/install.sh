@@ -5,7 +5,8 @@
 #
 # It downloads the tarball for this computer and SHA256SUMS, refuses a tarball whose checksum
 # does not match, and puts bin/wardian and lib/wardian/example-apps into WARDIAN_PREFIX. It
-# never runs Wardian and never edits your shell files.
+# never runs Wardian and never edits your shell files. It says each step on one line, ✓ or ✗, in
+# colour on a terminal (not with NO_COLOR or TERM=dumb), and ends with what to run next.
 #
 #   WARDIAN_VERSION=0.4.0     install this version instead of the latest
 #   WARDIAN_PREFIX=~/.local   where to install (the default)
@@ -21,8 +22,42 @@ set -eu
 
 REPO_RELEASES=https://github.com/weave-registry/wardian/releases
 
+# How it speaks (ADR-2610080930): one line per step, ✓ or ✗, and a short "Next" block. Colour only
+# on a terminal, and not with NO_COLOR set or TERM=dumb; the same lines without colour otherwise.
+paint() { # paint <is a terminal: 0 or 1>: sets the colour variables for one output
+  if [ "$1" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+    e=$(printf '\033')
+    case "${TERM:-}${COLORTERM:-}" in
+      *256color* | *truecolor* | *24bit*) acc="$e[38;5;212m" good="$e[38;5;78m" bad="$e[1;38;5;203m" dim="$e[38;5;245m" ;;
+      *) acc="$e[35m" good="$e[32m" bad="$e[1;31m" dim="$e[2m" ;;
+    esac
+    bold="$e[1m" link="$e[1;4m" off="$e[0m"
+  else
+    acc='' good='' bad='' dim='' bold='' link='' off=''
+  fi
+}
+if [ -t 1 ]; then tty=1; else tty=0; fi
+paint "$tty"
+waiting=0
+
 say() { printf '%s\n' "$*"; }
-fail() { printf 'wardian install: %s\n' "$*" >&2; exit 1; }
+# A step in progress: shown on a terminal only, and replaced by its ✓ or ✗ line.
+step() { if [ "$tty" = 1 ]; then printf '  %s…%s %s' "${dim}" "${off}" "$*"; waiting=1; fi; }
+ok() {
+  if [ "$waiting" = 1 ]; then printf '\r%s[K' "$(printf '\033')"; waiting=0; fi
+  printf '  %s✓%s %s\n' "$good" "${off}" "$*"
+}
+fail() {
+  if [ "$waiting" = 1 ]; then printf '\r%s[K' "$(printf '\033')"; waiting=0; fi
+  if [ -t 2 ]; then paint 1; else paint 0; fi
+  printf '  %s✗%s %s\n' "$bad" "${off}" "$*" >&2
+  exit 1
+}
+# A path with the home folder written ~.
+show() {
+  case "${HOME:-/}" in /) printf '%s' "$1"; return ;; esac
+  case "$1" in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac
+}
 
 fetch() { # fetch <url> <file>
   if command -v curl >/dev/null 2>&1; then
@@ -71,7 +106,16 @@ main() {
   trap 'rm -rf "$tmp"' EXIT
   trap 'exit 1' INT TERM
 
-  say "Downloading Wardian for $os-$arch from $from"
+  case "$os-$arch" in
+    macos-arm64) platform="macOS on Apple silicon" ;;
+    macos-x86_64) platform="macOS on Intel" ;;
+    linux-aarch64) platform="Linux on ARM (aarch64)" ;;
+    *) platform="Linux on $arch" ;;
+  esac
+  printf '\n%s◆%s %sWardian installer%s\n\n' "$acc" "${off}" "$bold" "${off}"
+  ok "Found $platform"
+
+  step "Downloading Wardian for $os-$arch"
   fetch "$from/SHA256SUMS" "$tmp/SHA256SUMS"
   # The tarball for this computer, and the version wanted if one was given.
   if [ -n "$version" ]; then
@@ -90,13 +134,20 @@ main() {
   esac
 
   fetch "$from/$file" "$tmp/$file"
+  name=${file%-"$os"-"$arch".tar.gz}
+  size=$(wc -c <"$tmp/$file" | tr -d ' ')
+  ok "Downloaded $name ${dim}($(awk -v b="$size" 'BEGIN { printf "%.1f MB", b / 1048576 }'))${off}"
+
+  step "Checking the checksum"
   actual=$(sha256 "$tmp/$file")
   if [ "$actual" != "$expected" ]; then
     fail "$file does not match its checksum in SHA256SUMS, so nothing was installed.
-  expected $expected
-  got      $actual"
+      expected $expected
+      got      $actual"
   fi
+  ok "Checked the checksum ${dim}(SHA-256, as SHA256SUMS lists it)${off}"
 
+  step "Installing"
   mkdir "$tmp/x"
   tar -xzf "$tmp/$file" -C "$tmp/x" || fail "could not unpack $file"
   [ -f "$tmp/x/bin/wardian" ] && [ -d "$tmp/x/lib/wardian/example-apps" ] || fail "$file does not hold bin/wardian and lib/wardian/example-apps"
@@ -113,31 +164,35 @@ main() {
   rm -rf "$prefix/lib/wardian/example-apps"
   mv "$prefix/lib/wardian/.example-apps.new" "$prefix/lib/wardian/example-apps"
 
-  say "Installed $file into $prefix:"
-  say "  $prefix/bin/wardian"
-  say "  $prefix/lib/wardian/example-apps (copied into your own folder the first time Wardian starts)"
+  apps=$(ls "$prefix/lib/wardian/example-apps" | wc -l | tr -d ' ')
+  ok "Installed to $(show "$prefix/bin/wardian") ${dim}· with $apps example apps${off}"
+
+  # Next: the command to run, and the PATH line when the folder is not on PATH yet.
   say ""
+  say "  ${bold}Next${off}"
   case ":$PATH:" in
-    *":$prefix/bin:"*)
-      say "Start Wardian with:  wardian"
-      ;;
-    *)
-      case "${SHELL:-}" in
-        */zsh) rc="~/.zshrc" ;;
-        */bash) rc="~/.bashrc" ;;
-        */fish) rc="" ;;
-        *) rc="~/.profile" ;;
-      esac
-      say "$prefix/bin is not on your PATH. Start Wardian with:  $prefix/bin/wardian"
-      if [ -n "$rc" ]; then
-        say "or, to run it as just 'wardian', add this line to $rc and open a new terminal:"
-        say "  export PATH=\"$prefix/bin:\$PATH\""
-      else
-        say "or, to run it as just 'wardian', run:  fish_add_path $prefix/bin"
-      fi
-      ;;
+    *":$prefix/bin:"*) run=wardian on_path=1 ;;
+    *) run=$(show "$prefix/bin/wardian") on_path=0 ;;
   esac
-  say "Then open http://127.0.0.1:8000 in your browser."
+  printf '    %sRun%s       %s%s%s\n' "${dim}" "${off}" "$acc" "$run" "${off}"
+  printf '    %sThen%s      Wardian opens %shttp://127.0.0.1:8000%s in your browser\n' "${dim}" "${off}" "$link" "${off}"
+  if [ "$on_path" = 0 ]; then
+    case "${SHELL:-}" in
+      */zsh) rc="~/.zshrc" ;;
+      */bash) rc="~/.bashrc" ;;
+      */fish) rc="" ;;
+      *) rc="~/.profile" ;;
+    esac
+    say ""
+    say "    $(show "$prefix/bin") is not on your PATH, so plain 'wardian' is not found yet."
+    if [ -n "$rc" ]; then
+      say "    To fix it, add this line to $rc and open a new terminal:"
+      say "      ${acc}export PATH=\"$prefix/bin:\$PATH\"${off}"
+    else
+      say "    To fix it, run:  ${acc}fish_add_path $prefix/bin${off}"
+    fi
+  fi
+  say ""
 }
 
 main "$@"

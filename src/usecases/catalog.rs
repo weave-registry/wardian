@@ -85,8 +85,9 @@ impl Hub {
     }
 
     /// Restores the saved state. A key uploaded through the UI wins over the file at `env_key`;
-    /// a folder in `env_folder` wins over the saved folder.
-    pub fn start(&self, env_key: Option<String>, env_folder: Option<String>) {
+    /// a folder in `env_folder` wins over the saved folder. Returns the line that says where apps
+    /// come from, for the composition root to show or log (ADR-2610080930).
+    pub fn start(&self, env_key: Option<String>, env_folder: Option<String>) -> String {
         let key = [Some(self.key_path()), env_key.map(PathBuf::from)].into_iter().flatten().find(|p| self.fs.is_file(p));
         if let Some(path) = key {
             let raw = self.fs.read(&path).map(|b| String::from_utf8_lossy(&b).into_owned()).ok_or_else(|| "cannot read it".to_string());
@@ -105,13 +106,11 @@ impl Hub {
         if let Some(id) = folder {
             let name = name.unwrap_or_else(|| id.clone());
             match self.connect_drive(&id, &name, false) {
-                Ok(()) => println!("source: google drive folder {name} ({id})"),
+                Ok(()) => return format!("source: google drive folder {name} ({id})"),
                 Err(e) => eprintln!("drive: not connected, serving local apps: {e}"),
             }
         }
-        if self.serving_local() {
-            println!("source: local dir {}", self.local_root.display());
-        }
+        format!("source: local dir {}", self.local_root.display())
     }
 
     fn serving(&self) -> Arc<Serving> {

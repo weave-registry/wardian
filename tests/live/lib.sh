@@ -6,6 +6,7 @@
 # "SKIP <name>: <why>" and exits 0.
 
 set -euo pipefail
+export WARDIAN_NO_OPEN=1   # never open a browser tab from a test (ADR-2610080930)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CHECK="$(basename "$0" .sh)"
 TMP=$(mktemp -d)

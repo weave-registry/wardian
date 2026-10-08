@@ -3,6 +3,7 @@
 # (tests/fixtures/rogue) that tries every way out of its sandbox.
 # Needs: Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
 set -euo pipefail
+export WARDIAN_NO_OPEN=1   # never open a browser tab from a test (ADR-2610080930)
 cd "$(dirname "$0")/.."
 cargo build --release -q
 BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_DIR

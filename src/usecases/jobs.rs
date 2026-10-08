@@ -48,8 +48,10 @@ fn now_ms() -> u64 {
 }
 
 impl JobRunner {
+    /// What the composition root shows or logs at start about where jobs are kept.
+    pub const NOTE: &'static str = "jobs: background jobs are kept in memory; a restart forgets them";
+
     pub fn new(searches: Arc<dyn Searches>, builder: Arc<dyn Builder>) -> JobRunner {
-        println!("jobs: background jobs are kept in memory; a restart forgets them");
         JobRunner { searches, builder, jobs: Arc::new(Mutex::new(Vec::new())), next: AtomicU64::new(1) }
     }
 

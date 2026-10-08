@@ -7,6 +7,7 @@
 # refused, with nothing installed and an earlier install left as it was.
 # Needs: cargo, python3, curl. No browser.
 set -euo pipefail
+export WARDIAN_NO_OPEN=1   # never open a browser tab from a test (ADR-2610080930)
 cd "$(dirname "$0")/.."
 cargo build --release -q --bin wardian
 BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_DIR
@@ -45,7 +46,12 @@ curl -fsSL "$URL/install.sh" | as_user WARDIAN_DOWNLOAD="$URL" sh >"$TMP/install
 [ "$(ls "$H/.local/lib/wardian/example-apps" | wc -l)" -eq 5 ] || fail "five example apps should be in $H/.local/lib/wardian/example-apps"
 grep -q "is not on your PATH" "$TMP/install.log" || fail "install.sh should say ~/.local/bin is not on PATH"
 grep -qF "export PATH=\"$H/.local/bin:\$PATH\"" "$TMP/install.log" || fail "install.sh should give the PATH line"
-ok "curl | sh installed into $H/.local and said how to add it to PATH"
+# Each step on its own line with ✓; no colour codes when the output is not a terminal (ADR-2610080930).
+for step in "✓ Found " "✓ Downloaded wardian-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1) (" "✓ Checked the checksum" "✓ Installed to ~/.local/bin/wardian"; do
+  grep -qF "$step" "$TMP/install.log" || fail "install.sh should say \"$step\""
+done
+! grep -q "$(printf '\033')" "$TMP/install.log" || fail "install.sh used colour codes although its output is not a terminal"
+ok "curl | sh installed into $H/.local, said each step, and said how to add it to PATH"
 
 # Again with dash where there is one, and WARDIAN_VERSION: replacing an install works.
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
@@ -67,6 +73,7 @@ PIDS+=($!)
 for _ in $(seq 100); do curl -sf "http://127.0.0.1:$WPORT/api/status" >/dev/null && break; sleep 0.1; done
 curl -sf "http://127.0.0.1:$WPORT/api/status" >/dev/null || fail "the installed wardian does not answer /api/status"
 grep -qxF "data: $EXPECT" "$TMP/wardian.log" || fail "the data folder should be $EXPECT"
+grep -qx "listening on http://127.0.0.1:$WPORT" "$TMP/wardian.log" || fail "output that is not a terminal should keep the plain lines"
 ok "data: $EXPECT"
 APPS=$(curl -sf "http://127.0.0.1:$WPORT/api/apps")
 N=$(printf '%s' "$APPS" | python3 -c 'import json, sys; a = json.load(sys.stdin); a = a.get("apps", a) if isinstance(a, dict) else a; print(len(a))')

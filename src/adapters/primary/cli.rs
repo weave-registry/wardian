@@ -9,7 +9,8 @@ use std::sync::Arc;
 const USAGE: &str = "Wardian — runs WebAssembly apps and suites in the browser
 
 usage:
-  wardian [APPS_FOLDER]          serve the apps (default: DATA_DIR/apps, filled from ./apps on the first start)
+  wardian [APPS_FOLDER]          serve the apps (default: DATA_DIR/apps, filled from ./apps on the first start);
+                                 in a terminal it opens your browser, unless --no-open or WARDIAN_NO_OPEN=1
   wardian promote APP [FOLDER]   copy an app from DATA_DIR/apps into FOLDER (default: ./apps), to commit it
   wardian export APP [FILE] [--with-data]
                                  write APP from DATA_DIR/apps as a .wardian file (default: APP.wardian);
@@ -25,8 +26,9 @@ machine is an admin, so Wardian refuses to listen where other machines can reach
 
 /// What the arguments ask for.
 pub enum Command {
-    /// Serve the apps in this folder (the first argument), or in the working folder when None.
-    Serve(Option<String>),
+    /// Serve the apps in `folder` (the first argument), or in the working folder when None.
+    /// `no_open`: `--no-open` was given, so a terminal start does not open the browser.
+    Serve { folder: Option<String>, no_open: bool },
     /// A command that runs and exits with this code.
     Exit(i32),
 }
@@ -35,6 +37,12 @@ pub enum Command {
 /// `data_dir` is where the working folder lives, for `promote`; `exports` builds the exporter on
 /// demand, since only `export` needs the app's data.
 pub fn run(args: &[String], tools: &dyn PackageTools, data_dir: &Path, exports: &dyn Fn() -> Arc<dyn Exports>) -> Command {
+    // `--no-open` belongs to serving, before or after the folder (ADR-2610080930).
+    let no_open = args.iter().any(|a| a == "--no-open");
+    let serve_args: Vec<&String> = args.iter().filter(|a| *a != "--no-open").collect();
+    if no_open && serve_args.len() <= 1 && serve_args.first().is_none_or(|a| !a.starts_with('-') && !COMMANDS.contains(&a.as_str())) {
+        return Command::Serve { folder: serve_args.first().map(|a| a.to_string()), no_open };
+    }
     match args.first().map(String::as_str) {
         Some("export") => Command::Exit(export(&args[1..], exports)),
         Some("check") => Command::Exit(check(&args[1..], tools)),
@@ -53,9 +61,12 @@ pub fn run(args: &[String], tools: &dyn PackageTools, data_dir: &Path, exports: 
             eprintln!("unknown option {a}\n\n{USAGE}");
             Command::Exit(2)
         }
-        first => Command::Serve(first.map(String::from)),
+        first => Command::Serve { folder: first.map(String::from), no_open: false },
     }
 }
+
+/// The commands other than serving, which a folder to serve may not be named.
+const COMMANDS: [&str; 6] = ["export", "check", "promote", "new", "add", "help"];
 
 /// `wardian export <app> [<file>] [--with-data]` (ADR-2610071248).
 fn export(args: &[String], exports: &dyn Fn() -> Arc<dyn Exports>) -> i32 {
