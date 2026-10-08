@@ -115,7 +115,12 @@ fn main() {
         Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), db, state, history, &apps, &data_dir))
     };
     let docs = Docs::new(Arc::clone(&assets));
-    let (apps_folder, no_open) = match cli::run(&args, &tools, &docs, &config::data_dir(&*fs), &exports_for_cli) {
+    // `wardian key` (ADR-2610081700): the master key in the place the server would use.
+    let key_for_cli = || -> Box<dyn ports::secrets::MasterKey> {
+        let cfg = Settings::from_env(None, &*fs);
+        Box::new(adapters::secondary::sealed_secrets::KeyBackup { fs: Arc::clone(&fs), place: key_place(&cfg, &fs), data_dir: cfg.data_dir })
+    };
+    let (apps_folder, no_open) = match cli::run(&args, &tools, &docs, &config::data_dir(&*fs), &exports_for_cli, &key_for_cli) {
         cli::Command::Exit(code) => std::process::exit(code),
         cli::Command::Serve { folder, no_open } => (folder, no_open),
     };
@@ -188,22 +193,27 @@ fn take_address(addr: &str, addr_set: bool, last_port: u16, root: &str) -> Addre
 /// data folder. WARDIAN_MASTER_KEY gives the key itself, WARDIAN_MASTER_KEY_FILE names the file;
 /// otherwise it is `master.key` in the user's config folder. The file is made on the first start.
 fn secret_store(cfg: &Settings, fs: &Arc<dyn FileSystem>) -> SealedSecrets {
-    use adapters::secondary::sealed_secrets::{EnvKey, KeyFile, KeyPlace};
-    let open = |place: Option<&dyn KeyPlace>| match place {
-        Some(p) => SealedSecrets::open(Arc::clone(fs), &cfg.data_dir, &[p], &[p]),
+    match key_place(cfg, fs) {
+        // WARDIAN_MASTER_KEY is read, never written: no key is made there.
+        Some(p) if cfg.master_key.is_some() => SealedSecrets::open(Arc::clone(fs), &cfg.data_dir, &[&*p], &[]),
+        Some(p) => SealedSecrets::open(Arc::clone(fs), &cfg.data_dir, &[&*p], &[&*p]),
         None => SealedSecrets::open(Arc::clone(fs), &cfg.data_dir, &[], &[]),
-    };
+    }
+}
+
+/// The one place the master key is kept: WARDIAN_MASTER_KEY, the file WARDIAN_MASTER_KEY_FILE
+/// names, or `master.key` in the user's config folder.
+fn key_place(cfg: &Settings, fs: &Arc<dyn FileSystem>) -> Option<Box<dyn adapters::secondary::sealed_secrets::KeyPlace>> {
+    use adapters::secondary::sealed_secrets::{EnvKey, KeyFile};
     if let Some(key) = &cfg.master_key {
-        let env = EnvKey(key.clone());
-        return SealedSecrets::open(Arc::clone(fs), &cfg.data_dir, &[&env], &[]);
+        return Some(Box::new(EnvKey(key.clone())));
     }
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-    let file = match (&cfg.master_key_file, &cfg.user_key_file) {
-        (Some(path), _) => Some(KeyFile { fs: Arc::clone(fs), path: path.clone(), shown: format!("WARDIAN_MASTER_KEY_FILE ({})", path.display()) }),
-        (None, Some(path)) => Some(KeyFile { fs: Arc::clone(fs), path: path.clone(), shown: terminal::tilde(path, home.as_deref()) }),
+    match (&cfg.master_key_file, &cfg.user_key_file) {
+        (Some(path), _) => Some(Box::new(KeyFile { fs: Arc::clone(fs), path: path.clone(), shown: format!("WARDIAN_MASTER_KEY_FILE ({})", path.display()) })),
+        (None, Some(path)) => Some(Box::new(KeyFile { fs: Arc::clone(fs), path: path.clone(), shown: terminal::tilde(path, home.as_deref()) })),
         (None, None) => None,
-    };
-    open(file.as_ref().map(|f| f as &dyn KeyPlace))
+    }
 }
 
 /// Builds the adapters and use cases for these settings and serves them; it does not return. The

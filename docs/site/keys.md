@@ -46,6 +46,20 @@ list says where the master key is.
 Wardian does not use the operating system's credential store. Back up the key file apart from the
 data folder: either one alone holds no readable key.
 
+### Back up the master key
+
+```
+wardian key                          # where the key is, and how many saved keys it opens
+wardian key export ~/backup/wardian.key
+wardian key import ~/backup/wardian.key
+```
+
+`export` writes the key to a file only you can read, and keeps a file that is there unless you add
+`--force`. `-` instead of a file prints the key, or reads it from standard input. `import` puts a key
+back in its place. It refuses a key that opens none of the saved keys, or one that would replace a
+different key, unless you add `--force`, and says how many saved keys the key opens
+(ADR-2610081700). These commands run on the command line only, never in the browser.
+
 A secret saved by an older Wardian is sealed the first time this one reads it, at start. A data
 folder moved to another machine, without its master key, keeps its apps and data, but each secret
 shows *cannot be read* until it is typed again. Wardian never makes a new master key while a sealed

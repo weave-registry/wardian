@@ -58,6 +58,7 @@ All of them are **Accepted**.
 | [ADR-2610081500](/docs/decisions/ADR-2610081500) | keys and Claude settings in one place | 2026-10-08 | Every secret on one list in Settings, with its last test, Test again and Remove; the admin token set in Settings; Claude's models and limits as settings; tokens counted per app with a daily cap. |
 | [ADR-2610081501](/docs/decisions/ADR-2610081501) | keys sealed at rest | 2026-10-08 | Every saved secret is sealed with AES-256-GCM under a master key kept in a file outside the data folder, so a copy of the data folder holds no readable key. |
 | [ADR-2610081600](/docs/decisions/ADR-2610081600) | example apps are built in | 2026-10-08 | The example apps are built into the program, and each start adds the ones a working folder has not had, so every Wardian shows them. |
+| [ADR-2610081700](/docs/decisions/ADR-2610081700) | back up the master key | 2026-10-08 | `wardian key` says where the master key is; `export` backs it up into a private file, and `import` restores it, refusing a key that opens no saved key. |
 
 ## Gates
 
@@ -83,5 +84,6 @@ All of them are **Accepted**.
 | ADR-2610081500 | `cargo test --release keys_`, `agent_`, `usage_`; `tests/run-keys-e2e.sh` in a browser |
 | ADR-2610081501 | `cargo test --release sealed_` |
 | ADR-2610081600 | `cargo test --release examples_` |
+| ADR-2610081700 | `cargo test --release key_` |
 
 `hexa adr gates` runs each `cargo test` gate with `CARGO_TARGET_DIR=target/verify`.

@@ -1957,7 +1957,8 @@ fn claim_check_exits_0_or_1_and_warnings_do_not_fail() {
     let exit = |paths: &[&Path]| {
         let mut args = vec!["check".to_string()];
         args.extend(paths.iter().map(|p| p.display().to_string()));
-        match run(&args, &scaffold(), &docs, &base, &no_exports) {
+        let no_key = || -> Box<dyn crate::ports::secrets::MasterKey> { unreachable!("check does not touch the key") };
+        match run(&args, &scaffold(), &docs, &base, &no_exports, &no_key) {
             Command::Exit(code) => code,
             Command::Serve { .. } => panic!("check does not serve"),
         }
@@ -2752,5 +2753,53 @@ fn sealed_secrets_on_disk_hold_no_secret_and_need_their_master_key() {
     let anthropic = list["keys"].as_array().unwrap().iter().find(|k| k["id"] == "anthropic").unwrap().clone();
     assert!(anthropic["error"].is_null() && anthropic["from"] == "settings", "the right key opens them again: {anthropic}");
     server.stop();
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610081700: `wardian key` says where the master key is; `export` writes it to a private file
+/// and keeps a file that is there; `import` restores it, and refuses one that opens no saved key.
+#[test]
+fn key_commands_back_up_and_restore_the_master_key() {
+    use crate::adapters::primary::cli::{run, Command};
+    use crate::adapters::secondary::sealed_secrets::{KeyBackup, KeyFile, KeyPlace, SealedSecrets};
+    use crate::ports::secrets::Secrets;
+    let base = tmp("cli-key");
+    let data = base.join("data");
+    fs::create_dir_all(&data).unwrap();
+    let disk: Arc<dyn FileSystem> = Arc::new(LocalDisk);
+    KeyFile { fs: Arc::clone(&disk), path: base.join("master.key"), shown: "the key file".into() }.put(&[6; 32]).unwrap();
+    SealedSecrets::with_key(Arc::clone(&disk), [6; 32]).write(&data.join("anthropic-key"), b"k").unwrap();
+    let docs = Docs::new(Arc::new(Embedded));
+    let no_exports = || -> Arc<dyn crate::ports::service::Exports> { unreachable!() };
+    let key = |name: &'static str| {
+        let (disk, base, data) = (Arc::clone(&disk), base.clone(), data.clone());
+        move || -> Box<dyn crate::ports::secrets::MasterKey> {
+            let place: Box<dyn KeyPlace> = Box::new(KeyFile { fs: Arc::clone(&disk), path: base.join(name), shown: name.into() });
+            Box::new(KeyBackup { fs: Arc::clone(&disk), data_dir: data.clone(), place: Some(place) })
+        }
+    };
+    let exit = |args: &[&str], name: &'static str| match run(&args.iter().map(|a| a.to_string()).collect::<Vec<_>>(), &scaffold(), &docs, &base, &no_exports, &key(name)) {
+        Command::Exit(code) => code,
+        Command::Serve { .. } => panic!("key does not serve"),
+    };
+    assert_eq!(exit(&["key"], "master.key"), 0);
+    let backup = base.join("backup.key").display().to_string();
+    assert_eq!(exit(&["key", "export", &backup], "master.key"), 0);
+    assert_eq!(fs::read_to_string(&backup).unwrap().trim(), "06".repeat(32));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(fs::metadata(&backup).unwrap().permissions().mode() & 0o777, 0o600, "the backup is private");
+    }
+    assert_eq!(exit(&["key", "export", &backup], "master.key"), 1, "an existing file is kept");
+    assert_eq!(exit(&["key", "export", &backup, "--force"], "master.key"), 0);
+    assert_eq!(exit(&["key", "import", &backup], "restored.key"), 0, "restored into a new place");
+    assert_eq!(fs::read_to_string(base.join("restored.key")).unwrap(), "06".repeat(32));
+    fs::write(base.join("wrong.txt"), "07".repeat(32)).unwrap();
+    let wrong = base.join("wrong.txt").display().to_string();
+    assert_eq!(exit(&["key", "import", &wrong], "fresh.key"), 1, "a key that opens nothing is refused");
+    assert!(!base.join("fresh.key").exists());
+    assert_eq!(exit(&["key", "import"], "master.key"), 2);
+    assert_eq!(exit(&["key", "--bogus"], "master.key"), 2);
     let _ = fs::remove_dir_all(base);
 }

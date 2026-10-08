@@ -2,8 +2,8 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How Wardian works · Wardian docs</title>
-<meta name="description" content="Wardian documentation: How Wardian works">
+<title>ADR-2610081700: back up the master key · Wardian docs</title>
+<meta name="description" content="Wardian documentation: ADR-2610081700: back up the master key">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: light dark; --bg: #f6f5ef; --panel: #fbfaf6; --ink: #183e32; --text: #23302a; --muted: #5f6b62; --line: #d8ddd2; --code: #ecefe4; --accent: #2f6b50; --mark: #dce8a5; }
@@ -77,97 +77,57 @@
   <div class="links"><a href="/">Home</a><a href="https://github.com/weave-registry/wardian">GitHub</a></div>
 </header>
 <div class="wrap">
-<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts" aria-current="page">How Wardian works</a><ul class="toc"><li><a href="#the-parts">The parts</a></li><li><a href="#one-folder-one-app">One folder, one app</a></li><li><a href="#sealed-by-the-browser-not-by-trust">Sealed by the browser, not by trust</a></li><li><a href="#the-kernel-and-the-contract">The kernel and the contract</a></li><li><a href="#topics-and-methods">Topics and methods</a></li><li><a href="#where-things-live">Where things live</a></li><li><a href="#format-versions">Format versions</a></li></ul></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
+<nav class="side" aria-label="Documentation"><details id="menu" open><summary>Menu</summary><div class="group"><h4>Start here</h4><ul><li><a href="/docs/">Wardian documentation</a></li><li><a href="/docs/install">Install and run</a></li><li><a href="/docs/tour">Your first ten minutes</a></li><li><a href="/docs/concepts">How Wardian works</a></li></ul></div><div class="group"><h4>Build apps</h4><ul><li><a href="/docs/guide">Building Wardian apps</a></li><li><a href="/docs/pages">Page apps in depth</a></li><li><a href="/docs/suites">Designing a suite</a></li><li><a href="/docs/components">Components and Arrange</a></li><li><a href="/docs/with-claude">Make apps with Claude</a></li><li><a href="/docs/ai-skills">Build with an AI assistant</a></li><li><a href="/docs/testing">Check and test an app</a></li></ul></div><div class="group"><h4>Capabilities</h4><ul><li><a href="/docs/data">Keeping data</a></li><li><a href="/docs/channels">Apps that talk to each other</a></li><li><a href="/docs/ai">Claude inside your app</a></li><li><a href="/docs/splunk">Splunk</a></li></ul></div><div class="group"><h4>Examples</h4><ul><li><a href="/docs/examples">Example apps</a></li></ul></div><div class="group"><h4>Use Wardian</h4><ul><li><a href="/docs/sharing">Share, import and remove apps</a></li><li><a href="/docs/drive">Serve apps from Google Drive</a></li><li><a href="/docs/keys">Keys and Claude settings</a></li><li><a href="/docs/operate">Run Wardian for others</a></li></ul></div><div class="group"><h4>Reference</h4><ul><li><a href="/docs/spec">Package format</a></li><li><a href="/docs/cli">Command line</a></li><li><a href="/docs/ctx">The ctx API</a></li><li><a href="/docs/capabilities">Capabilities</a></li><li><a href="/docs/config">Settings and environment</a></li><li><a href="/docs/security">Security model</a></li><li><a href="/docs/troubleshooting">Troubleshooting</a></li></ul></div><div class="group"><h4>Project</h4><ul><li><a href="/docs/architecture">How Wardian is built</a></li><li><a href="/docs/decisions" aria-current="page">Decisions</a></li><li><a href="/docs/contributing">Contributing</a></li><li><a href="/docs/changelog">Changelog</a></li></ul></div></details></nav>
 <main id="content">
-<h1 id="how-wardian-works">How Wardian works</h1>
-<p>Wardian is a small web server that runs on your computer, and a page in your browser that shows its
-apps. The server keeps the apps and their data. The browser runs them, each one sealed.</p>
-<h2 id="the-parts">The parts<a class="anchor" href="#the-parts" aria-label="Link to this section">#</a></h2>
-<table><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody>
-<tr><td><strong>host</strong></td><td>The Wardian server and its main page.</td></tr>
-<tr><td><strong>package</strong></td><td>One folder that the host shows as one entry in its app list. The folder name is the app's name.</td></tr>
-<tr><td><strong>module app</strong></td><td>A package whose main part is <code>app.wasm</code>, a WebAssembly file.</td></tr>
-<tr><td><strong>page</strong></td><td>An HTML page in a package, shown as the app's interface.</td></tr>
-<tr><td><strong>suite</strong></td><td>A package with a <code>suite.json</code>: several small <strong>suite apps</strong> on one screen.</td></tr>
-<tr><td><strong>kernel</strong></td><td>The host page that runs a suite and passes messages between its apps.</td></tr>
-<tr><td><strong>frame</strong></td><td>The sandboxed browser frame that one page or one suite app runs in.</td></tr>
-<tr><td><strong>capability</strong></td><td>A named thing an app may use, such as <code>storage</code> or <code>db</code>. An app gets only what it declares.</td></tr>
-<tr><td><strong>channel</strong></td><td>A named line between two separate packages. You allow each one.</td></tr>
-</tbody></table>
-<h2 id="one-folder-one-app">One folder, one app<a class="anchor" href="#one-folder-one-app" aria-label="Link to this section">#</a></h2>
-<p>A package is a folder you can read. Nothing is hidden in a database or a build server.</p>
-<pre><code>loan-planner/
-  suite.json            the parts and their contracts
-  apps/inputs/app.js    one part's code
-  apps/inputs/view.html one part's markup
-  shared/format.js      code every part gets its own copy of
-  engine.wasm           the WebAssembly the engine part loads
-  ui/                   the components, copied in
-</code></pre>
-<p>You can zip it, mail it, commit it or put it on Google Drive. <code>wardian check</code> reads the folder and
-tells you what is wrong without running it.</p>
-<h2 id="sealed-by-the-browser-not-by-trust">Sealed by the browser, not by trust<a class="anchor" href="#sealed-by-the-browser-not-by-trust" aria-label="Link to this section">#</a></h2>
-<p>Wardian does not ask apps to behave. It asks the browser to make misbehaving impossible.</p>
+<h1 id="adr-2610081700-back-up-the-master-key">ADR-2610081700: Back up the master key</h1>
+<p><strong>Status:</strong> Accepted
+<strong>Date:</strong> 2026-10-08
+<strong>Drivers:</strong> Since ADR-2610081501 every saved key is sealed under a master key in a file outside the
+data folder. Losing that file loses every saved key, and the docs say to back it up apart from the
+data folder, but Wardian gives no way to do it, nor to check that a backup is the right key.</p>
+<h2 id="context">Context<a class="anchor" href="#context" aria-label="Link to this section">#</a></h2>
+<p>The master key is kept in one place: <code>WARDIAN_MASTER_KEY</code>, the file <code>WARDIAN_MASTER_KEY_FILE</code> names,
+or <code>~/.config/wardian/master.key</code>. A key file holds 64 hex digits. Each sealed file in the data folder
+starts with <code>WARDIAN-SEALED-1</code> and opens only with its own key and under its own name.</p>
+<h2 id="decision">Decision<a class="anchor" href="#decision" aria-label="Link to this section">#</a></h2>
+<ol>
+<li><strong><code>wardian key</code></strong> says where the master key is, and how many of the secrets sealed in the data
+folder it opens.</li>
+<li><strong><code>wardian key export FILE</code></strong> writes the key to <code>FILE</code>, readable by its owner only, and keeps a
+file that is already there unless <code>--force</code>. <code>FILE</code> <code>-</code> prints it.</li>
+<li><strong><code>wardian key import FILE</code></strong> keeps the key read from <code>FILE</code> (<code>-</code>: standard input) in the master
+key's place. It refuses, unless <code>--force</code>, a key that opens none of the sealed secrets, and a key
+that would replace a different one already there. It says how many sealed secrets the key opens.
+<code>WARDIAN_MASTER_KEY</code> is never written: import there is refused.</li>
+<li>These run on the command line only, never over HTTP, so the key never reaches a browser.</li>
+<li>The logic is a port, <code>MasterKey</code> (<code>ports/secrets.rs</code>), implemented by <code>KeyBackup</code> beside the
+sealing (<code>adapters/secondary/sealed_secrets.rs</code>), in the place the server uses.</li>
+</ol>
+<p>Not in this decision: a passphrase instead of a key file, and re-keying.</p>
+<h2 id="consequences">Consequences<a class="anchor" href="#consequences" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><strong>A page</strong> gets a sandboxed frame with a throwaway origin. It can run scripts and load files from
-its own package and Wardian's page library. The browser blocks every other request it could
-make, and it cannot read cookies, <code>localStorage</code> or Wardian's own pages.</li>
-<li><strong>A suite app</strong> gets a frame with a stricter policy: it may request nothing at all
-(<code>default-src 'none'</code>, <code>connect-src 'none'</code>). The only way out is the kernel.</li>
+<li>A backup can be made and checked before it is needed: <code>wardian key</code> after an import says whether
+the key opens the saved secrets.</li>
+<li>Anyone who runs <code>wardian key export</code> as the user gets the key. That is no more than reading the key
+file, which the same user can already do.</li>
 </ul>
-<p>Three routes stay open in both: a pop-up after a click, navigating the frame away, and WebRTC. A
-content policy cannot close them, and a test proves they are still open, so the docs stay honest.
-See <a href="/docs/security#three-routes-stay-open">Security model</a>.</p>
-<p>So an app you did not write, or one Claude wrote a minute ago, can do only what its frame allows
-and what its contract declares. <a href="/docs/security">Security model</a> lists every rule.</p>
-<h2 id="the-kernel-and-the-contract">The kernel and the contract<a class="anchor" href="#the-kernel-and-the-contract" aria-label="Link to this section">#</a></h2>
-<p>In a suite, each app states what it does in <code>suite.json</code>:</p>
-<pre><code class="language-json">{ "name": "chart", "slot": "main",
-  "listens": ["plan:ready"], "needs": ["engine.curve"] }
-</code></pre>
-<table><thead><tr><th>Field</th><th>Means</th></tr></thead><tbody>
-<tr><td><code>emits</code></td><td>topics this app may send</td></tr>
-<tr><td><code>listens</code></td><td>topics this app may receive</td></tr>
-<tr><td><code>provides</code></td><td>methods other apps may call on this app</td></tr>
-<tr><td><code>needs</code></td><td>methods this app may call, as <code>"app.method"</code></td></tr>
-<tr><td><code>caps</code></td><td>capabilities, such as <code>storage</code> or <code>db</code></td></tr>
-<tr><td><code>channels</code></td><td>channels to other packages (format 2)</td></tr>
-</tbody></table>
-<p>The kernel enforces this copy. A message on a topic the app did not declare is refused. A call to
-a method the app does not need is refused. Each refusal is a <strong>fault</strong>, and faults show at the
-bottom of the suite page.</p>
-<p>Think of the kernel as a post office in a town where nobody may visit anybody. Every letter goes
-through the counter. The clerk checks that the sender may send that kind of letter and that the
-receiver signed up for it. Then the clerk makes a copy and delivers the copy. Nobody ever holds
-another person's original.</p>
-<p>That copying matters. Every message and every call result is copied (structured clone). No two apps
-ever share an object, so one app cannot reach into another through a shared reference.</p>
-<h2 id="topics-and-methods">Topics and methods<a class="anchor" href="#topics-and-methods" aria-label="Link to this section">#</a></h2>
-<p>There are two ways for suite apps to work together.</p>
+<h2 id="implementation">Implementation<a class="anchor" href="#implementation" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><strong>Topics</strong> are broadcasts. <code>ctx.emit('plan:ready', plan)</code> sends to every app that listens. Mark a
-topic <code>"retain": true</code> when it carries current state. Then an app that starts late still gets the
-latest value.</li>
-<li><strong>Methods</strong> are calls. <code>await ctx.call('engine', 'schedule', args)</code> asks one app for an answer.
-Use them for computation: put the heavy work in an app with no slot that <code>provides</code> methods.</li>
+<li><code>ports/secrets.rs</code>: <code>MasterKey</code>. <code>adapters/secondary/sealed_secrets.rs</code>: <code>KeyBackup</code>.</li>
+<li><code>adapters/primary/cli.rs</code>: <code>wardian key</code>. <code>main.rs</code>: <code>key_place</code>, shared with the server.</li>
+<li><code>docs/site/keys.md</code>, <code>docs/site/cli.md</code>.</li>
 </ul>
-<h2 id="where-things-live">Where things live<a class="anchor" href="#where-things-live" aria-label="Link to this section">#</a></h2>
-<table><thead><tr><th>Thing</th><th>Kept in</th></tr></thead><tbody>
-<tr><td>The apps</td><td>the working folder, <code>DATA_DIR/apps</code></td></tr>
-<tr><td>Each app's versions</td><td><code>DATA_DIR/history/&lt;app&gt;/</code></td></tr>
-<tr><td>Layouts, <code>storage</code> data, latest channel messages</td><td><code>DATA_DIR/state/</code></td></tr>
-<tr><td>Each app's database (<code>db</code>)</td><td><code>DATA_DIR/db/&lt;app&gt;.sqlite</code></td></tr>
-<tr><td>Your permission answers</td><td><code>DATA_DIR/grants.json</code></td></tr>
-<tr><td>Keys for Claude, Splunk and Drive</td><td><code>DATA_DIR</code>, readable by their owner only, never sent to the browser</td></tr>
-</tbody></table>
-<p>The full list is in <a href="/docs/config">Settings and environment</a>.</p>
-<h2 id="format-versions">Format versions<a class="anchor" href="#format-versions" aria-label="Link to this section">#</a></h2>
-<p><code>app.json</code> and <code>suite.json</code> may state a <code>"format"</code>. Format 1 is the base. Format 2 adds channels
-between packages. A host never runs a package whose format is newer than it knows; it says
-"Update Wardian" in the app list instead. Within one format, changes only add things.</p>
+<h2 id="enforced-by-hexa-adr-gates-run-on-demand">Enforced-By: hexa adr gates (run on demand)<a class="anchor" href="#enforced-by-hexa-adr-gates-run-on-demand" aria-label="Link to this section">#</a></h2>
+<h2 id="gate">Gate<a class="anchor" href="#gate" aria-label="Link to this section">#</a></h2>
+<p><code>env CARGO_TARGET_DIR=target/verify cargo test --release key_</code></p>
+<p>Rerun by <code>hexa adr gates</code>. It builds into <code>target/verify</code>, never into the copy of Wardian a user runs.</p>
+<h2 id="references">References<a class="anchor" href="#references" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>ADR-2610081501 (keys sealed at rest)</li>
+</ul>
 
-<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/site/concepts.md"><code>docs/site/concepts.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
-<div class="pager"><a class="prev" href="/docs/tour" rel="prev"><small>Previous</small>Your first ten minutes</a><a class="next" href="/docs/guide" rel="next"><small>Next</small>Building Wardian apps</a></div>
+<p class="edit">This page is <a href="https://github.com/weave-registry/wardian/blob/main/docs/adrs/ADR-2610081700-back-up-the-master-key.md"><code>docs/adrs/ADR-2610081700-back-up-the-master-key.md</code></a> in the repository. Something wrong or missing? Change that file.</p>
+<div class="pager"><a class="prev" href="/docs/decisions" rel="prev"><small>Back to</small>Decisions</a></div>
 </main>
 </div>
 <script>

@@ -18,3 +18,14 @@ pub trait Secrets: Send + Sync {
     /// How secrets are kept, for Settings: {sealed, master?, note}. Never a secret.
     fn describe(&self) -> Value;
 }
+
+/// The master key that seals the secrets, for backup and restore (ADR-2610081700): `wardian key`.
+pub trait MasterKey {
+    /// Where the key is kept, and how many of the secrets sealed in the data folder it opens.
+    fn status(&self) -> Result<String, String>;
+    /// The key, as 64 hex digits.
+    fn export(&self) -> Result<String, String>;
+    /// Keeps `hex` as the master key, and says where. Refused, unless `force`, when it opens none of
+    /// the secrets sealed in the data folder, or when a different key is kept already.
+    fn import(&self, hex: &str, force: bool) -> Result<String, String>;
+}

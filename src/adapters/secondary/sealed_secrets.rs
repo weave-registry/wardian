@@ -5,7 +5,10 @@
 //! name is the additional data, so a sealed file put under another name does not open. A secret
 //! written before sealing has no header: it is read as it is and sealed in place.
 
-use crate::ports::{secrets::Secrets, storage::FileSystem};
+use crate::ports::{
+    secrets::{MasterKey, Secrets},
+    storage::FileSystem,
+};
 use ring::{
     aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, NONCE_LEN},
     rand::{SecureRandom, SystemRandom},
@@ -90,6 +93,70 @@ impl KeyPlace for KeyFile {
     }
     fn put(&self, key: &[u8; 32]) -> Result<(), String> {
         self.fs.write_private(&self.path, hex(key).as_bytes())
+    }
+}
+
+/// The master key in its place, for `wardian key` (ADR-2610081700).
+pub struct KeyBackup {
+    pub fs: Arc<dyn FileSystem>,
+    pub data_dir: PathBuf,
+    /// Where the key is kept; None when there is no place for it.
+    pub place: Option<Box<dyn KeyPlace>>,
+}
+
+impl KeyBackup {
+    fn place(&self) -> Result<&dyn KeyPlace, String> {
+        self.place.as_deref().ok_or_else(|| "there is no place for a master key: set WARDIAN_MASTER_KEY_FILE".into())
+    }
+
+    /// (secrets `key` opens, secrets sealed in the data folder).
+    fn opens(&self, key: &[u8; 32]) -> (usize, usize) {
+        let cipher = cipher(key);
+        let sealed: Vec<PathBuf> = self
+            .fs
+            .list_dir(&self.data_dir)
+            .into_iter()
+            .map(|n| self.data_dir.join(n))
+            .filter(|p| self.fs.is_file(p))
+            .filter(|p| self.fs.read(p).is_some_and(|b| b.starts_with(HEADER)))
+            .collect();
+        let opened = sealed.iter().filter(|p| self.fs.read(p).is_some_and(|b| SealedSecrets::unseal(&cipher, p, &b).is_ok())).count();
+        (opened, sealed.len())
+    }
+}
+
+impl MasterKey for KeyBackup {
+    fn status(&self) -> Result<String, String> {
+        let place = self.place()?;
+        match place.get()? {
+            Some(key) => {
+                let (opened, sealed) = self.opens(&key);
+                Ok(format!("The master key is in {}. It opens {opened} of the {sealed} secret(s) sealed in {}.", place.name(), self.data_dir.display()))
+            }
+            None => Ok(format!("There is no master key yet. Wardian makes one in {} at its next start.", place.name())),
+        }
+    }
+
+    fn export(&self) -> Result<String, String> {
+        let place = self.place()?;
+        place.get()?.map(|k| hex(&k)).ok_or_else(|| format!("there is no master key in {} yet", place.name()))
+    }
+
+    fn import(&self, text: &str, force: bool) -> Result<String, String> {
+        let key = unhex(text).ok_or("a master key is 64 hex digits")?;
+        let place = self.place()?;
+        let (opened, sealed) = self.opens(&key);
+        if !force {
+            if sealed > 0 && opened == 0 {
+                return Err(format!("this key opens none of the {sealed} secret(s) sealed in {}. Add --force to keep it anyway.", self.data_dir.display()));
+            }
+            if let Some(current) = place.get()?.filter(|c| *c != key) {
+                let (kept_opens, _) = self.opens(&current);
+                return Err(format!("{} holds another master key, which opens {kept_opens} of the {sealed} sealed secret(s). Add --force to replace it.", place.name()));
+            }
+        }
+        place.put(&key)?;
+        Ok(format!("The master key is now in {}. It opens {opened} of the {sealed} secret(s) sealed in {}. Restart Wardian to use it.", place.name(), self.data_dir.display()))
     }
 }
 
@@ -379,5 +446,39 @@ mod tests {
         let t = new_token();
         assert_eq!((t.len(), t.chars().all(|c| c.is_ascii_hexdigit())), (64, true));
         assert_ne!(t, new_token());
+    }
+
+    #[test]
+    fn sealed_key_backup_exports_and_imports_only_a_key_that_opens_the_secrets() {
+        let d = dir("backup");
+        let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
+        let file = |name: &str| KeyFile { fs: Arc::clone(&fs), path: d.join(name), shown: name.into() };
+        let backup = |name: &str| KeyBackup { fs: Arc::clone(&fs), data_dir: d.join("data"), place: Some(Box::new(file(name))) };
+        std::fs::create_dir_all(d.join("data")).unwrap();
+        // No key yet.
+        assert!(backup("master.key").status().unwrap().contains("no master key yet"));
+        assert!(backup("master.key").export().is_err());
+        // A key, and two secrets sealed with it.
+        file("master.key").put(&[4; 32]).unwrap();
+        let s = SealedSecrets::with_key(Arc::clone(&fs), [4; 32]);
+        s.write(&d.join("data/anthropic-key"), b"k").unwrap();
+        s.write(&d.join("data/admin-token"), b"t").unwrap();
+        assert!(backup("master.key").status().unwrap().contains("opens 2 of the 2"));
+        let exported = backup("master.key").export().unwrap();
+        assert_eq!(exported, "04".repeat(32));
+        // Restored into a new place: opens both.
+        let out = backup("restored.key").import(&exported, false).unwrap();
+        assert!(out.contains("opens 2 of the 2"), "{out}");
+        assert_eq!(file("restored.key").get().unwrap(), Some([4; 32]));
+        // A key that opens nothing, or that replaces another, needs --force.
+        let wrong = "05".repeat(32);
+        assert!(backup("other.key").import(&wrong, false).unwrap_err().contains("opens none of the 2"));
+        assert!(backup("other.key").import(&wrong, true).is_ok());
+        assert!(backup("restored.key").import(&wrong, false).is_err(), "a different key is not replaced without --force");
+        assert!(backup("x.key").import("not hex", true).is_err());
+        let env = KeyBackup { fs: Arc::clone(&fs), data_dir: d.join("data"), place: Some(Box::new(EnvKey("04".repeat(32)))) };
+        assert_eq!(env.export().unwrap(), "04".repeat(32));
+        assert!(env.import(&exported, true).is_err(), "WARDIAN_MASTER_KEY is never written");
+        let _ = std::fs::remove_dir_all(d);
     }
 }

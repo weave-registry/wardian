@@ -1,6 +1,7 @@
 //! The command line: `wardian check|new|add|docs|--version|--help`. Serving apps is the composition
 //! root's job; this handles every other command and says how to run the program.
 
+use crate::ports::secrets::MasterKey;
 use crate::ports::service::{Exports, Pages};
 use crate::ports::tools::{PackageTools, COMPONENTS, FORMAT, KINDS};
 use std::path::Path;
@@ -21,6 +22,10 @@ usage:
   wardian docs FOLDER            write the documentation site as static files into FOLDER
   wardian skills [FOLDER]        install the AI skills for building apps into FOLDER/.claude/skills
                                  (default: this folder); --force replaces them, --list names them
+  wardian key                    say where the master key that seals saved keys is
+  wardian key export FILE        back the master key up into FILE (- for the screen); --force overwrites
+  wardian key import FILE        restore the master key from FILE (- for standard input); --force
+                                 keeps one that opens no saved key, or replaces another
   wardian --version
 
 settings come from environment variables; see README.md
@@ -39,7 +44,7 @@ pub enum Command {
 /// Runs any command but serving. `args` are the program's arguments without its name.
 /// `data_dir` is where the working folder lives, for `promote`; `exports` builds the exporter on
 /// demand, since only `export` needs the app's data.
-pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_dir: &Path, exports: &dyn Fn() -> Arc<dyn Exports>) -> Command {
+pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_dir: &Path, exports: &dyn Fn() -> Arc<dyn Exports>, key: &dyn Fn() -> Box<dyn MasterKey>) -> Command {
     // `--no-open` belongs to serving, before or after the folder (ADR-2610080930).
     let no_open = args.iter().any(|a| a == "--no-open");
     let serve_args: Vec<&String> = args.iter().filter(|a| *a != "--no-open").collect();
@@ -54,6 +59,7 @@ pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_di
         Some("add") => Command::Exit(add(&args[1..], tools)),
         Some("docs") => Command::Exit(docs(&args[1..], pages)),
         Some("skills") => Command::Exit(skills(&args[1..], pages)),
+        Some("key") => Command::Exit(master_key(&args[1..], &*key())),
         Some("--version" | "-V") => {
             println!("Wardian {} (package format {FORMAT})", env!("CARGO_PKG_VERSION"));
             Command::Exit(0)
@@ -71,7 +77,73 @@ pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_di
 }
 
 /// The commands other than serving, which a folder to serve may not be named.
-const COMMANDS: [&str; 8] = ["export", "check", "promote", "new", "add", "docs", "skills", "help"];
+const COMMANDS: [&str; 9] = ["export", "check", "promote", "new", "add", "docs", "skills", "key", "help"];
+
+const KEY_USAGE: &str = "usage: wardian key
+       wardian key export FILE [--force]   (FILE - writes to the screen)
+       wardian key import FILE [--force]   (FILE - reads standard input)";
+
+/// `wardian key [export|import FILE] [--force]` (ADR-2610081700): where the master key is, a backup
+/// of it, and a restore that refuses a key that would open nothing, unless --force.
+fn master_key(args: &[String], key: &dyn MasterKey) -> i32 {
+    let force = args.iter().any(|a| a == "--force" || a == "-f");
+    if let Some(a) = args.iter().find(|a| a.starts_with('-') && a.len() > 1 && !matches!(a.as_str(), "--force" | "-f")) {
+        eprintln!("unknown option {a}\n\n{KEY_USAGE}");
+        return 2;
+    }
+    let rest: Vec<&str> = args.iter().map(String::as_str).filter(|a| !matches!(*a, "--force" | "-f")).collect();
+    let done = match rest.as_slice() {
+        [] => key.status(),
+        ["export", file] => key.export().and_then(|hex| write_key(file, &hex, force)),
+        ["import", file] => read_key(file).and_then(|hex| key.import(&hex, force)),
+        _ => {
+            eprintln!("{KEY_USAGE}");
+            return 2;
+        }
+    };
+    match done {
+        Ok(said) => {
+            if !said.is_empty() {
+                println!("{said}");
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("wardian key: {e}");
+            1
+        }
+    }
+}
+
+/// Writes the key readable by its owner only; an existing file is kept unless `force`.
+fn write_key(file: &str, hex: &str, force: bool) -> Result<String, String> {
+    if file == "-" {
+        println!("{hex}");
+        return Ok(String::new());
+    }
+    let path = Path::new(file);
+    if path.exists() && !force {
+        return Err(format!("{file} exists; add --force to overwrite it"));
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    use std::io::Write;
+    options.open(path).and_then(|mut f| f.write_all(format!("{hex}\n").as_bytes())).map_err(|e| format!("{file}: {e}"))?;
+    Ok(format!("Wrote the master key to {file}. Keep it apart from the data folder: with both, anyone can read the saved keys."))
+}
+
+fn read_key(file: &str) -> Result<String, String> {
+    let text = if file == "-" {
+        let mut s = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut s).map_err(|e| e.to_string())?;
+        s
+    } else {
+        std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?
+    };
+    Ok(text.trim().to_string())
+}
 
 /// `wardian docs <folder>`: the docs site as static files, the same pages Wardian serves at /docs.
 /// The website keeps them in website/ (`wardian docs website`).

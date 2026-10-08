@@ -13,6 +13,7 @@ wardian add COMPONENT... PATH        copy UI components into a package
 wardian check PACKAGE...             check packages against the package format
 wardian docs FOLDER                  write this documentation site as static files
 wardian skills [FOLDER]              install the AI skills into FOLDER/.claude/skills
+wardian key [export|import FILE]     where the master key is; back it up; restore it
 wardian --version
 ```
 
@@ -281,6 +282,21 @@ is already current is left alone. [Build with an AI assistant](/docs/ai-skills) 
 $ wardian skills
 2 skills in ./.claude/skills: 24 file(s) written, 0 kept, the rest already current
 ```
+
+## key
+
+```
+wardian key
+wardian key export FILE [--force]
+wardian key import FILE [--force]
+```
+
+The master key seals every saved key ([Keys and Claude settings](/docs/keys#sealed-at-rest)).
+`wardian key` says where it is and how many saved keys it opens. `export` writes it to `FILE`,
+readable by you only, and keeps a file that is there unless `--force`; `-` prints it. `import`
+puts the key from `FILE` (`-`: standard input) back in its place, and refuses a key that opens
+none of the saved keys, or one that replaces another, unless `--force`. Exit code `1` when it is
+refused (ADR-2610081700).
 
 ## --version and --help
 
