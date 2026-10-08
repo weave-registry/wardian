@@ -19,13 +19,6 @@ runs Wardian and never edits your shell files. Settings: `WARDIAN_VERSION=0.4.0`
 version, `WARDIAN_PREFIX` installs somewhere else, and `WARDIAN_DOWNLOAD` downloads from another
 folder holding the tarballs and `SHA256SUMS` (a mirror, or `dist/` served by any web server).
 
-While the repository is private, the default address works only for people with access to it,
-and curl does not sign in to GitHub. With access, download the release with the GitHub CLI and
-install from that folder:
-
-    gh release download --repo weave-registry/wardian -D wardian-release
-    WARDIAN_DOWNLOAD="file://$PWD/wardian-release" sh wardian-release/install.sh
-
 To build from source instead, see Run below.
 
 ## About
