@@ -62,6 +62,16 @@ async function answer(page, re, yes, what) {
   const tab = await context.newPage(), lab = await context.newPage();
   const pageErrors = [];
   for (const p of [tab, lab]) p.on('pageerror', e => pageErrors.push(e.message));
+  // What the lab's frames said: printed when a chart check fails, since CI's Linux runner is the only
+  // place it has failed and nothing else shows why.
+  const labSaid = [];
+  lab.on('console', m => { if (m.type() !== 'debug') labSaid.push(m.type() + ': ' + m.text().slice(0, 300)); });
+  const explainChart = async () => {
+    const c = frameOf(lab, 'chart');
+    const st = await c.evaluate(() => ({sub: (document.querySelector('#chartSub') || {}).textContent, chart: (document.querySelector('#chart') || {}).innerHTML?.slice(0, 200), width: (document.querySelector('#chart') || {}).clientWidth})).catch(e => ({error: String(e)}));
+    console.log('    chart: ' + JSON.stringify(st));
+    console.log('    lab said: ' + (labSaid.slice(-15).join(' | ') || 'nothing'));
+  };
 
   console.log('== the table app asks before it searches');
   await tab.goto(B + '/run/splunk-table/'); await sleep(2500);
@@ -135,7 +145,9 @@ async function answer(page, re, yes, what) {
   await sleep(500);
   const data = await inputs.locator('#data').inputValue();
   ok(data.split('\n')[0] === '# threads, req/s, response time (ms)' && data.split('\n').length === 9, 'measurements filled, with a readable header');
-  ok(await frameOf(lab, 'chart').locator('#chart circle.pt').count() === 8, 'the chart shows the 8 rows');
+  const pts = await frameOf(lab, 'chart').locator('#chart circle.pt').count();
+  ok(pts === 8, 'the chart shows the 8 rows (' + pts + ')');
+  if (pts !== 8) await explainChart();
   let aboutText = await frameOf(lab, 'chart').locator('#about').textContent();
   ok(/Splunk search/.test(aboutText) && /The column “concurrency”/.test(aboutText) && /Splunk table app/.test(aboutText), 'the chart says where the data came from');
 
@@ -379,6 +391,7 @@ async function answer(page, re, yes, what) {
   await frameOf(lab, 'chart').locator('#about', { hasText: 'JMeter load test steps' }).waitFor({ timeout: 90000 }).catch(() => {});
   aboutText = await frameOf(lab, 'chart').locator('#about').textContent();
   ok(/JMeter load test steps/.test(aboutText) && /Claude wrote this search/.test(aboutText), 'Claude\'s labels reach the lab (after ' + (Date.now() - labelsAt) + ' ms)');
+  if (!/JMeter load test steps/.test(aboutText)) await explainChart();
 
   await lab.reload(); await sleep(3000);
   const diag = frameOf(lab, 'diagnosis');
