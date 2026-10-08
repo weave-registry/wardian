@@ -8,7 +8,8 @@ browser blocks its network, and it cannot see your files or your other apps unle
 
 ## Install
 
-On macOS (Apple silicon or Intel) or Linux (x86_64 or aarch64), with no sudo:
+On macOS (Apple silicon or Intel) or Linux (x86_64 or aarch64, with glibc 2.39 or newer: Ubuntu 24.04,
+Debian 13, Fedora 40 and later), with no sudo:
 
     curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh
 

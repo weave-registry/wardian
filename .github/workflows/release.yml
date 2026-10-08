@@ -25,7 +25,9 @@ jobs:
         include:
           - { runner: macos-14, os: macos, arch: arm64 }
           - { runner: macos-15-intel, os: macos, arch: x86_64 }
-          - { runner: ubuntu-latest, os: linux, arch: x86_64 }
+          # Linux is pinned to Ubuntu 24.04, not ubuntu-latest: a Linux build runs only where glibc is
+          # as new as the runner's (2.39 here), so the runner moves only when we choose.
+          - { runner: ubuntu-24.04, os: linux, arch: x86_64 }
           - { runner: ubuntu-24.04-arm, os: linux, arch: aarch64 }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
@@ -33,7 +35,7 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -51,7 +53,7 @@ jobs:
       - name: The tarball is the one this runner should make
         run: ls dist/wardian-*-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wardian-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/wardian-*.tar.gz
@@ -59,13 +61,13 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
