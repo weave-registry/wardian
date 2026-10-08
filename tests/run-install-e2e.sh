@@ -3,7 +3,7 @@
 # machine, serves it with SHA256SUMS and install.sh over a local HTTP server, and installs it the
 # way the README says (curl ... | sh) into a throwaway HOME. Then starts the installed wardian from
 # an unrelated empty folder with no DATA_DIR, and checks it keeps its data in the platform's
-# folder under that HOME, filled with the five example apps. Last, a tampered tarball must be
+# folder under that HOME, filled with the example apps. Last, a tampered tarball must be
 # refused, with nothing installed and an earlier install left as it was.
 # Needs: cargo, python3, curl. No browser.
 set -euo pipefail
@@ -14,6 +14,8 @@ BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_
 
 TMP=$(mktemp -d)
 PIDS=()
+# The example apps a release holds: every app folder tracked in the repository.
+EXAMPLES=$(git ls-files apps | cut -d/ -f2 | sort -u | wc -l | tr -d " ")
 trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; wait "$p" 2>/dev/null || true; done; rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $*" >&2; for f in "$TMP"/*.log; do [ -f "$f" ] && { echo "--- $f" >&2; cat "$f" >&2; }; done; exit 1; }
 ok() { echo "ok - $*"; }
@@ -43,7 +45,7 @@ as_user() { "${USER_ENV[@]}" "$@"; }
 
 curl -fsSL "$URL/install.sh" | as_user WARDIAN_DOWNLOAD="$URL" sh >"$TMP/install.log" 2>&1 || fail "install.sh failed"
 [ -x "$H/.local/bin/wardian" ] || fail "no $H/.local/bin/wardian"
-[ "$(ls "$H/.local/lib/wardian/example-apps" | wc -l)" -eq 5 ] || fail "five example apps should be in $H/.local/lib/wardian/example-apps"
+[ "$(ls "$H/.local/lib/wardian/example-apps" | wc -l)" -eq "$EXAMPLES" ] || fail "$EXAMPLES example apps should be in $H/.local/lib/wardian/example-apps"
 grep -q "is not on your PATH" "$TMP/install.log" || fail "install.sh should say ~/.local/bin is not on PATH"
 grep -qF "export PATH=\"$H/.local/bin:\$PATH\"" "$TMP/install.log" || fail "install.sh should give the PATH line"
 # Each step on its own line with ✓; no colour codes when the output is not a terminal (ADR-2610080930).
@@ -77,11 +79,11 @@ grep -qx "listening on http://127.0.0.1:$WPORT" "$TMP/wardian.log" || fail "outp
 ok "data: $EXPECT"
 APPS=$(curl -sf "http://127.0.0.1:$WPORT/api/apps")
 N=$(printf '%s' "$APPS" | python3 -c 'import json, sys; a = json.load(sys.stdin); a = a.get("apps", a) if isinstance(a, dict) else a; print(len(a))')
-[ "$N" -eq 5 ] || fail "five example apps should be served, got $N: $APPS"
-[ "$(ls "$EXPECT/apps" | wc -l)" -eq 5 ] || fail "the working folder $EXPECT/apps should hold the five example apps"
+[ "$N" -eq "$EXAMPLES" ] || fail "$EXAMPLES example apps should be served, got $N: $APPS"
+[ "$(ls "$EXPECT/apps" | wc -l)" -eq "$EXAMPLES" ] || fail "the working folder $EXPECT/apps should hold the $EXAMPLES example apps"
 [ -f "$EXPECT/first-run" ] || fail "a first start should show the first-run setup (no $EXPECT/first-run)"
 [ -z "$(ls -A "$TMP/elsewhere")" ] || fail "the folder it started in should stay empty: $(ls -A "$TMP/elsewhere")"
-ok "it serves the five example apps from $EXPECT/apps and left the folder it started in empty"
+ok "it serves the $EXAMPLES example apps from $EXPECT/apps and left the folder it started in empty"
 
 # A tampered tarball: refused, and nothing installed.
 BAD="$TMP/bad"
@@ -99,7 +101,7 @@ grep -q "does not match its checksum" "$TMP/bad.out" || fail "the refusal should
 cp "$H/.local/bin/wardian" "$TMP/before"
 as_user WARDIAN_DOWNLOAD="http://127.0.0.1:$BPORT" sh "$DIST/install.sh" >"$TMP/bad2.out" 2>&1 && fail "a tampered tarball was installed over an install"
 cmp -s "$TMP/before" "$H/.local/bin/wardian" || fail "a refused install changed the installed wardian"
-[ "$(ls "$H/.local/lib/wardian/example-apps" | wc -l)" -eq 5 ] || fail "a refused install changed the example apps"
+[ "$(ls "$H/.local/lib/wardian/example-apps" | wc -l)" -eq "$EXAMPLES" ] || fail "a refused install changed the example apps"
 ok "a tampered tarball is refused; nothing is installed and an earlier install is left as it was"
 
 echo "install e2e: all passed"
