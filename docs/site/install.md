@@ -9,14 +9,38 @@ On macOS or Linux, with no Rust and no `sudo`:
 
 ```
 curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh
-wardian
+wardian start --at-login
 ```
 
 The script downloads the build for your system, checks it against `SHA256SUMS`, and installs
 `wardian` and the example apps into `~/.local` (ADR-2610080915). `WARDIAN_VERSION`,
 `WARDIAN_PREFIX` and `WARDIAN_DOWNLOAD` choose the version, the folder and where to download from.
-If `~/.local/bin` is not on your `PATH`, the script prints the line to add. `wardian` opens the app
-list in your browser.
+If `~/.local/bin` is not on your `PATH`, the script prints the line to add. `wardian start
+--at-login` runs Wardian in the background, starts it again each time you log in, and opens the app
+list in your browser. Run the install line again to update: it replaces the program and restarts a
+Wardian that runs in the background, so the new version takes over.
+
+## Run in the background or in a terminal
+
+Wardian runs in one of two ways:
+
+| Command | Runs | Stops |
+|---|---|---|
+| `wardian start` | In the background, as a service of your system: launchd on macOS, systemd on Linux. It restarts after a crash. Your prompt comes back at once. | `wardian stop` |
+| `wardian start --at-login` | The same, and it starts each time you log in. | `wardian stop` (also ends the start at login) |
+| `wardian` | In this terminal, with a short summary. | Ctrl-C |
+
+`wardian status` says whether Wardian runs, how, at which address, which version, which apps folder,
+and whether it starts at login. It exits `0` when Wardian runs and `3` when it does not. A Wardian in
+the background writes its output to `wardian.log` in the data folder (ADR-2610081800).
+
+On Linux without systemd, such as in some containers, `wardian start` runs Wardian as a plain
+background process and says that it will not restart after a crash or start at login.
+
+`wardian start` and `wardian` both open the Wardian that already runs, if it is the same version
+serving the same apps folder. If another Wardian holds the port, an older one or one serving
+another folder, they leave it running, take the next free port up to 8010, and name the other one
+(ADR-2610080930).
 
 ## Build from source
 
@@ -82,8 +106,10 @@ Docker listens on `0.0.0.0`, and its requests do not come from the same machine.
 
 ## The working folder
 
-Wardian serves and saves apps in its **working folder**, `DATA_DIR/apps`. By default that is
-`./data/apps`. Every Wardian has the example apps built in, however it was installed or started.
+Wardian serves and saves apps in its **working folder**, `DATA_DIR/apps`. Without `DATA_DIR`, the
+data folder is `./data` in a Wardian checkout or where `./data` already exists, and otherwise your
+user data folder: `~/Library/Application Support/Wardian` on macOS, `~/.local/share/wardian` on Linux
+(ADR-2610080915). Every Wardian has the example apps built in, however it was installed or started.
 On each start it adds every example app the working folder has not had before: from `./apps` in a
 checkout, else the copy installed beside the program, else the built-in copies. An example you remove
 stays removed, and an app already there is never replaced (ADR-2610081600). It leaves out build

@@ -5,9 +5,10 @@
 
 Most problems leave a message somewhere. Look in three places first:
 
-1. **The terminal** you started Wardian in. The server prints every start, every failed Splunk or
-   Claude call, and every history version there.
-2. **`DATA_DIR/wardian.log`**, for when and how the server stopped.
+1. **The terminal** you started Wardian in, when you started it with `wardian`. The server prints
+   every failed Splunk or Claude call and every history version there.
+2. **`DATA_DIR/wardian.log`**: every start and stop, and all the output of a Wardian started with
+   `wardian start`. `wardian status` names the data folder.
 3. **The fault box** at the bottom of a suite, and the browser console on the suite page.
 
 Each section below gives the symptom, the cause and the fix.
@@ -16,19 +17,40 @@ Each section below gives the symptom, the cause and the fix.
 
 ### The address is in use
 
-**Symptom.** Wardian stops at once, with exit code `1`:
+**Symptom.** With `ADDR` set, Wardian stops at once, with exit code `1`, and says another program is
+using the address.
 
-```
-stopped: cannot listen on 127.0.0.1:8000: Address already in use (os error 48). Another program (perhaps another Wardian) is using that address. Stop it, or pick another port, e.g. ADDR=127.0.0.1:8001 wardian
-```
-
-**Cause.** Another program, often another Wardian, listens on that port.
+**Cause.** Another program, often another Wardian, listens on that port. Without `ADDR`, Wardian
+does not stop here: it opens the same Wardian if that one runs there, or takes the next free port up
+to 8010 and names the program in the way.
 
 **Fix.** Stop the other program, or choose another port:
 
 ```
 ADDR=127.0.0.1:8001 wardian
 ```
+
+### The app list is empty, or shows another Wardian's apps
+
+**Symptom.** The browser opens, but the list is empty or not yours, and the start summary says
+another Wardian holds port 8000.
+
+**Cause.** An older Wardian, or one serving another folder, still runs on port 8000. Wardian leaves
+it running and takes the next port, so two run at once.
+
+**Fix.** Stop the other one: Ctrl-C in its terminal, or `wardian stop` if it runs in the background.
+Then start yours again. `wardian status` shows which one answers.
+
+### `wardian start` does not start Wardian
+
+**Symptom.** `wardian start` waits, then says Wardian did not answer, or `wardian status` exits `3`.
+
+**Cause.** The server stopped right after the system started it: often a data folder it cannot
+write, or an address in use.
+
+**Fix.** Read the end of `wardian.log` in the data folder; it holds the server's own message. On
+macOS, `launchctl print gui/$(id -u)/studio.wardian` shows what launchd knows; on Linux,
+`systemctl --user status wardian`. Fix the cause, then `wardian start` again.
 
 ### "Wardian will not listen on … without ADMIN_TOKEN"
 
@@ -96,6 +118,16 @@ rm -f bin/wardian && cp target/release/wardian bin/
 
 Past 1 MB the file moves to `wardian.log.1`. The Linux desktop launcher also writes the server's
 own output into this file.
+
+## An example app is missing
+
+**Symptom.** An example app listed in [Examples](/docs/examples) is not in your app list.
+
+**Cause.** Wardian adds each example once. It lists the examples it has added in `.examples-seen` in
+the working folder, and skips an example you removed, so it stays removed.
+
+**Fix.** Restore it from **Settings → Removed apps** if it is still there. Otherwise remove its name
+from `.examples-seen` in the working folder and start Wardian again.
 
 ## An app does not start
 

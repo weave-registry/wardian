@@ -57,6 +57,12 @@ settings](/docs/keys#sealed-at-rest)).
 Wardian speaks plain HTTP. To reach it across a network, put it behind a reverse proxy that ends
 TLS, such as Caddy or nginx, and send the admin token only over HTTPS.
 
+## Keep it running
+
+`wardian start --at-login` runs Wardian as a service of the system, which restarts it after a crash
+and starts it at login; `wardian stop` ends both. Without a login session, such as on a server, use
+your system's own service setup, or Docker. See [Install and run](/docs/install#run-in-the-background-or-in-a-terminal).
+
 ## Keep the data folder safe
 
 Everything Wardian knows is in `DATA_DIR` (by default `./data`): the apps, their history, their

@@ -41,7 +41,7 @@ for _ in $(seq 50); do curl -sf "$URL/SHA256SUMS" >/dev/null && break; sleep 0.1
 # A throwaway user: HOME, the default prefix under it, no XDG_DATA_HOME, no DATA_DIR.
 H="$TMP/home"
 mkdir -p "$H"
-USER_ENV=(env -u DATA_DIR -u XDG_DATA_HOME -u WARDIAN_PREFIX -u WARDIAN_VERSION -u WARDIAN_DOWNLOAD HOME="$H" SHELL=/bin/sh PATH="/usr/bin:/bin:/usr/sbin:/sbin")
+USER_ENV=(env -u DATA_DIR -u XDG_DATA_HOME -u XDG_CONFIG_HOME -u WARDIAN_PREFIX -u WARDIAN_VERSION -u WARDIAN_DOWNLOAD HOME="$H" SHELL=/bin/sh PATH="/usr/bin:/bin:/usr/sbin:/sbin")
 as_user() { "${USER_ENV[@]}" "$@"; }
 
 curl -fsSL "$URL/install.sh" | as_user WARDIAN_DOWNLOAD="$URL" sh >"$TMP/install.log" 2>&1 || fail "install.sh failed"

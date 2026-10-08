@@ -14,7 +14,9 @@ Debian 13, Fedora 40 and later), with no sudo:
 
     curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh
 
-Then run `wardian` from any folder; it opens http://127.0.0.1:8000 in your browser. The script
+Then run `wardian start --at-login`: Wardian runs in the background, starts again each time you log
+in, and opens http://127.0.0.1:8000 in your browser (`wardian stop` ends it; plain `wardian` runs it
+in the terminal instead). The script
 puts `wardian` in `~/.local/bin` and the example apps in `~/.local/lib/wardian/example-apps`,
 checks the download against `SHA256SUMS`, and says the line to add if `~/.local/bin` is not on your
 `PATH`. It shows each step on one line with ✓ (or ✗ and why), in colour on a terminal, and ends
