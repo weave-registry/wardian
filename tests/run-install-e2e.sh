@@ -13,7 +13,7 @@ BIN="${CARGO_TARGET_DIR:-$PWD/target}/release/wardian"   # honours CARGO_TARGET_
 
 TMP=$(mktemp -d)
 PIDS=()
-trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; wait "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
+trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; wait "$p" 2>/dev/null || true; done; rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $*" >&2; for f in "$TMP"/*.log; do [ -f "$f" ] && { echo "--- $f" >&2; cat "$f" >&2; }; done; exit 1; }
 ok() { echo "ok - $*"; }
 free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
