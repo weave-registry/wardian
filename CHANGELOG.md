@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.9] - 2026-10-09
+
 ### Changed
 
 - On a wide screen Wardian's page is one screen tall: the header and the footer stay in view, and
