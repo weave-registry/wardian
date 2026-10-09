@@ -17,6 +17,19 @@ Wardian 1.0") is done or written down there as left out.
 - A footer on Wardian's page with the version and the build: the commit it was built from, linked to
   its source, and that commit's date. `wardian --version` and `/api/status` (`build`) say the same.
 
+### Changed
+
+- Wardian's page looks like the website: forest ink (`#183e32`) on paper (`#f6f5ef`), lime
+  (`#dce8a5`) for the open app and olive (`#788d35`) focus rings, headings in Libre Caslon Display
+  and text in DM Sans (from Google Fonts, without blocking the page; the system fonts stand in
+  offline), and the website's mark in the header. The dark theme is the website's deep-green
+  sections: paper text on `#153629` and `#183e32`, with lime buttons. The copper orange is gone from
+  buttons, the app list, links, focus rings, the Sealed label, the job badge, Make an app, Settings and
+  its tabs, the folders, the footer, the first-run setup, the import preview, the permission bar and
+  a suite's fault list. Every text colour meets WCAG AA on its background (body text 4.5:1, focus
+  rings and field edges 3:1). Like the component library, dark follows the system and
+  `data-theme="light"` or `"dark"` on `<html>` forces one. Apps draw what they drew before.
+
 ### Fixed
 
 - Settings → Claude: choosing another AWS profile sets the region to that profile's, even when the
