@@ -51,3 +51,7 @@ details.saved[open] summary { margin-bottom: var(--w-space-2); }
 .saved-list .what b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-list .what small { color: var(--w-muted); font-size: var(--w-text-sm); }
 .saved-list .empty { padding: 4px 0; border: 0; }
+/* The receipt of the last table sent to other apps (keep). */
+.shared { margin-top: var(--w-space-4); }
+.shared h3 { margin: 0 0 var(--w-space-2); font-size: var(--w-text); font-weight: 600; }
+.shared-empty { margin: 0; font-size: var(--w-text-sm); color: var(--w-muted); }

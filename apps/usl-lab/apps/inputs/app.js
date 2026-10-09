@@ -96,7 +96,7 @@ Kernel.register({
       return t !== '' && isFinite(n) ? String(+n.toPrecision(5)) : t;    // 7.885606060606062 -> 7.8856
     };
     function tblStatus(text, kind){ const st = $('#tblStatus'); st.className = 'status' + (kind ? ' ' + kind : ''); st.textContent = text; }
-    let table = null, tableFrom = '';
+    let table = null, tableMsg = {};
     const NONE = '';
     // The most rows the fit reads from a large table. A USL fit wants one row per load level; past
     // ten thousand points it only gets slower (50,000 took about 20 s), not better.
@@ -111,8 +111,8 @@ Kernel.register({
     function showTable(){
       const t = table, f = t.fields;
       const n = totalOf(t);
-      $('#tblName').textContent = t.title + ': ' + n.toLocaleString() + (n === 1 ? ' row' : ' rows') + ', ' + (t.rangeLabel || 'all time') +
-        ', fetched ' + new Date(t.at).toLocaleString() + (tableFrom ? ' by ' + tableFrom : '') + '.';
+      // The same receipt the Splunk table app shows for what it sent: name, id, rows and columns.
+      $('#tblName').replaceChildren(WardianUI.receipt({...tableMsg, name: tableMsg.name || t.title, channel: 'splunk.table', data: t}, {direction: 'received'}));
       const use = suggested(t);
       fill($('#colN'), f, use.load || f[0]);
       fill($('#colX'), f, use.throughput || f[1]);
@@ -130,7 +130,7 @@ Kernel.register({
       try {
         await ctx.channel('splunk.table').on((data, info) => {
           if (!validTable(data)){ tblStatus('A message on splunk.table was not a table, so it was left out.', 'warn'); return; }
-          table = Object.assign({title: 'Splunk table'}, data); tableFrom = info && info.from || '';
+          table = Object.assign({title: 'Splunk table'}, data); tableMsg = info || {};
           showTable();
         });
         ctx.store.set('tableLink', true);

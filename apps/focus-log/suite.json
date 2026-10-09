@@ -10,9 +10,11 @@
     "ui/card.css",
     "ui/table.css",
     "ui/badge.css",
+    "ui/receipt.css",
     "style.css"
   ],
   "scripts": [
+    "ui/receipt.js",
     "shared/log.js"
   ],
   "header": "header.html",

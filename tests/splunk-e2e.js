@@ -182,7 +182,15 @@ async function answer(page, re, yes, what) {
   await inputs.locator('#btnConnect').click();
   await answer(lab, /usl-lab.*read messages on the channel splunk\.table/, true, 'the host asks about reading tables');
   await inputs.locator('#tblPick').waitFor({ state: 'visible', timeout: 5000 });
-  ok(/Splunk search: 8 rows, Last 24 hours/.test(await inputs.locator('#tblName').textContent()) && /by splunk-table/.test(await inputs.locator('#tblName').textContent()), 'the latest table arrives: ' + await inputs.locator('#tblName').textContent());
+  // ADR-2610091338: the table app and the lab show the same receipt for the same table, so the user
+  // sees what went where: the same name, the same id, and the same rows and columns.
+  const receiptOf = async box => Object.fromEntries(await Promise.all(['name', 'dir', 'id', 'what', 'meta'].map(async p => [p, (await box.locator('.w-receipt-' + p).textContent()).trim()])));
+  const sentR = await receiptOf(k.locator('#sentReceipt')), gotR = await receiptOf(inputs.locator('#tblName'));
+  ok(sentR.dir === 'Sent' && /to other apps on splunk\.table/.test(sentR.meta) && gotR.dir === 'Received' && /from splunk-table on splunk\.table/.test(gotR.meta),
+    `the table app says Sent, the lab says Received from splunk-table (${sentR.meta} | ${gotR.meta})`);
+  ok(gotR.name === 'Splunk search, Last 24 hours' && sentR.name === gotR.name && /^#[0-9a-f]{6}$/.test(gotR.id) && sentR.id === gotR.id,
+    `both show the same name and id (${sentR.name} ${sentR.id} | ${gotR.name} ${gotR.id})`);
+  ok(gotR.what === '8 rows, 3 columns: concurrency, x, r' && sentR.what === gotR.what, `both say what the table holds (${sentR.what} | ${gotR.what})`);
   ok(await inputs.locator('#colN').inputValue() === 'concurrency' && await inputs.locator('#colX').inputValue() === 'x' && await inputs.locator('#colR').inputValue() === 'r', 'the first three columns are suggested');
   await useTable(inputs);
   // Wait for the chart rather than a fixed time: Playwright's headless Chromium can take longer.

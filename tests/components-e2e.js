@@ -76,19 +76,25 @@ const lowestContrast = ({ paneSel, textSel }) => {
   // components.md, receipt: the same message looks the same in both apps; the id gives the colour and the short id.
   const r = await p.evaluate(() => {
     const id = '3f9a2c1e-7b4d-4c2a-9e51-0d6f8a3b2c47', at = Date.UTC(2026, 9, 9, 14, 41);
-    const sent = WardianUI.receipt({ id, name: '<b>Checkout</b>', channel: 'splunk.table', at, data: { rows: [1, 2] } }, { direction: 'sent' });
-    const got = WardianUI.receipt({ id, name: '<b>Checkout</b>', from: 'splunk-table', at, data: { rows: [1, 2] } }, { direction: 'received' });
+    const data = { fields: ['host', 'requests', 'p95', 'errors', 'region'], rows: [['a', 1, 2, 0, 'eu']], dataset: { total: 1000 } };
+    const sent = WardianUI.receipt({ id, name: '<b>Checkout</b>', channel: 'splunk.table', at, data }, { direction: 'sent' });
+    const got = WardianUI.receipt({ id, name: '<b>Checkout</b>', from: 'splunk-table', channel: 'splunk.table', at, data }, { direction: 'received' });
     const other = WardianUI.receipt({ id: '0a1b2c3d-0000-4000-8000-000000000000' });
     const hue = e => e.style.getPropertyValue('--w-receipt-hue');
     const shown = document.querySelector('#receipt .w-receipt');
     return { hues: [hue(sent), hue(got), hue(other)], ids: [sent, got].map(e => e.querySelector('.w-receipt-id').textContent),
       tags: sent.querySelectorAll('b').length, name: sent.querySelector('.w-receipt-name').textContent,
-      metas: [sent, got].map(e => e.querySelector('.w-receipt-meta').firstChild.textContent), gallery: hue(shown), short: WardianUI.shortId(id) };
+      metas: [sent, got].map(e => e.querySelector('.w-receipt-meta').textContent), whats: [sent, got].map(e => e.querySelector('.w-receipt-what').textContent),
+      kinds: [WardianUI.describe([1, 2, 3]), WardianUI.describe({ label: 'Write', minutes: 25 }), WardianUI.describe('abc'), WardianUI.describe({ fields: ['a'], rows: [[1]] })],
+      gallery: hue(shown), short: WardianUI.shortId(id) };
   });
   ok(r.hues[0] === r.hues[1] && r.hues[0] !== r.hues[2], `the same id gives the same colour, another id another (${r.hues.join(', ')})`);
   ok(r.ids.every(x => x === '#3f9a2c') && r.short === '#3f9a2c', `both show the short id #3f9a2c (${r.ids.join(', ')})`);
   ok(r.tags === 0 && r.name === '<b>Checkout</b>', 'a name is shown as text, never as markup');
-  ok(/^Sent on splunk\.table at .+, \d+ bytes$/.test(r.metas[0]) && /^From splunk-table at .+, \d+ bytes$/.test(r.metas[1]), `the sender says where it went, the receiver where it came from (${r.metas.join(' | ')})`);
+  ok(/^Sent to other apps on splunk\.table at .+, \d+ bytes#3f9a2c$/.test(r.metas[0]) && /^Received from splunk-table on splunk\.table at .+, \d+ bytes#3f9a2c$/.test(r.metas[1]),
+    `the sender says Sent and where, the receiver Received and from which app (${r.metas.join(' | ')})`);
+  ok(r.whats.every(w => w === '1,000 rows, 5 columns: host, requests, p95, errors and 1 more'), `both say what the data holds, counting rows left in the database (${r.whats[0]})`);
+  ok(r.kinds.join(' | ') === '3 items | Fields: label, minutes | Text, 3 characters | 1 row, 1 column: a', `other kinds of data are described too (${r.kinds.join(' | ')})`);
   ok(r.gallery.trim() === r.hues[0], `the gallery's receipt has the colour receipt.js gives its id (${r.gallery} and ${r.hues[0]})`);
 
   ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));

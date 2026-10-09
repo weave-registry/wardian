@@ -277,14 +277,14 @@
     </div>
   </section>
 
-  <section class="comp" id="receipt" data-what="One channel message, shown the same way in the app that sent it and the app that got it. The seal's colour and the short id both come from the message id. WardianUI.receipt(message, {direction}) builds it.">
+  <section class="comp" id="receipt" data-what="One channel message, shown the same way in the app that sent it and the app that got it. It says Sent or Received, from which app, on which channel, and what the data holds. The seal's colour and the short id both come from the message id. WardianUI.receipt(message, {direction}) builds it.">
     <div class="demo col">
       <div class="pair">
         <figure><figcaption>In Splunk table</figcaption>
-          <div class="w-receipt" data-direction="sent" style="--w-receipt-hue: 156"><span class="w-receipt-seal" aria-hidden="true"></span><div><p class="w-receipt-name">Checkout latency, last 7 days</p><p class="w-receipt-meta">Sent on splunk.table at 2:41 pm, 182 KB<code class="w-receipt-id" title="3f9a2c1e-7b4d-4c2a-9e51-0d6f8a3b2c47">#3f9a2c</code></p></div></div>
+          <div class="w-receipt" data-direction="sent" style="--w-receipt-hue: 156"><span class="w-receipt-seal" aria-hidden="true"></span><div><p class="w-receipt-name">Checkout latency, last 7 days</p><p class="w-receipt-meta"><strong class="w-receipt-dir">Sent</strong> to other apps on splunk.table at 2:41 pm, 182 KB<code class="w-receipt-id" title="Message id 3f9a2c1e-7b4d-4c2a-9e51-0d6f8a3b2c47">#3f9a2c</code></p><p class="w-receipt-what">1,000 rows, 5 columns: host, requests, p95, errors and 1 more</p></div></div>
         </figure>
         <figure><figcaption>In USL lab</figcaption>
-          <div class="w-receipt" data-direction="received" style="--w-receipt-hue: 156"><span class="w-receipt-seal" aria-hidden="true"></span><div><p class="w-receipt-name">Checkout latency, last 7 days</p><p class="w-receipt-meta">From splunk-table at 2:41 pm, 182 KB<code class="w-receipt-id" title="3f9a2c1e-7b4d-4c2a-9e51-0d6f8a3b2c47">#3f9a2c</code></p></div></div>
+          <div class="w-receipt" data-direction="received" style="--w-receipt-hue: 156"><span class="w-receipt-seal" aria-hidden="true"></span><div><p class="w-receipt-name">Checkout latency, last 7 days</p><p class="w-receipt-meta"><strong class="w-receipt-dir">Received</strong> from splunk-table on splunk.table at 2:41 pm, 182 KB<code class="w-receipt-id" title="Message id 3f9a2c1e-7b4d-4c2a-9e51-0d6f8a3b2c47">#3f9a2c</code></p><p class="w-receipt-what">1,000 rows, 5 columns: host, requests, p95, errors and 1 more</p></div></div>
         </figure>
       </div>
     </div>

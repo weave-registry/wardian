@@ -1,6 +1,7 @@
 /* inbox: receives finished focus sessions on the channel "focus.session" and keeps each one in the
    log's database. Shows whether the channel is open, and explains what to do when it is not.
-   A session already in the log (same sender, same start) is not added again.
+   A session already in the log (same sender, same start) is not added again. A receipt shows the
+   last session received, with the name and id Focus timer shows for it (ui/receipt.js).
    Emits: log:changed (retained: tells the views to read the log again).
    Capabilities: db.  Channels: receives focus.session. */
 Kernel.register({
@@ -23,7 +24,8 @@ Kernel.register({
         if (!d){ status('This Wardian has no database for apps, so sessions cannot be kept.', true); return; }
         const isNew = await Log.insert(d, row);
         $('#facts').hidden = false;
-        $('#last').textContent = '“' + row[2] + '”, ' + Log.minutes(row[3]) + (row[6] ? '' : ' (stopped early)') + ', ended ' + Log.time(row[5]) + ' · from ' + row[7];
+        // The same receipt Focus timer shows for what it sent: name, id and what the session was.
+        $('#last').replaceChildren(WardianUI.receipt({...meta, name: (meta && meta.name) || row[2], channel: 'focus.session', data, what: Log.what(data)}, {direction: 'received'}));
         if (isNew){ added++; changed(); }
         $('#count').textContent = added === 1 ? '1 new session' : added + ' new sessions';
         status(isNew ? '' : 'The latest session was already in the log.');

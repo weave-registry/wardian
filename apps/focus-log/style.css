@@ -27,8 +27,9 @@ main .panel { margin-bottom: var(--w-space-4); }
 .refused { border: 1px solid var(--w-border); border-left: 3px solid var(--w-destructive); border-radius: var(--w-radius); padding: var(--w-space-3); font-size: var(--w-text); }
 .refused p { margin: 0 0 var(--w-space-2); }
 .refused ol { margin: 0 0 var(--w-space-3); padding-left: 1.3em; }
-.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: var(--w-text-sm); }
-.facts dt { color: var(--w-muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
+/* The receipt of the last session received (inbox). */
+.shared h3 { margin: 0 0 var(--w-space-2); font-size: var(--w-text); font-weight: 600; }
+.shared-count { margin: var(--w-space-2) 0 0; font-size: var(--w-text-sm); color: var(--w-muted); }
 
 /* today */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--w-space-3); }

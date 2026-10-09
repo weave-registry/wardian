@@ -10,9 +10,11 @@
     "ui/card.css",
     "ui/table.css",
     "ui/switch.css",
+    "ui/receipt.css",
     "style.css"
   ],
   "scripts": [
+    "ui/receipt.js",
     "shared/cells.js",
     "shared/find.js",
     "shared/range.js",

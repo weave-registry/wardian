@@ -108,6 +108,9 @@
 
   // ---------- sending to the Focus log ----------
   const sent = [];
+  // What a session is, in words. Focus log writes the same words from the same message (shared/log.js).
+  const sessionWhat = rec => rec.minutes + ' min, ' + (rec.completed === false ? 'stopped early' : 'completed') + ', ended ' +
+    new Date(rec.ended).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'});
   function why(e){
     const m = String((e && e.message) || e || '');
     if (!window.wardian || /inside Wardian/i.test(m)) return 'This page is open on its own, outside Wardian. Open Focus timer from Wardian\'s app list to send sessions to the Focus log.';
@@ -117,8 +120,10 @@
   }
   function send(entry){
     entry.state = 'sending'; entry.why = ''; drawSent();
-    const go = window.wardian ? window.wardian.channel(CHANNEL).send(entry.rec) : Promise.reject(new Error('outside'));
-    go.then(() => { entry.state = 'sent'; $('channelNote').textContent = ''; },
+    // Named after its label, so the Focus log shows the same name and id (ui/receipt.js).
+    const name = (entry.rec.label || 'Focus session') + ', ' + entry.rec.minutes + ' min';
+    const go = window.wardian ? window.wardian.channel(CHANNEL).send(entry.rec, {name: name.slice(0, 120)}) : Promise.reject(new Error('outside'));
+    go.then(r => { entry.state = 'sent'; entry.receipt = r; $('channelNote').textContent = ''; },
       e => { entry.state = 'failed'; entry.why = why(e); $('channelNote').textContent = entry.why; toast('The session was not sent to the Focus log.', {variant: 'destructive'}); })
       .finally(drawSent);
   }
@@ -133,6 +138,11 @@
     if (!sent.length) return;
     list.replaceChildren(...sent.map(x => {
       const li = document.createElement('li'), what = document.createElement('div'), b = document.createElement('span');
+      // Once sent, the receipt: the same name, id and summary the Focus log shows.
+      if (x.state === 'sent' && x.receipt && window.WardianUI){
+        li.append(WardianUI.receipt({...x.receipt, channel: CHANNEL, data: x.rec, what: sessionWhat(x.rec)}, {direction: 'sent'}));
+        return li;
+      }
       const t = new Date(x.rec.ended).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'});
       what.className = 'what';
       what.append(Object.assign(document.createElement('b'), {textContent: x.rec.label}),

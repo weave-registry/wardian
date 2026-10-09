@@ -10,11 +10,13 @@
     "ui/badge.css",
     "ui/table.css",
     "ui/tooltip.css",
+    "ui/receipt.css",
     "core/style.css"
   ],
   "scripts": [
     "ui/progress.js",
     "ui/tooltip.js",
+    "ui/receipt.js",
     "core/lib.js"
   ],
   "header": "core/header.html",

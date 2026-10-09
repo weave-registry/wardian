@@ -1,8 +1,10 @@
 /* WardianUI.receipt(message, {direction: 'sent'|'received'}) builds this (receipt.js):
-   <div class="w-receipt" data-direction="sent" style="--w-receipt-hue: 212">
+   <div class="w-receipt" data-direction="sent" style="--w-receipt-hue: 156">
      <span class="w-receipt-seal" aria-hidden="true"></span>
      <div><p class="w-receipt-name">Checkout latency, last 7 days</p>
-       <p class="w-receipt-meta">Sent on splunk.table at 2:41 pm, 182 KB <code class="w-receipt-id">#3f9a2c</code></p></div>
+       <p class="w-receipt-meta"><strong class="w-receipt-dir">Sent</strong> to other apps on splunk.table at 2:41 pm, 182 KB
+         <code class="w-receipt-id">#3f9a2c</code></p>
+       <p class="w-receipt-what">1,000 rows, 5 columns: host, count, p95, error and 1 more</p></div>
    </div>
    One message shown the same way in the app that sent it and the app that got it. The seal's colour
    comes from the message id, so the same message has the same colour on both sides; the short id
@@ -16,5 +18,7 @@
 .w-receipt-name { margin: 0; font: 400 var(--w-text-lg)/1.3 var(--w-font-display); letter-spacing: -.005em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .w-receipt-meta { margin: 2px 0 0; font-size: var(--w-text-sm); color: var(--w-muted); }
+.w-receipt-dir { color: var(--w-fg); font-weight: 600; }
+.w-receipt-what { margin: 2px 0 0; font-size: var(--w-text-sm); color: var(--w-fg); overflow-wrap: anywhere; }
 .w-receipt-id { margin-left: .4em; padding: 1px 6px; border-radius: 999px; background: var(--w-muted-bg); color: var(--w-fg);
   font: 500 12px/1.5 var(--w-font-mono); user-select: all; }

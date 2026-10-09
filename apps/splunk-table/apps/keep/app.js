@@ -3,6 +3,8 @@
    A fresh search result is sent at once. A saved table is a copy: in the database a table named
    "saved_…", else its rows in this part's storage.
    Listens: table:ready, table:view.  Emits: table:ready (when a saved table is opened or deleted).
+   Under the buttons, a receipt shows the last table sent: its name, id, rows and columns, the same as
+   the receiving app shows it (ui/receipt.js).
    Capabilities: storage, db, claude:downloads.  Channels: sends splunk.table. */
 Kernel.register({
   name: 'keep',
@@ -47,7 +49,9 @@ Kernel.register({
         msg = fit(Object.assign({}, table, {rows, cut: rows.length < d.total, dataset: {package: 'splunk-table', table: d.table, total: d.total, columns: d.columns, fields: table.fields}}), rows);
       } else msg = fit(Object.assign({}, table, {cut: false}), table.rows);
       try {
-        await ctx.channel('splunk.table').send(msg);
+        const name = (table.title || 'Splunk table') + (table.rangeLabel ? ', ' + table.rangeLabel : '');
+        const sent = await ctx.channel('splunk.table').send(msg, {name: name.slice(0, 120)});
+        showSent({...sent, channel: 'splunk.table', bytes: JSON.stringify(msg).length, what: WardianUI.describe(msg)});
         if (table.dataset) return msg.rows.length >= table.dataset.total ? 'Sent to other apps.'
           : 'Sent to other apps: all ' + table.dataset.total.toLocaleString() + ' rows, which they read from this app\'s database after you allow it.';
         return 'Sent to other apps' + (msg.cut ? ', but only the first ' + msg.rows.length + ' rows fit in one message' : '') + '.';
@@ -56,6 +60,13 @@ Kernel.register({
       }
     }
     $('#btnSend').addEventListener('click', async () => { status(await share()); });
+    // The last receipt is kept, so it is still there when the app opens again.
+    function showSent(r){
+      ctx.store.set('lastSent', r);
+      $('#sentReceipt').replaceChildren(WardianUI.receipt(r, {direction: 'sent'}));
+    }
+    const lastSent = ctx.store.get('lastSent');
+    if (lastSent && lastSent.id) $('#sentReceipt').replaceChildren(WardianUI.receipt(lastSent, {direction: 'sent'}));
 
     // ---------- CSV ----------
     // Saves the rows that "Find in results" keeps (all of them when it is empty), in the order shown.

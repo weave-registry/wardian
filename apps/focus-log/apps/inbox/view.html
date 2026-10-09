@@ -8,8 +8,9 @@
   </ol>
   <button class="w-button" data-size="sm" id="retry" type="button">Ask again</button>
 </div>
-<dl class="facts" id="facts" hidden>
-  <dt>Last session</dt><dd id="last"></dd>
-  <dt>Since it opened</dt><dd id="count"></dd>
-</dl>
+<section class="shared" id="facts" hidden aria-labelledby="gotHead">
+  <h3 id="gotHead">Received from other apps</h3>
+  <div id="last"></div>
+  <p class="shared-count" id="count"></p>
+</section>
 <p class="status" id="status" role="status"></p>

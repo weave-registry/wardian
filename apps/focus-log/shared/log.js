@@ -39,6 +39,9 @@ const Log = (() => {
     return {row: [source + '|' + started.toISOString(), day(started), label, Math.round(minutes * 10) / 10,
       started.toISOString(), ended.toISOString(), data.completed === false ? 0 : 1, source, new Date().toISOString()]};
   }
+  /* What a session is, in words: the same words Focus timer writes for what it sent. */
+  const what = data => data.minutes + ' min, ' + (data.completed === false ? 'stopped early' : 'completed') + ', ended ' +
+    new Date(data.ended).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'});
   async function insert(d, row){
     const r = await d.query({sql: 'INSERT OR IGNORE INTO sessions (' + COLUMNS.join(', ') + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', params: row});
     return r.changed > 0;
@@ -54,5 +57,5 @@ const Log = (() => {
   const errText = e => String((e && e.message) || e || 'unknown error');
   const empty = (ctx, text) => Object.assign(ctx.el('p'), {className: 'empty', textContent: text});
 
-  return Object.freeze({TABLE, COLUMNS, db, day, daysAgo, clean, insert, minutes, time, date, errText, empty});
+  return Object.freeze({TABLE, COLUMNS, db, day, daysAgo, clean, what, insert, minutes, time, date, errText, empty});
 })();
