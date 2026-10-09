@@ -28,6 +28,11 @@ const FILES: &[(&str, &str)] = &[
     ui!("tooltip.js"),
     ui!("progress.js"),
     ui!("arrange.js"),
+    ui!("type.css"),
+    ui!("surface.css"),
+    ui!("bento.css"),
+    ui!("receipt.css"),
+    ui!("receipt.js"),
 ];
 
 /// The script that plays `Kernel` inside each suite frame, with the default rendering for Save as web

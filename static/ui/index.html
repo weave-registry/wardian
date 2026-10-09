@@ -16,6 +16,10 @@
 <link rel="stylesheet" href="/ui/dialog.css">
 <link rel="stylesheet" href="/ui/toast.css">
 <link rel="stylesheet" href="/ui/tooltip.css">
+<link rel="stylesheet" href="/ui/type.css">
+<link rel="stylesheet" href="/ui/surface.css">
+<link rel="stylesheet" href="/ui/bento.css">
+<link rel="stylesheet" href="/ui/receipt.css">
 <style>
   :root { color-scheme: light dark; }
   :root[data-theme="light"] { color-scheme: light; } :root[data-theme="dark"] { color-scheme: dark; }
@@ -34,7 +38,7 @@
   nav.toc a:hover { color: var(--w-fg); }
   section.comp { margin: 0 0 44px; scroll-margin-top: 16px; }
   section.comp > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; }
-  section.comp h2 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+  section.comp > header h2 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
   section.comp header p { margin: 2px 0 0; color: var(--w-muted); width: 100%; }
   .cmd { display: inline-flex; align-items: center; gap: 8px; }
   .cmd code { background: var(--w-muted-bg); padding: 5px 10px; border-radius: 6px; }
@@ -42,13 +46,18 @@
   .demo { padding: 28px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; min-height: 120px;
     background-image: radial-gradient(var(--w-border) 1px, transparent 1px); background-size: 16px 16px; }
   .demo.col { display: block; }
+  .demo.w-wallpaper { background-image: none; padding: 40px 24px; }
+  .demo .w-tile .w-card { max-width: none; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; width: 100%; }
+  .pair figcaption { margin: 0 0 6px; font-size: 13px; color: var(--w-muted); }
+  .pair figure { margin: 0; min-width: 0; }
   .demo .w-card { max-width: 380px; width: 100%; }
   .demo .w-field { max-width: 360px; }
   details.code { border-top: 1px solid var(--w-border); }
   details.code summary { cursor: pointer; padding: 10px 16px; color: var(--w-muted); font-size: 13px; }
   details.code pre { margin: 0; padding: 0 16px 16px; overflow: auto; white-space: pre; }
   .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 20px; width: 100%; }
-  footer { color: var(--w-muted); font-size: 13px; border-top: 1px solid var(--w-border); padding-top: 20px; }
+  .page > footer { color: var(--w-muted); font-size: 13px; border-top: 1px solid var(--w-border); padding-top: 20px; }
 </style>
 </head>
 <body>
@@ -212,7 +221,76 @@
     </div>
   </section>
 
-  <footer>Each component is plain CSS and, for four of them, a small script. No framework, no network. Source: <code>static/ui/</code> in the Wardian repository.</footer>
+  <section class="comp" id="type" data-what="A light serif with optical sizes for headlines, ledes and large figures, beside the theme's sans. Loads Newsreader from Google Fonts; with no network it falls back to Georgia.">
+    <div class="demo col">
+      <h2 class="w-display">Checkout got faster after the cache went in</h2>
+      <p class="w-lede" style="margin-top:14px">Seven days of requests from the last Splunk search, before and after Tuesday's deploy.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px 48px;margin-top:24px">
+        <p class="w-figure">10,970<small>req/s at peak</small></p>
+        <p class="w-figure">212<small>ms at p95</small></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="comp" id="surface" data-what="Frosted glass over a slow greenhouse light. .w-wallpaper on the page or a box, .w-glass on a pane, a card or a tile, data-variant=&quot;glass&quot; on a button. Less transparency or less motion in the viewer's settings gives solid panes and a still light.">
+    <div class="demo w-wallpaper">
+      <section class="w-card w-glass">
+        <header class="w-card-header">
+          <h3 class="w-card-title">Focus log</h3>
+          <p class="w-card-description">Sessions from Focus timer, kept on this computer.</p>
+        </header>
+        <div class="w-card-content"><p class="w-figure">3 h 25 min<small>today</small></p></div>
+        <footer class="w-card-footer"><button class="w-button" data-size="sm">Open the week</button><button class="w-button" data-size="sm" data-variant="glass">Export</button></footer>
+      </section>
+      <button class="w-button" data-variant="glass">Start a session</button>
+      <button class="w-button" data-shape="pill" data-variant="outline">Pill</button>
+    </div>
+  </section>
+
+  <section class="comp" id="bento" data-what="Tiles of different widths on 12 columns: data-span 3, 4, 6, 8 or 12, and data-rows=&quot;2&quot; for a tall one. The grid follows its own width, so tiles stack in a narrow panel even on a wide screen. Headers, bodies and footers line up along a row.">
+    <div class="demo col">
+      <div class="w-bento">
+        <article class="w-tile" data-span="8">
+          <header><h3 class="w-tile-title">Throughput</h3><p class="w-tile-note">From the USL fit, 48 threads</p></header>
+          <div class="w-tile-body"><p class="w-figure">10,970<small>req/s</small></p></div>
+          <footer><button class="w-button" data-size="sm" data-variant="outline">See the curve</button></footer>
+        </article>
+        <article class="w-tile" data-rows="2">
+          <header><h3 class="w-tile-title">Shared with this app</h3><p class="w-tile-note">The latest on each channel</p></header>
+          <div class="w-tile-body" style="display:grid;gap:8px;align-content:start">
+            <span class="w-badge" data-variant="secondary">splunk.table</span>
+            <span class="w-badge" data-variant="outline">focus.session</span>
+          </div>
+          <footer><button class="w-button" data-size="sm" data-variant="ghost">Permissions</button></footer>
+        </article>
+        <article class="w-tile">
+          <header><h3 class="w-tile-title">Contention</h3><p class="w-tile-note">σ, the cost of waiting</p></header>
+          <div class="w-tile-body"><p class="w-figure">0.031</p></div>
+          <footer></footer>
+        </article>
+        <article class="w-tile">
+          <header><h3 class="w-tile-title">Coherency</h3><p class="w-tile-note">κ, the cost of agreeing</p></header>
+          <div class="w-tile-body"><p class="w-figure">0.0004</p></div>
+          <footer></footer>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="comp" id="receipt" data-what="One channel message, shown the same way in the app that sent it and the app that got it. The seal's colour and the short id both come from the message id. WardianUI.receipt(message, {direction}) builds it.">
+    <div class="demo col">
+      <div class="pair">
+        <figure><figcaption>In Splunk table</figcaption>
+          <div class="w-receipt" data-direction="sent" style="--w-receipt-hue: 156"><span class="w-receipt-seal" aria-hidden="true"></span><div><p class="w-receipt-name">Checkout latency, last 7 days</p><p class="w-receipt-meta">Sent on splunk.table at 2:41 pm, 182 KB<code class="w-receipt-id" title="3f9a2c1e-7b4d-4c2a-9e51-0d6f8a3b2c47">#3f9a2c</code></p></div></div>
+        </figure>
+        <figure><figcaption>In USL lab</figcaption>
+          <div class="w-receipt" data-direction="received" style="--w-receipt-hue: 156"><span class="w-receipt-seal" aria-hidden="true"></span><div><p class="w-receipt-name">Checkout latency, last 7 days</p><p class="w-receipt-meta">From splunk-table at 2:41 pm, 182 KB<code class="w-receipt-id" title="3f9a2c1e-7b4d-4c2a-9e51-0d6f8a3b2c47">#3f9a2c</code></p></div></div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <footer>Each component is plain CSS and, for five of them, a small script. No framework. Only <code>type.css</code> uses the network, for its font. Source: <code>static/ui/</code> in the Wardian repository.</footer>
 </div>
 
 <script>
@@ -251,6 +329,7 @@
 <script src="/ui/tooltip.js"></script>
 <script src="/ui/progress.js"></script>
 <script src="/ui/arrange.js"></script>
+<script src="/ui/receipt.js"></script>
 <script>
   const dark = document.getElementById('dark');
   const sys = matchMedia('(prefers-color-scheme: dark)');

@@ -401,7 +401,7 @@ is removed leaves its folder; a new app is in no folder.
 ## Components
 
 Wardian has a small library of interface parts: button, field, card, badge, table, switch, tabs,
-dialog, toast, tooltip and progress. Like shadcn, you copy them into your app, and they become
+dialog, toast, tooltip, progress, display type, glass, bento tiles and the share receipt. Like shadcn, you copy them into your app, and they become
 your code:
 
 ```bash

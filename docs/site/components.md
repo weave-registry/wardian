@@ -39,6 +39,10 @@ component are safe.
 | `tooltip` | a hint on hover and keyboard focus | `tooltip.css`, `tooltip.js` |
 | `progress` | the `<wardian-progress>` bar (also built in) | `progress.js` |
 | `arrange` | Arrange for a page app | `arrange.js` |
+| `type` | a light display serif for headlines, ledes and large figures | `type.css` |
+| `surface` | frosted glass panes over a slow greenhouse light | `surface.css` |
+| `bento` | tiles of different widths that follow the grid's own width | `bento.css` |
+| `receipt` | one shared message, shown the same in both apps: `WardianUI.receipt()` | `receipt.css`, `receipt.js` |
 
 Classes start with `w-`. Variants and sizes are attributes:
 
@@ -79,11 +83,46 @@ tokens. Change the tokens, not each class:
 | `--w-primary`, `--w-primary-fg` | the main action |
 | `--w-secondary`, `--w-secondary-fg` | the other actions |
 | `--w-destructive`, `--w-success` | danger and success |
-| `--w-radius` | corners |
+| `--w-radius`, `--w-radius-lg` | corners; the large one for glass, tiles and receipts |
 | `--w-space-1` … `--w-space-6` | spacing, 4 px to 32 px |
-| `--w-font`, `--w-font-mono`, `--w-text-sm`, `--w-text`, `--w-text-lg` | type |
+| `--w-font`, `--w-font-mono`, `--w-font-display`, `--w-text-sm`, `--w-text`, `--w-text-lg` | type |
+| `--w-glass-opacity`, `--w-glass-edge`, `--w-blur` | how much glass hides, its edge, and its blur |
+| `--w-glow-1` … `--w-glow-3` | the three lights of the wallpaper |
 
 `theme.css` has a dark set of the same tokens, used when the viewer's system is dark.
+
+## Glass, display type and tiles
+
+Four parts give a page depth and a voice. They change nothing until you use their classes.
+
+```html
+<body class="w-wallpaper">
+  <h1 class="w-display">Checkout latency</h1>
+  <p class="w-lede">Seven days of requests, from the last Splunk search.</p>
+  <div class="w-bento">
+    <article class="w-tile w-glass" data-span="8">
+      <header><h3 class="w-tile-title">Throughput</h3><p class="w-tile-note">Requests per second</p></header>
+      <div class="w-tile-body"><p class="w-figure">10,970<small>req/s</small></p></div>
+      <footer><button class="w-button" data-variant="glass">Details</button></footer>
+    </article>
+  </div>
+</body>
+```
+
+- **`surface`**: `.w-wallpaper` paints a slow light in the theme's greens; `.w-glass` makes a pane
+  blur and tint what is behind it. Glass blurs only what is in the same page, so inside a Wardian
+  frame the wallpaper must be in your own page. A viewer who asks for less transparency gets solid
+  panes; one who asks for less motion gets a still light.
+- **`type`**: Newsreader, a light serif, from Google Fonts. With no network, the page uses Georgia.
+- **`bento`**: tiles on 12 columns, `data-span` 3, 4, 6, 8 or 12. The grid reads its own width: in
+  a narrow panel, tiles stack even on a wide screen. Headers, bodies and footers line up along a row.
+- **`receipt`**: shows a channel message with its name, short id and a colour made from the id. Show
+  it in the app that sends and in the app that receives, and the user sees the same thing in both.
+
+```js
+const sent = await ctx.channel('splunk.table').send(table, { name: 'Checkout latency' });
+box.replaceChildren(WardianUI.receipt({ ...sent, channel: 'splunk.table', data: table }, { direction: 'sent' }));
+```
 
 ## The progress bar
 

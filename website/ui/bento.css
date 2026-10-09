@@ -1,0 +1,33 @@
+/* <div class="w-bento">
+     <article class="w-tile" data-span="8">
+       <header><h3 class="w-tile-title">Throughput</h3><p class="w-tile-note">Last 7 days</p></header>
+       <div class="w-tile-body">…</div>
+       <footer>…</footer>
+     </article> …
+   </div>
+   Tiles of different widths on a 12-column grid. data-span: 3, 4 (the default), 6, 8 or 12;
+   data-rows="2" makes a tile twice as tall. The header, body and footer of tiles in one row line up.
+   The grid follows its own width, not the screen's: under 760px tiles take half, under 500px all of it.
+   Panels marked data-panel work with Arrange. */
+.w-bento { container-type: inline-size; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: row dense; gap: var(--w-space-4); }
+.w-tile { grid-column: span 4; grid-row: span 3; display: grid; grid-template-rows: subgrid; row-gap: var(--w-space-3);
+  min-width: 0; padding: var(--w-space-5); border: 1px solid var(--w-border); border-radius: var(--w-radius-lg);
+  background: var(--w-bg); color: var(--w-fg); font-family: var(--w-font); }
+.w-tile[data-span="3"] { grid-column: span 3; }
+.w-tile[data-span="6"] { grid-column: span 6; }
+.w-tile[data-span="8"] { grid-column: span 8; }
+.w-tile[data-span="12"] { grid-column: 1 / -1; }
+.w-tile > header { grid-row: 1; display: grid; gap: 2px; align-content: start; }
+.w-tile > .w-tile-body { grid-row: 2; min-width: 0; }
+.w-tile > footer { grid-row: 3; display: flex; flex-wrap: wrap; gap: var(--w-space-2); align-items: end; }
+.w-tile[data-rows="2"] { grid-row: span 6; }
+.w-tile[data-rows="2"] > .w-tile-body { grid-row: 2 / 6; }
+.w-tile[data-rows="2"] > footer { grid-row: 6; }
+.w-tile-title { margin: 0; font: 600 var(--w-text)/1.3 var(--w-font); }
+.w-tile-note { margin: 0; font-size: var(--w-text-sm); color: var(--w-muted); }
+@container (width < 760px) {
+  .w-tile, .w-tile[data-span] { grid-column: span 6; }
+  .w-tile[data-span="8"], .w-tile[data-span="12"] { grid-column: 1 / -1; }
+}
+@container (width < 500px) { .w-tile, .w-tile[data-span] { grid-column: 1 / -1; } }

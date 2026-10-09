@@ -1,0 +1,43 @@
+/* <body class="w-wallpaper"> … <section class="w-glass">…</section> … </body>
+   Glass: a pane that blurs and tints what is behind it, over a slow greenhouse light (the wallpaper).
+   Put .w-wallpaper on <body> for the whole page, or on any box. Add .w-glass to a pane, a card
+   (class="w-card w-glass") or a tile (class="w-tile w-glass"). data-variant="glass" on a .w-button.
+   Glass blurs only what is in the same page: inside a Wardian frame, put the wallpaper in your page.
+   Viewers who ask for less transparency or less motion get solid panes and still light. */
+.w-wallpaper { position: relative; isolation: isolate; background-color: var(--w-bg); }
+.w-wallpaper:not(body) { overflow: clip; }
+body.w-wallpaper { min-height: 100vh; min-height: 100dvh; }
+.w-wallpaper::before {
+  content: ""; position: absolute; inset: -20%; z-index: -1; pointer-events: none; will-change: transform;
+  background:
+    radial-gradient(40% 45% at 30% 35%, var(--w-glow-1), transparent 70%),
+    radial-gradient(35% 40% at 72% 30%, var(--w-glow-2), transparent 70%),
+    radial-gradient(45% 40% at 55% 75%, var(--w-glow-3), transparent 70%);
+  animation: w-drift 70s ease-in-out infinite alternate;
+}
+body.w-wallpaper::before { position: fixed; }
+@keyframes w-drift { to { transform: translate3d(3%, -2%, 0) rotate(6deg) scale(1.06); } }
+
+.w-glass, .w-card.w-glass, .w-tile.w-glass {
+  background: color-mix(in srgb, var(--w-bg) var(--w-glass-opacity), transparent);
+  border: 1px solid var(--w-glass-edge); border-radius: var(--w-radius-lg); color: var(--w-fg);
+  box-shadow: inset 0 1px 0 var(--w-glass-edge), var(--w-shadow);
+  -webkit-backdrop-filter: blur(var(--w-blur)) saturate(1.5); backdrop-filter: blur(var(--w-blur)) saturate(1.5);
+  /* Light shows through, so quiet text is a step stronger here: 4.5:1 over the brightest glow. */
+  --w-muted: color-mix(in srgb, var(--w-fg) 70%, var(--w-bg));
+}
+.w-button[data-variant="glass"] {
+  background: color-mix(in srgb, var(--w-bg) var(--w-glass-opacity), transparent); color: var(--w-fg);
+  border-color: var(--w-glass-edge); border-radius: 999px;
+  -webkit-backdrop-filter: blur(12px) saturate(1.5); backdrop-filter: blur(12px) saturate(1.5);
+}
+.w-button[data-variant="glass"]:hover { background: var(--w-bg); opacity: 1; }
+.w-button[data-shape="pill"] { border-radius: 999px; }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .w-glass, .w-card.w-glass, .w-tile.w-glass, .w-button[data-variant="glass"] { background: var(--w-bg); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .w-glass, .w-card.w-glass, .w-tile.w-glass, .w-button[data-variant="glass"] { background: var(--w-bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) { .w-wallpaper::before { animation: none; } }

@@ -9,9 +9,10 @@
 :root {
   --w-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --w-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --w-font-display: "Newsreader", "Libre Caslon Display", Georgia, serif;   /* type.css loads Newsreader */
   --w-text-sm: 13px; --w-text: 14px; --w-text-lg: 16px;
   --w-space-1: 4px; --w-space-2: 8px; --w-space-3: 12px; --w-space-4: 16px; --w-space-5: 24px; --w-space-6: 32px;
-  --w-radius: 8px;
+  --w-radius: 8px; --w-radius-lg: 20px;
   --w-bg: #ffffff; --w-fg: #09090b;
   --w-muted: #71717a; --w-muted-bg: #f4f4f5;
   --w-border: #e4e4e7;
@@ -22,6 +23,11 @@
   --w-ring: #a1a1aa;
   --w-shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.08);
   --w-speed: .15s;
+  /* Glass (surface.css): a pane that shows the light behind it, and the light it shows. */
+  --w-glass-opacity: 64%;   /* how much of --w-bg the glass keeps; mixed where it is used, so a page's own --w-bg counts */
+  --w-glass-edge: rgba(255,255,255,.7);
+  --w-blur: 24px;
+  --w-glow-1: rgba(148,173,81,.7); --w-glow-2: rgba(214,228,150,1); --w-glow-3: rgba(79,106,30,.4);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -29,6 +35,8 @@
     --w-primary: #fafafa; --w-primary-fg: #18181b; --w-secondary: #27272a; --w-secondary-fg: #fafafa;
     --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #52525b;
     --w-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+    --w-glass-edge: rgba(255,255,255,.12);
+    --w-glow-1: rgba(148,173,81,.45); --w-glow-2: rgba(40,91,70,.95); --w-glow-3: rgba(220,232,165,.2);
   }
 }
 :root[data-theme="dark"] {
@@ -36,6 +44,8 @@
   --w-primary: #fafafa; --w-primary-fg: #18181b; --w-secondary: #27272a; --w-secondary-fg: #fafafa;
   --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #52525b;
   --w-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+  --w-glass-edge: rgba(255,255,255,.12);
+  --w-glow-1: rgba(148,173,81,.45); --w-glow-2: rgba(40,91,70,.95); --w-glow-3: rgba(220,232,165,.2);
 }
 @media (prefers-reduced-motion: reduce) { :root { --w-speed: 0s; } }
 /* Visually hidden, still read by screen readers. */

@@ -29,6 +29,10 @@ pub const COMPONENTS: &[(&str, &str, &[&str])] = &[
     ("tooltip", "a hint on hover and keyboard focus", &["tooltip.css", "tooltip.js"]),
     ("progress", "the <wardian-progress> bar (Wardian also provides it built in)", &["progress.js"]),
     ("arrange", "Arrange: each viewer may reorder, move and hide the panels marked data-panel", &["arrange.js"]),
+    ("type", "a light display serif for headlines, ledes and large figures", &["type.css"]),
+    ("surface", "frosted glass panes over a slow greenhouse light", &["surface.css"]),
+    ("bento", "tiles of different widths that follow the grid's own width", &["bento.css"]),
+    ("receipt", "one shared message, shown the same in the sending and receiving app: WardianUI.receipt()", &["receipt.css", "receipt.js"]),
 ];
 
 /// The files the named components need, theme.css first.

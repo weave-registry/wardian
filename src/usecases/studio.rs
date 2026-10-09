@@ -94,7 +94,7 @@ fn tools() -> Value {
             "required": ["path", "content"] } },
         { "name": "delete_file", "description": "Delete one file from the package.",
           "input_schema": { "type": "object", "properties": { "path": path }, "required": ["path"] } },
-        { "name": "add_components", "description": "Copy components of the Wardian component library into ui/ (theme.css always comes too) and say how to use them. Components: button, field, card, badge, table, switch, tabs, dialog, toast, tooltip, progress, arrange.",
+        { "name": "add_components", "description": "Copy components of the Wardian component library into ui/ (theme.css always comes too) and say how to use them. Components: button, field, card, badge, table, switch, tabs, dialog, toast, tooltip, progress, arrange, type, surface, bento, receipt.",
           "input_schema": { "type": "object", "properties": {
               "components": { "type": "array", "items": { "type": "string" } } },
             "required": ["components"] } },
