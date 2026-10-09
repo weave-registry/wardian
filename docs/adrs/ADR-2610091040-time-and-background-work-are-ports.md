@@ -26,8 +26,9 @@ so no test can set the time, and a test of Splunk's 15-minute limit would take 1
    - `Tasks`: `spawn(task)`, which runs work in the background.
 2. **The core asks them.** Every use case that reads time or works in the background is given an
    `Arc<dyn Clock>` (`import_zip`, a function, a `&dyn Clock`), and the two that start work, the
-   job runner and the studio, an `Arc<dyn Tasks>`. `domain::package::unix_now` and `random_u32` are removed, so the domain holds
-   no clock. Splunk measures a search's length with `now_ms()`; its limit is the same.
+   job runner and the studio, an `Arc<dyn Tasks>`. `domain::package::unix_now` and `random_u32`
+   are removed, so the domain holds no clock. Splunk measures a search's length with `now_ms()`;
+   its limit is the same.
 3. **The adapters are the system's.** `adapters/secondary/system_clock.rs` has `SystemClock`
    (`SystemTime`, `thread::sleep`, and the random nonce that `random_u32` made) and `Threads`
    (`thread::spawn`). The composition root builds one of each and hands them out. Adapters keep
