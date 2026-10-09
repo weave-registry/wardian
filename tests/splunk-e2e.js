@@ -73,6 +73,46 @@ async function answer(page, re, yes, what) {
     console.log('    lab kernel: ' + JSON.stringify(await lab.evaluate(() => ({started: Kernel.started(), faults: Kernel.faults().slice(-5), visible: document.visibilityState})).catch(e => String(e))));
   };
 
+  console.log('== Settings → Splunk finds the API behind the browser\'s address (ADR-2610091500)');
+  {
+    const API = 'https://127.0.0.1:' + process.env.SPLUNK_API_PORT;
+    const set = await context.newPage();
+    set.on('pageerror', e => pageErrors.push(e.message));
+    await set.goto(B + '/'); await set.click('#settingsBtn'); await set.click('#setTab-splunk');
+    ok(/as in your browser/.test(await set.locator('#splunkUrlHint').textContent()) && /finds the API port/.test(await set.locator('#splunkUrlHint').textContent()), 'the hint asks for the address as in the browser');
+    const msg = () => set.locator('#splunkMsg').textContent();
+    const saveWith = async (url, token, insecure) => {
+      await set.fill('#splunkUrl', url); await set.fill('#splunkToken', token);
+      await set.setChecked('#splunkInsecure', insecure);
+      await set.click('#splunkSave');
+      await set.locator('#splunkSave:not([disabled])').waitFor({ timeout: 15000 });
+    };
+    await saveWith(process.env.SPLUNK_WEB + '/en-US/app/search/search?q=index%3Dmain', 'test-token', false);
+    ok(/^Not saved: https:\/\/127\.0\.0\.1:\d+ has Splunk's own built-in certificate \(CN=SplunkServerDefaultCert, O=SplunkUser, issued by CN=SplunkCommonCA, O=Splunk\)/.test(await msg()), 'Splunk\'s own certificate is named: ' + await msg());
+    const trust = set.getByRole('button', { name: 'Trust Splunk\'s own certificate and try again' });
+    ok(await trust.isVisible(), 'with one button to trust it');
+    ok(await set.evaluate(() => document.activeElement.id) === 'splunkResult', 'the focus moves to the result');
+    ok(!(await set.locator('#splunkInsecure').isChecked()), 'nothing is trusted before the click');
+    await trust.click();
+    await set.locator('#splunkMsg', { hasText: /Connected|Not saved/ }).waitFor({ timeout: 15000 });
+    ok((await msg()) === `Connected to fake-splunk 9.3.0 as wardian-reader. Splunk's API is on port ${process.env.SPLUNK_API_PORT}; saved ${API}.`, 'the button trusts it and saves the API port: ' + await msg());
+    ok(await set.locator('#splunkInsecure').isChecked() && await trust.isHidden() && await set.inputValue('#splunkUrl') === API, 'the box is ticked, the button gone, the address is the API\'s');
+    ok(await set.evaluate(() => document.activeElement.id) === 'splunkResult', 'and the focus is on the result');
+    ok(new RegExp(`Connected to ${API.replace(/[.]/g, '\\.')} with a token`).test(await set.locator('#splunkState').textContent()), 'Settings shows the saved address');
+
+    await saveWith(process.env.SPLUNK_WEB303 + '/en-US/account/login', 'wrong-token', true);
+    ok(new RegExp(`^Not saved: Splunk's API is at ${API.replace(/[.]/g, '\\.')}, and it refuses this account: .*401.*token or password is wrong`).test(await msg()), 'wrong credentials stop at the API port: ' + await msg());
+    ok(await trust.isHidden(), 'with no certificate button');
+    r = await post('/api/splunk/config', { url: process.env.SPLUNK_WEB303 + '/en-US/app/search', token: 'test-token', insecure_tls: true });
+    ok(r.status === 200 && r.body.url === API && /^Splunk's API is on port \d+; saved /.test(r.body.note), 'a web port that redirects to its login page is passed by too: ' + r.body.note);
+    r = await post('/api/splunk/config', { url: 'ftp://splunk.example.com', token: 'test-token' });
+    ok(r.status === 400 && /not ftp:\/\//.test(r.body.error), 'junk is refused with a clear message: ' + r.body.error);
+    await set.close();
+    // The rest of the test uses the plain-HTTP fake.
+    r = await post('/api/splunk/config', { url: SPLUNK, token: 'test-token' });
+    ok(r.status === 200 && r.body.note === `Saved ${SPLUNK}.`, 'the right address is saved as it is: ' + r.body.note);
+  }
+
   console.log('== the table app asks before it searches');
   await tab.goto(B + '/run/splunk-table/'); await sleep(2500);
   let { s, a, rw, k } = partsOf(tab);

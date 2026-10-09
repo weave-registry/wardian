@@ -12,6 +12,18 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- **Splunk setup finds the API** (ADR-2610091500). Settings → Splunk takes the address as in your
+  browser, path and all, and keeps the scheme, the host and the port. **Test and save** tries the
+  address as given, then the same host on port 8089, and saves the first that answers as Splunk's
+  API: "Splunk's API is on port 8089; saved https://host:8089." When Splunk's API refuses the
+  account, setup stops there and says the credentials are the problem. A certificate Wardian cannot
+  trust is named with its subject and issuer; Splunk's own (`SplunkServerDefaultCert`, issued by
+  `SplunkCommonCA`) gets one button, **Trust Splunk's own certificate and try again**, and another
+  authority's points at the new **CA file** field. `WARDIAN_SPLUNK_API_PORT` changes the port tried
+  after the one given. Wardian no longer follows redirects from Splunk.
+
 ## [0.4.5] - 2026-10-08
 
 ### Added

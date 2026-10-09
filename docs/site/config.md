@@ -84,6 +84,7 @@ the setup again and fills `apps/` from `./apps`.
 | `SPLUNK_TOKEN` | none | Splunk token. Or set `SPLUNK_USERNAME` and `SPLUNK_PASSWORD`. |
 | `SPLUNK_INSECURE_TLS` | off | `1` or `true` accepts any certificate, such as Splunk's self-signed default. |
 | `SPLUNK_CA_FILE` | none | A PEM file of extra certificate authorities to trust for Splunk. |
+| `WARDIAN_SPLUNK_API_PORT` | `8089` | The port **Settings → Splunk** tries for Splunk's API after the address given (ADR-2610091500). |
 | `WARDIAN_MASTER_KEY` | none | The master key that seals saved keys, as 64 hex digits. When set, no other place is used ([Keys and Claude settings](/docs/keys#sealed-at-rest)). |
 | `WARDIAN_MASTER_KEY_FILE` | `~/.config/wardian/master.key` | The file for the master key, outside the data folder. Made on the first start. |
 | `WARDIAN_SERVICE_LABEL` | `studio.wardian` | The service `wardian start`, `stop` and `status` manage ([Command line](/docs/cli#start-stop-status)). Must start with `studio.wardian`; tests use one of their own. |

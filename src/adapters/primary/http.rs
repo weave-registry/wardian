@@ -286,7 +286,6 @@ fn api_post(path: &str, body: Value, s: &Services) -> Result<Value, String> {
     }
     match path {
         "/api/agent" => studio.set_agent(&body),
-        "/api/splunk/config" => splunk.set_config(&body),
         "/api/splunk/search" => {
             // The kernel asks for an app of a suite. Check here too, not only in the
             // browser: the app must declare "splunk" and the user must have allowed it.
@@ -485,6 +484,11 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
                 json_resp(403, json!({ "error": "settings are locked; see ADMIN_TOKEN in the README" }))
             } else {
                 match read_json(req) {
+                    // Setting up Splunk can refuse with more than words: whose certificate it met (ADR-2610091500).
+                    Ok(body) if path == "/api/splunk/config" => match s.searches.set_config(&body) {
+                        Ok(v) => json_resp(200, v),
+                        Err(e) => json_resp(400, e),
+                    },
                     Ok(body) => let_go_after(path, background(&body), result_resp(api_post(path, body, s))),
                     Err(e) => json_resp(400, json!({ "error": e })),
                 }

@@ -558,6 +558,7 @@ in `DATA_DIR`.
 | `SPLUNK_TOKEN` | none | Splunk token (or set `SPLUNK_USERNAME` and `SPLUNK_PASSWORD`) |
 | `SPLUNK_INSECURE_TLS` | off | `1` accepts any certificate, such as Splunk's self-signed default |
 | `SPLUNK_CA_FILE` | none | PEM file of extra certificate authorities to trust for Splunk |
+| `WARDIAN_SPLUNK_API_PORT` | `8089` | The port Settings → Splunk tries for Splunk's API after the address given |
 | `WARDIAN_AI_MODEL` | `claude-opus-5-5` | The Claude model that writes apps; one chosen in Settings wins |
 | `WARDIAN_AI_PROVIDER` | `anthropic` | `bedrock` to use Amazon Bedrock, used only if none is chosen in Settings |
 | `AWS_REGION` | none | Bedrock region (also `AWS_DEFAULT_REGION`) |

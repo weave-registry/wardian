@@ -548,9 +548,10 @@
     <div class="card" id="splunkCard">
       <h2>Splunk</h2>
       <p id="splunkState" class="muted"></p>
-      <div class="row" style="margin-bottom:.5rem">
-        <input id="splunkUrl" style="flex:1;min-width:14rem" placeholder="https://splunk.example.com:8089" aria-label="Splunk management address" autocomplete="off">
+      <div class="row" style="margin-bottom:.25rem">
+        <input id="splunkUrl" style="flex:1;min-width:14rem" placeholder="https://splunk.example.com" aria-label="Splunk address" aria-describedby="splunkUrlHint" autocomplete="off">
       </div>
+      <p id="splunkUrlHint" class="muted" style="font-size:.85rem;margin:0 0 .5rem">Your Splunk's address, as in your browser. Wardian finds the API port (usually 8089) itself.</p>
       <div class="row" style="margin-bottom:.5rem">
         <input type="password" id="splunkToken" style="flex:1;min-width:14rem" placeholder="Splunk token" aria-label="Splunk token" autocomplete="off">
       </div>
@@ -562,11 +563,17 @@
         <label><input type="checkbox" id="splunkInsecure"> Allow a self-signed certificate (Splunk's default one)</label>
       </div>
       <div class="row" style="margin-bottom:.5rem">
+        <input id="splunkCa" style="flex:1;min-width:14rem" placeholder="CA file (optional): a PEM file on this server" aria-label="CA file: a PEM file on this server, for a certificate from your own authority" autocomplete="off">
+      </div>
+      <div class="row" style="margin-bottom:.5rem">
         <button id="splunkSave" class="primary">Test and save</button>
         <button id="splunkRemove" class="hidden">Remove</button>
       </div>
       <p class="muted" style="font-size:.85rem">Apps that declare the <code>splunk</code> capability ask you once, then Wardian runs their searches with this account. The token never comes back to the browser. Give the account a read-only role that sees only the indexes these apps need.</p>
-      <p id="splunkMsg" role="status"></p>
+      <div id="splunkResult" tabindex="-1">
+        <p id="splunkMsg" role="status"></p>
+        <button id="splunkTrust" class="hidden">Trust Splunk's own certificate and try again</button>
+      </div>
     </div>
     </div>
 
@@ -636,7 +643,7 @@ async function api(path, body) {
   }
   const r = await fetch(path, opts);
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+  if (!r.ok) throw Object.assign(new Error(data.error || `${r.status} ${r.statusText}`), { data });
   return data;
 }
 
@@ -722,6 +729,7 @@ function renderStatus() {
     ? `Connected to ${sp.url} with a ${sp.auth}, from ${sp.from === 'environment' ? 'the SPLUNK_* variables' : 'these settings'}.${sp.insecure_tls ? ' Any certificate is accepted.' : ''}`
     : 'Not set up. Apps that use Splunk cannot search until you add an account.';
   $('splunkRemove').classList.toggle('hidden', sp.from !== 'settings');
+  if (sp.ready && document.activeElement !== $('splunkCa') && !$('splunkCa').value) $('splunkCa').value = sp.ca_file || '';
   renderKey();
 }
 
@@ -2734,23 +2742,41 @@ $('setTab-keys').addEventListener('click', () => status.admin && loadKeys());
 $('setTab-usage').addEventListener('click', () => status.admin && loadUsage());
 
 // Settings → Make apps with Claude
-function splunkMsg(text, bad = false) { $('splunkMsg').textContent = text; $('splunkMsg').className = bad ? 'err' : 'muted'; }
-$('splunkSave').onclick = async () => {
+function splunkMsg(text, bad = false) {
+  $('splunkMsg').textContent = text; $('splunkMsg').className = bad ? 'err' : 'muted';
+  $('splunkTrust').classList.add('hidden');
+}
+// Setup finds Splunk's API from the address given (ADR-2610091500). The result says where it
+// saved, and takes the focus; a certificate it cannot trust is named, with one button for
+// Splunk's own certificate, or the CA file field for another authority's.
+async function splunkSave() {
   const body = {
     url: $('splunkUrl').value.trim(), token: $('splunkToken').value.trim(),
     username: $('splunkUser').value.trim(), password: $('splunkPass').value,
-    insecure_tls: $('splunkInsecure').checked,
+    insecure_tls: $('splunkInsecure').checked, ca_file: $('splunkCa').value.trim(),
   };
-  if (!body.url) return splunkMsg('Type the Splunk address first.', true);
-  splunkMsg('Testing the connection…');
+  if (!body.url) return splunkMsg('Type your Splunk\'s address first, as in your browser.', true);
+  splunkMsg('Looking for Splunk\'s API and testing the account…');
+  $('splunkSave').disabled = true;
   try {
     status.splunk = await api('/api/splunk/config', body);
     $('splunkToken').value = ''; $('splunkPass').value = '';
+    $('splunkUrl').value = status.splunk.url;
     renderStatus();
     const sv = status.splunk.server || {};
-    splunkMsg(`Connected to ${sv.name || 'Splunk'}${sv.version ? ' ' + sv.version : ''}${sv.user ? ' as ' + sv.user : ''}. Saved.`);
-  } catch (e) { splunkMsg(`Not saved: ${e.message}`, true); }
-};
+    splunkMsg(`Connected to ${sv.name || 'Splunk'}${sv.version ? ' ' + sv.version : ''}${sv.user ? ' as ' + sv.user : ''}. ${status.splunk.note || 'Saved.'}`);
+  } catch (e) {
+    const cert = (e.data || {}).certificate;
+    splunkMsg(`Not saved: ${e.message}`, true);
+    if (cert && cert.splunk_default && !body.insecure_tls) $('splunkTrust').classList.remove('hidden');
+  } finally {
+    $('splunkSave').disabled = false;
+    $('splunkResult').focus();
+  }
+}
+$('splunkSave').onclick = splunkSave;
+// Trusting Splunk's own certificate is the user's choice, made here with one click.
+$('splunkTrust').onclick = () => { $('splunkInsecure').checked = true; splunkSave(); };
 $('splunkRemove').onclick = async () => {
   try { status.splunk = await api('/api/splunk/config', { url: '' }); renderStatus(); splunkMsg('Removed.'); }
   catch (e) { splunkMsg(e.message, true); }
