@@ -197,7 +197,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: hexa adr gates
-        run: hexa adr gates
+        run: hexa adr gates --verbose
 
   load:
     needs: fast
