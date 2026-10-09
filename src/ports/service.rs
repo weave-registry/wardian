@@ -76,7 +76,10 @@ pub trait Keys: Send + Sync {
 /// Splunk searches for apps, and the Splunk account in Settings.
 pub trait Searches: Send + Sync {
     fn status(&self) -> Value;
-    fn set_config(&self, body: &Value) -> Result<Value, String>;
+    /// Finds Splunk's API from the address given, tests the account there, and saves it
+    /// (ADR-2610091500). A refusal is `{error, certificate?}`: `certificate` names a server
+    /// certificate Wardian cannot trust, and says whether it is Splunk's own.
+    fn set_config(&self, body: &Value) -> Result<Value, Value>;
     /// `watch` says when to stop: the search job on Splunk is then cancelled too.
     fn search(&self, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<Value, String>;
     /// Runs a search and loads its results into `table` of `package`'s database, in chunks:

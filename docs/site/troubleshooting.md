@@ -281,16 +281,24 @@ Other results have other causes:
 
 ## Splunk
 
-Wardian tests the Splunk settings before it saves them, and says what went wrong:
+Wardian tests the Splunk settings before it saves them. It takes the address as in your browser
+and looks for Splunk's API itself: the address as given, then the same host on port 8089
+([Splunk](/docs/splunk)). It says what went wrong:
 
 | Message | Fix |
 |---|---|
-| `… uses an old-format (X.509 version 1) certificate, such as Splunk's default SplunkServerDefaultCert. …` | Tick **Allow a self-signed certificate**, or ask the Splunk admin for a proper certificate. |
-| `cannot trust the certificate of … Give the CA file, or tick "Allow a self-signed certificate".` | Set `SPLUNK_CA_FILE` to the CA's PEM file, or tick the box. |
+| `… has Splunk's own built-in certificate (CN=SplunkServerDefaultCert, …, issued by CN=SplunkCommonCA, …), which no computer trusts by itself. …` | Press **Trust Splunk's own certificate and try again** if this is your Splunk, or give its CA file. |
+| `Wardian cannot trust the certificate of … (…, issued by …): … Give the certificate of the authority that issued it …` | Put that authority's PEM file on the Wardian server and its path in **CA file** (or `SPLUNK_CA_FILE`). |
+| `Splunk's API is at …, and it refuses this account: … returned 401 …` | The address is right; the token or password is wrong or expired. Tokens also need token authentication turned on in Splunk. |
+| `Splunk's API is at …, and it refuses this account: … returned 403 …` | The account's role needs the search capability. |
+| `Splunk's API does not answer at https://host or https://host:8089. …` | Each address says what answered: a web page (Splunk Web), a redirect to the login page, or nothing. If the API is on another port, type the address with that port. Check the host name and the firewall. |
 | `…: the TLS handshake failed (…). If this port speaks plain HTTP, use http:// instead of https://.` | Use `http://`, or the right port. |
 | `cannot reach …` | Check the host name, the port (usually `8089`) and the firewall. |
-| `… returned 401 …` | The token or password is wrong or expired. Tokens also need token authentication turned on in Splunk. |
-| `… returned 403 …` | The account's role needs the search capability. |
+| `… returned 401 …` or `… returned 403 …`, later, in a search | The saved token or password has expired, or the account's role lost the search capability. |
+| `"…" is not a Splunk address …` or `… is not a port …` | Type the host name, or paste the address from the browser. |
+
+A saved account that stops working (in **Keys → Test again**, or a search) gives the same messages,
+for the saved address only.
 
 The terminal shows Splunk's whole answer for each failed call.
 

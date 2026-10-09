@@ -9,14 +9,37 @@ hands them to the USL lab on a channel.
 
 1. In Splunk, make a token (Settings → Tokens) for a user with a **read-only role** that sees only
    the indexes these apps need. That role is the real limit on what an app can read.
-2. In Wardian, open **Settings → Splunk**. Type the management address, usually
-   `https://<host>:8089`, and the token (or a username and password).
-3. If Splunk still uses its own self-signed certificate, tick **Allow a self-signed certificate**.
-4. Press **Test and save**. Wardian calls Splunk first and saves only settings that work.
+2. In Wardian, open **Settings → Splunk**. Type your Splunk's address as in your browser, or paste
+   it from the browser's address bar, such as `https://splunk.example.com/en-US/app/search/search`.
+   Then type the token (or a username and password).
+3. Press **Test and save**. Wardian calls Splunk first and saves only settings that work.
+
+Wardian finds Splunk's API itself (ADR-2610091500). The address in your browser is Splunk Web,
+while Wardian needs Splunk's management API, usually on port 8089 of the same host:
+
+- Wardian keeps the scheme (`https` when none is given), the host and the port, and drops the path.
+- It tries the address as given, port included, then the same host on port 8089. The first that
+  answers as Splunk's API is saved, and the result says which, as in "Splunk's API is on port 8089;
+  saved https://splunk.example.com:8089."
+- When Splunk's API refuses the account, Wardian stops there and says so: the address is right,
+  the token or password is not.
+- No other host or port is tried. A Splunk whose API is on another port needs that port typed, as
+  in `https://splunk.example.com:9089`.
+
+### Splunk's own certificate
+
+Most Splunk servers protect the API with Splunk's built-in certificate, `SplunkServerDefaultCert`,
+issued by `SplunkCommonCA`. No computer trusts it by itself. When Wardian meets it, the result names
+it and offers one button, **Trust Splunk's own certificate and try again**, which ticks **Allow a
+self-signed certificate** and saves again. Nothing is trusted without that click.
+
+A certificate from another authority, such as your company's, is named with its issuer. Put that
+authority's certificate, as a PEM file on the Wardian server, in **CA file**.
 
 The environment variables `SPLUNK_URL`, `SPLUNK_TOKEN` (or `SPLUNK_USERNAME` and
 `SPLUNK_PASSWORD`), `SPLUNK_INSECURE_TLS` and `SPLUNK_CA_FILE` do the same, used only when nothing
-is saved in Settings.
+is saved in Settings. They are used as given: Wardian does not look for the API port for them.
+`WARDIAN_SPLUNK_API_PORT` changes the port setup tries after the one given (8089 by default).
 
 ## Who may search
 

@@ -285,6 +285,9 @@ pub struct Settings {
     pub bedrock_quick_model: Option<String>,
     /// The Splunk account used when Settings has none.
     pub splunk: Option<SplunkConfig>,
+    /// The port setup tries for Splunk's API besides the one given (ADR-2610091500):
+    /// WARDIAN_SPLUNK_API_PORT, or 8089.
+    pub splunk_api_port: u16,
     /// Where the master key that seals secrets is kept (ADR-2610081501): WARDIAN_MASTER_KEY,
     /// WARDIAN_MASTER_KEY_FILE, or else the key file in the user's folder.
     pub master_key: Option<String>,
@@ -332,6 +335,7 @@ impl Settings {
                 insecure_tls: env("SPLUNK_INSECURE_TLS").is_some_and(|v| v == "1" || v == "true"),
                 ca_file: env("SPLUNK_CA_FILE").unwrap_or_default(),
             }),
+            splunk_api_port: env("WARDIAN_SPLUNK_API_PORT").and_then(|p| p.trim().parse().ok()).filter(|&p| p > 0).unwrap_or(crate::domain::splunk::API_PORT),
             master_key: env("WARDIAN_MASTER_KEY"),
             master_key_file: env("WARDIAN_MASTER_KEY_FILE").map(PathBuf::from),
             user_key_file: config_home().map(|d| d.join("wardian").join("master.key")),

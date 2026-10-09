@@ -2,7 +2,13 @@
 # Token "test-token". A search containing "badsyntax" fails like Splunk does.
 # A search containing "slowtable" stays running for SLOW seconds (ADR-2610072118), and a job can be
 # cancelled (POST .../control action=cancel); GET /fake/cancelled lists the cancelled job ids.
-import json, sys, time, urllib.parse
+#
+# Usage: server.py PORT                 the management API over plain HTTP
+#        server.py PORT CERT KEY        the management API over TLS, with this certificate
+#        server.py PORT --web404        Splunk Web: "Page not found!" pages for /services/...
+#        server.py PORT --web303        Splunk Web: every page sends the browser to the login page
+# (ADR-2610091500: setup finds the API behind the web address.)
+import json, ssl, sys, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 TOKEN = "Bearer test-token"
 SLOW = 12
@@ -107,4 +113,31 @@ class H(BaseHTTPRequestHandler):
             x = 1000 * n / (1 + 0.05 * (n - 1) + 0.0004 * n * (n - 1))
             rows.append({"concurrency": str(n), "x": "%.1f" % x, "r": "%.2f" % (n / x * 1000), "_time": "2026-10-06"})
         return self.reply(200, {"fields": [{"name": "concurrency"}, {"name": "x"}, {"name": "r"}, {"name": "_time"}], "results": rows, "messages": []})
-ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1]) if len(sys.argv) > 1 else 18089), H).serve_forever()
+
+class Web(BaseHTTPRequestHandler):
+    """Splunk Web, as it answers a client that asks it for the REST API."""
+    redirect = False
+    def do_GET(self):
+        sys.stderr.write("WEB %s\n" % self.path)
+        if self.redirect:
+            self.send_response(303)
+            self.send_header("Location", "/en-US/account/login?return_to=%s" % urllib.parse.quote(self.path))
+            self.send_header("Content-Length", "0"); self.end_headers(); return
+        b = b"<!doctype html><html><head><title>Page not found! - Splunk</title></head><body><h1>Oops.</h1><p>Page not found!</p></body></html>"
+        self.send_response(404); self.send_header("Server", "Splunkd"); self.send_header("Content-Type", "text/html; charset=UTF-8")
+        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+port = int(sys.argv[1]) if len(sys.argv) > 1 else 18089
+mode = sys.argv[2:]
+if mode in (["--web404"], ["--web303"]):
+    Web.redirect = mode == ["--web303"]
+    ThreadingHTTPServer(("127.0.0.1", port), Web).serve_forever()
+server = ThreadingHTTPServer(("127.0.0.1", port), H)
+if len(mode) == 2:
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain(mode[0], mode[1])
+    # The handshake runs in each request's own thread, so a client that never finishes it
+    # (such as one speaking plain HTTP) holds up no one else.
+    server.socket = tls.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
+    H.setup = lambda self: (self.request.do_handshake(), BaseHTTPRequestHandler.setup(self))
+server.serve_forever()

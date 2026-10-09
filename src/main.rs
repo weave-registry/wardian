@@ -398,7 +398,7 @@ fn serve(cfg: Settings, no_open: bool) {
     let stores = Stores { fs: Arc::clone(&fs), secrets: Arc::clone(&secrets), checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&fs), &cfg.data_dir, Arc::clone(&clock))) };
     let studio = Arc::new(Studio::new(stores, providers, Arc::clone(&assets), Arc::clone(&hub), Arc::clone(&checker), &cfg.data_dir, Arc::clone(&clock), Arc::clone(&tasks)));
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&cfg.data_dir));
-    let splunk = Arc::new(Splunk::new(Arc::clone(&secrets), Arc::clone(&checks), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone(), Arc::clone(&clock)));
+    let splunk = Arc::new(Splunk::new(Arc::clone(&secrets), Arc::clone(&checks), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone(), Arc::clone(&clock)).with_api_port(cfg.splunk_api_port));
     detail(&hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone()));
 
     let examples = usecases::workspace::example_names(&*fs, cfg.example_apps.as_deref(), assets.example_apps());

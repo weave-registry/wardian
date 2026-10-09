@@ -709,6 +709,111 @@ fn job_runner_with(tag: &str, clock: Arc<dyn crate::ports::clock::Clock>, tasks:
     (crate::usecases::jobs::JobRunner::new(Arc::new(splunk), Arc::new(NoBuilder), clock, tasks), fake, dir)
 }
 
+/// A host with Splunk Web on one port and Splunk's API on another (ADR-2610091500). `answers`
+/// maps an address to what it does: "web", "refused", "closed", "splunk-cert", "other-cert", or
+/// "api" (which takes token "good" only). Every address asked is recorded.
+struct HostWithSplunk {
+    answers: Vec<(&'static str, &'static str)>,
+    asked: std::sync::Mutex<Vec<String>>,
+}
+struct HostSession(Arc<HostWithSplunk>, crate::ports::splunk::SplunkConfig);
+
+impl crate::ports::splunk::SplunkApi for Arc<HostWithSplunk> {
+    fn connect(&self, cfg: &crate::ports::splunk::SplunkConfig) -> Result<Box<dyn crate::ports::splunk::SplunkSession>, String> {
+        Ok(Box::new(HostSession(Arc::clone(self), cfg.clone())))
+    }
+}
+
+impl crate::ports::splunk::SplunkSession for HostSession {
+    fn get(&self, path: &str, _: &[(&str, &str)]) -> Result<Value, crate::ports::splunk::SplunkError> {
+        use crate::ports::splunk::{CertNames, SplunkError::*};
+        let url = &self.1.url;
+        self.0.asked.lock().unwrap().push(format!("{url}{path}"));
+        let what = self.0.answers.iter().find(|(u, _)| u == url).map_or("refused", |(_, w)| w);
+        let cert = |subject: &str, issuer: &str| Certificate { text: format!("cert of {url}"), names: Some(CertNames { subject: subject.into(), issuer: issuer.into() }) };
+        match what {
+            "web" => Err(NotTheApi(format!("{url} answers with a web page, not Splunk's API"))),
+            "closed" => Err(Unreachable(format!("cannot reach {url}: unexpected end of file"))),
+            "splunk-cert" if !self.1.insecure_tls => Err(cert("CN=SplunkServerDefaultCert, O=SplunkUser", "CN=SplunkCommonCA, O=Splunk")),
+            "other-cert" if !self.1.insecure_tls => Err(cert("CN=splunk.corp", "CN=Corp CA")),
+            "api" | "splunk-cert" | "other-cert" if self.1.token == "good" => Ok(serde_json::json!({"entry": [{"content": {"username": "reader", "serverName": "s1", "version": "9.3"}}]})),
+            "api" | "splunk-cert" | "other-cert" => Err(Refused(format!("GET {url}{path} returned 401: call not properly authenticated."))),
+            _ => Err(Unreachable(format!("cannot reach {url}: connection refused"))),
+        }
+    }
+    fn post(&self, _: &str, _: &[(&str, &str)]) -> Result<Value, crate::ports::splunk::SplunkError> {
+        Err(crate::ports::splunk::SplunkError::Call("not here".into()))
+    }
+    fn url(&self, path: &str) -> String {
+        format!("{}{path}", self.1.url)
+    }
+}
+
+fn host_with_splunk(tag: &str, answers: Vec<(&'static str, &'static str)>) -> (crate::usecases::splunk::Splunk, Arc<HostWithSplunk>) {
+    use crate::adapters::secondary::sqlite_store::SqliteStore;
+    let dir = tmp(tag);
+    let fake = Arc::new(HostWithSplunk { answers, asked: Default::default() });
+    let (secrets, checks) = key_stores(&dir);
+    (crate::usecases::splunk::Splunk::new(secrets, checks, Arc::new(Arc::clone(&fake)), Arc::new(SqliteStore::new(&dir)), &dir, None, sys()), fake)
+}
+
+#[test]
+fn splunk_setup_finds_the_api_behind_a_browser_address() {
+    let (splunk, fake) = host_with_splunk("setup-web", vec![("https://s.example", "web"), ("https://s.example:8089", "api")]);
+    let st = splunk.set_config(&serde_json::json!({"url": "https://s.example/en-US/app/search/search?q=x", "token": "good"})).unwrap();
+    assert_eq!((st["url"].as_str(), st["note"].as_str()), (Some("https://s.example:8089"), Some("Splunk's API is on port 8089; saved https://s.example:8089.")), "{st}");
+    assert_eq!(st["server"]["user"], "reader");
+    assert_eq!(fake.asked.lock().unwrap()[0], "https://s.example/services/authentication/current-context", "the address as given is tried first");
+    // A typo'd port (8090, which closes the connection) also lands on 8089.
+    let (splunk, _) = host_with_splunk("setup-typo", vec![("https://s.example:8090", "closed"), ("https://s.example:8089", "api")]);
+    assert_eq!(splunk.set_config(&serde_json::json!({"url": "s.example:8090", "token": "good"})).unwrap()["url"], "https://s.example:8089");
+    // An address that is right is saved as it is.
+    let (splunk, fake) = host_with_splunk("setup-right", vec![("https://s.example:9089", "api")]);
+    let st = splunk.set_config(&serde_json::json!({"url": "https://s.example:9089", "token": "good"})).unwrap();
+    assert_eq!(st["note"], "Saved https://s.example:9089.");
+    assert_eq!(fake.asked.lock().unwrap().iter().filter(|a| a.contains("current-context")).count(), 1, "nothing else is tried");
+}
+
+#[test]
+fn splunk_setup_stops_at_the_api_when_it_refuses_the_account() {
+    let (splunk, fake) = host_with_splunk("setup-401", vec![("https://s.example:8089", "api"), ("http://s.example:8089", "api")]);
+    let e = splunk.set_config(&serde_json::json!({"url": "http://s.example:8089", "token": "wrong"})).unwrap_err();
+    let e = e["error"].as_str().unwrap();
+    assert!(e.starts_with("Splunk's API is at http://s.example:8089, and it refuses this account:") && e.contains("401"), "{e}");
+    assert_eq!(fake.asked.lock().unwrap().len(), 1, "no other port is tried once the API is found");
+    assert_eq!(splunk.status()["ready"], false, "nothing is saved");
+}
+
+#[test]
+fn splunk_setup_names_splunks_certificate_and_tries_the_api_port_too() {
+    // Splunk Web on 443 with Splunk's certificate, the API on 8089 with it too: the API's is reported.
+    let (splunk, fake) = host_with_splunk("setup-cert", vec![("https://s.example", "splunk-cert"), ("https://s.example:8089", "splunk-cert")]);
+    let e = splunk.set_config(&serde_json::json!({"url": "https://s.example/en-US/", "token": "good"})).unwrap_err();
+    assert_eq!(e["certificate"]["splunk_default"], true, "{e}");
+    assert_eq!(e["certificate"]["url"], "https://s.example:8089");
+    assert_eq!(e["certificate"]["issuer"], "CN=SplunkCommonCA, O=Splunk");
+    assert_eq!(fake.asked.lock().unwrap().len(), 2);
+    // Trusting it finds the API, past the web port.
+    let (splunk, _) = host_with_splunk("setup-trust", vec![("https://s.example", "web"), ("https://s.example:8089", "splunk-cert")]);
+    let st = splunk.set_config(&serde_json::json!({"url": "https://s.example", "token": "good", "insecure_tls": true})).unwrap();
+    assert_eq!((st["url"].as_str(), st["insecure_tls"].as_bool()), (Some("https://s.example:8089"), Some(true)));
+    // Another authority's certificate is not Splunk's: no button, the CA file instead.
+    let (splunk, _) = host_with_splunk("setup-othercert", vec![("https://s.example", "web"), ("https://s.example:8089", "other-cert")]);
+    let e = splunk.set_config(&serde_json::json!({"url": "https://s.example", "token": "good"})).unwrap_err();
+    assert_eq!((e["certificate"]["splunk_default"].as_bool(), e["certificate"]["issuer"].as_str()), (Some(false), Some("CN=Corp CA")), "{e}");
+}
+
+#[test]
+fn splunk_setup_says_where_it_looked_when_nothing_answers() {
+    let (splunk, _) = host_with_splunk("setup-none", vec![("https://s.example", "web")]);
+    let e = splunk.set_config(&serde_json::json!({"url": "https://s.example", "token": "good"})).unwrap_err();
+    let e = e["error"].as_str().unwrap();
+    assert!(e.starts_with("Splunk's API does not answer at https://s.example or https://s.example:8089.") && e.contains("a web page") && e.contains("connection refused"), "{e}");
+    assert!(!e.contains("certificate"), "{e}");
+    let e = splunk.set_config(&serde_json::json!({"url": "ftp://s.example", "token": "good"})).unwrap_err();
+    assert!(e["error"].as_str().unwrap().contains("not ftp://"), "{e}");
+}
+
 /// Splunk over the slow fake, with its own database and keys in a fresh folder.
 fn splunk_with(tag: &str, rows: usize, clock: Arc<dyn crate::ports::clock::Clock>) -> (crate::usecases::splunk::Splunk, Arc<SlowSplunk>, std::path::PathBuf) {
     use crate::adapters::secondary::sqlite_store::SqliteStore;
