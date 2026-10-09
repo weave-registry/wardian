@@ -677,6 +677,7 @@ impl crate::ports::service::Builder for NoBuilder {
     fn status(&self) -> Value { Value::Null }
     fn set_key(&self, _: &str, _: Option<&str>) -> Result<Value, String> { Err("no".into()) }
     fn set_provider(&self, _: &Value) -> Result<Value, String> { Err("no".into()) }
+    fn aws_profiles(&self) -> Value { Value::Null }
     fn send(&self, _: &Value) -> Result<Value, String> { Err("no".into()) }
     fn sample(&self, _: &Value) -> Result<Value, String> { Err("no Claude here".into()) }
     fn stop(&self, _: &str) -> Result<Value, String> { Err("no".into()) }
@@ -1426,6 +1427,31 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
         "POSTED-GOOGLE-PRIVATE-KEY-SECRET",
     ];
 
+    // AWS profiles (ADR-2610091530): keys in the credentials file, keys a credential_process
+    // prints, and a credential_process that prints keys and then fails. None may show anywhere.
+    let profile_secrets = [
+        "AKIAPROFILEFILESECRET",
+        "PROFILE-FILE-SECRET-ACCESS-KEY",
+        "PROFILE-FILE-SESSION-SECRET",
+        "ASIAPROFILEPROCESSSECRET",
+        "PROFILE-PROCESS-SECRET-KEY",
+        "PROFILE-PROCESS-SESSION-SECRET",
+        "PROFILE-FAILING-STDOUT-SECRET",
+    ];
+    let aws = base.join("aws");
+    fs::create_dir_all(&aws).unwrap();
+    let script = |name: &str, body: &str| {
+        let path = aws.join(name);
+        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        LocalDisk.set_executable(&path);
+        path.display().to_string()
+    };
+    let creds = script("creds", &format!("printf '{}'", json!({"Version": 1, "AccessKeyId": profile_secrets[3], "SecretAccessKey": profile_secrets[4], "SessionToken": profile_secrets[5]})));
+    let failing = script("failing", &format!("echo '{}'; echo 'creds: not signed in' >&2; exit 1", profile_secrets[6]));
+    fs::write(aws.join("config"), format!("[profile proc]\nregion = us-east-1\ncredential_process = {creds}\n[profile failing]\nregion = us-east-1\ncredential_process = {failing}\n[profile filekeys]\nregion = eu-west-1\n")).unwrap();
+    fs::write(aws.join("credentials"), format!("[filekeys]\naws_access_key_id = {}\naws_secret_access_key = {}\naws_session_token = {}\n", profile_secrets[0], profile_secrets[1], profile_secrets[2])).unwrap();
+    let (aws_config, aws_credentials, aws_home) = (aws.join("config").display().to_string(), aws.join("credentials").display().to_string(), base.join("home").display().to_string());
+
     let sa = base.join("sa.json").display().to_string();
     let mut all_env = env.to_vec();
     all_env.extend([
@@ -1439,6 +1465,10 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
         ("SPLUNK_USERNAME", "admin"),
         ("GDRIVE_SA_KEY", sa.as_str()),
         ("GDRIVE_API_BASE", up.as_str()),
+        ("AWS_CONFIG_FILE", aws_config.as_str()),
+        ("AWS_SHARED_CREDENTIALS_FILE", aws_credentials.as_str()),
+        ("HOME", aws_home.as_str()),
+        ("WARDIAN_AWS_CLI", "none"),
     ]);
     let server = TestServer::start(&apps, &data, &all_env);
     let addr = server.addr.clone();
@@ -1476,6 +1506,12 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
     assert_eq!(bedrock["bedrock"]["settings"]["from"], "settings", "{bedrock}");
     let bedrock = post("/api/ai/provider", json!({"provider": "bedrock", "region": "us-west-2", "auth": "access-keys", "access_key_id": typed[2], "secret_access_key": typed[3], "session_token": typed[4]}));
     assert_eq!(bedrock["bedrock"]["settings"]["auth"], "access-keys", "{bedrock}");
+    let failed = post("/api/ai/provider", json!({"provider": "bedrock", "auth": "profile", "profile": "failing"}));
+    assert_eq!(failed["error"], "the credential_process of AWS profile \"failing\" failed: creds: not signed in", "{failed}");
+    let bedrock = post("/api/ai/provider", json!({"provider": "bedrock", "auth": "profile", "profile": "proc"}));
+    assert_eq!(bedrock["bedrock"]["settings"]["profile"], "proc", "{bedrock}");
+    let bedrock = post("/api/ai/provider", json!({"provider": "bedrock", "auth": "profile", "profile": "filekeys"}));
+    assert_eq!((bedrock["bedrock"]["settings"]["profile"].as_str(), bedrock["bedrock"]["settings"]["region"].as_str()), (Some("filekeys"), Some("eu-west-1")), "{bedrock}");
     let splunk = post("/api/splunk/config", json!({"url": up, "token": typed[5]}));
     assert_eq!(splunk["from"], "settings", "{splunk}");
     let splunk = post("/api/splunk/config", json!({"url": up, "username": "admin", "password": typed[6]}));
@@ -1489,7 +1525,7 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
     post("/api/state/apps/loan-planner", json!({"app": "inputs", "key": "state", "value": {"principal": 320000}}));
 
     // Everything that shows settings or status, with and without the token.
-    for path in ["/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/trash", "/api/ai/sessions", "/api/history/loan-planner", "/api/state/apps/loan-planner", "/api/state/layout/loan-planner", "/api/apps/loan-planner/export?data=1&preview=1", "/api/keys", "/api/agent", "/api/usage"] {
+    for path in ["/api/ai/aws-profiles", "/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/trash", "/api/ai/sessions", "/api/history/loan-planner", "/api/state/apps/loan-planner", "/api/state/layout/loan-planner", "/api/apps/loan-planner/export?data=1&preview=1", "/api/keys", "/api/agent", "/api/usage"] {
         ask("GET", path, None, true);
     }
     // The key list's own answers (ADR-2610081500): each test, with the refusals that name a key.
@@ -1498,7 +1534,7 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
     }
     post("/api/agent", json!({ "models": { "bedrock": { "main": "us.anthropic.chosen-v1:0" } }, "caps": { "loan-planner": 1000 } }));
     post("/api/keys/admin", json!({ "token": "short" }));
-    for path in ["/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/ai/sessions", "/api/drive/browse", "/api/keys", "/api/agent", "/api/usage"] {
+    for path in ["/api/ai/aws-profiles", "/api/status", "/api/grants", "/api/apps", "/api/app-list", "/api/ai/sessions", "/api/drive/browse", "/api/keys", "/api/agent", "/api/usage"] {
         ask("GET", path, None, false);
     }
     let status: serde_json::Value = serde_json::from_slice(&ask("GET", "/api/status", None, true)).unwrap();
@@ -1523,7 +1559,7 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
     let mut searched = answers.into_inner().unwrap();
     searched.extend(inside);
     searched.push(("the server's log".into(), false, log.into_bytes()));
-    let secrets: Vec<&str> = env.iter().map(|(_, v)| *v).chain(typed).chain(["ENV-GOOGLE-PRIVATE-KEY-SECRET", admin]).collect();
+    let secrets: Vec<&str> = env.iter().map(|(_, v)| *v).chain(typed).chain(["ENV-GOOGLE-PRIVATE-KEY-SECRET", admin]).chain(profile_secrets).collect();
     // The workspace ID is an identifier, not a key: Settings shows it to an admin, and nobody else.
     let workspaces = ["wrkspc_SETWORKSPACESECRET", "wrkspc_ENVWORKSPACESECRET"];
     for (what, by_admin, body) in &searched {
@@ -2163,6 +2199,13 @@ impl crate::ports::llm::Llm for FakeClaude {
     }
 }
 
+/// AWS profiles in an empty home under `base`, without the AWS CLI.
+fn no_aws_profiles(base: &Path) -> Arc<crate::usecases::aws_profiles::AwsProfiles> {
+    use crate::usecases::aws_profiles::{AwsEnv, AwsProfiles};
+    let env = AwsEnv { home: Some(base.join("home")), cli: Some("none".into()), ..AwsEnv::default() };
+    Arc::new(AwsProfiles::new(Arc::new(LocalDisk), Arc::new(crate::adapters::secondary::local_programs::LocalPrograms), sys(), env))
+}
+
 /// The studio as the server builds it, over a fake Claude for both providers.
 fn studio_on(fake: &Arc<FakeClaude>, base: &Path) -> (crate::usecases::studio::Studio, Arc<crate::usecases::keys::KeyChecks>, std::path::PathBuf) {
     use crate::usecases::{studio::{Providers, Stores, Studio}, usage::Meter};
@@ -2172,7 +2215,7 @@ fn studio_on(fake: &Arc<FakeClaude>, base: &Path) -> (crate::usecases::studio::S
     let (secrets, checks) = key_stores(&data);
     let disk: Arc<dyn FileSystem> = Arc::new(LocalDisk);
     let stores = Stores { fs: Arc::clone(&disk), secrets, checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&disk), &data, sys())) };
-    let providers = Providers { anthropic: fake.clone(), bedrock: fake.clone(), anthropic_key: None, anthropic_workspace: None, provider: None, bedrock_env: None };
+    let providers = Providers { anthropic: fake.clone(), bedrock: fake.clone(), anthropic_key: None, anthropic_workspace: None, provider: None, bedrock_env: None, profiles: no_aws_profiles(base) };
     let studio = Studio::new(stores, providers, Arc::new(Embedded), Arc::new(hub(&apps, &data)), Arc::new(Checker::new(disk, sys())), &data, sys(), Arc::new(crate::adapters::secondary::system_clock::Threads));
     (studio, checks, data)
 }
@@ -2205,6 +2248,46 @@ fn usage_sample_is_counted_per_app_and_stopped_at_its_cap() {
     assert_eq!(usage["caps"]["other"], 200_000, "the default cap");
     let again = crate::usecases::usage::Meter::new(Arc::new(LocalDisk), &data, sys());
     assert_eq!(again.used_today("notes"), 300, "usage.json keeps the count");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610091530: Settings → Claude → AWS profile. The profiles are listed with their regions and
+/// no keys; a profile saves its name and region (the profile's own when none is chosen), never its
+/// keys; an unknown profile names the files read, and a profile without a region asks for one.
+#[test]
+fn bedrock_profile_settings_keep_the_name_and_region_only() {
+    use crate::ports::secrets::Secrets;
+    use serde_json::json;
+    let base = tmp("bedrock-profile");
+    let aws = base.join("home/.aws");
+    fs::create_dir_all(&aws).unwrap();
+    fs::write(aws.join("config"), "[profile work]\nregion = eu-central-1\n[profile bare]\n").unwrap();
+    fs::write(aws.join("credentials"), "[work]\naws_access_key_id = AKIAWORKFILEKEY\naws_secret_access_key = WORK-FILE-SECRET\n[bare]\naws_access_key_id = AKIABARE\naws_secret_access_key = BARE-SECRET\n").unwrap();
+    let fake = Arc::new(FakeClaude::default());
+    let (studio, _, data) = studio_on(&fake, &base);
+    let listed = studio.aws_profiles();
+    assert_eq!(listed["profiles"], json!([{ "name": "bare", "region": null }, { "name": "work", "region": "eu-central-1" }]), "{listed}");
+    assert!(!listed.to_string().contains("SECRET") && !listed.to_string().contains("AKIA"), "{listed}");
+
+    let st = studio.set_provider(&json!({ "provider": "bedrock", "auth": "profile", "profile": "work", "region": "" })).unwrap();
+    assert_eq!(st["bedrock"]["settings"], json!({ "region": "eu-central-1", "auth": "profile", "profile": "work", "from": "settings" }), "{st}");
+    assert_eq!((st["provider"].as_str(), st["ready"].as_bool()), (Some("bedrock"), Some(true)));
+    let saved = crate::adapters::secondary::sealed_secrets::SealedSecrets::with_key(Arc::new(LocalDisk), [3; 32]).read(&data.join("bedrock.json")).unwrap().unwrap();
+    let saved: Value = serde_json::from_slice(&saved).unwrap();
+    assert_eq!(saved, json!({ "region": "eu-central-1", "auth": "profile", "profile": "work", "aws_cli": "" }), "only the name, the region and the CLI's path are kept");
+    // A chosen region wins; the name is kept when left empty.
+    let st = studio.set_provider(&json!({ "provider": "bedrock", "auth": "profile", "region": "us-west-2" })).unwrap();
+    assert_eq!((st["bedrock"]["settings"]["region"].as_str(), st["bedrock"]["settings"]["profile"].as_str()), (Some("us-west-2"), Some("work")));
+
+    let config = aws.join("config").display().to_string();
+    let credentials = aws.join("credentials").display().to_string();
+    assert_eq!(
+        studio.set_provider(&json!({ "provider": "bedrock", "auth": "profile", "profile": "nope" })).unwrap_err(),
+        format!("there is no AWS profile \"nope\" in {config} or {credentials}")
+    );
+    assert_eq!(studio.set_provider(&json!({ "provider": "bedrock", "auth": "profile", "profile": "bare" })).unwrap_err(), "AWS profile \"bare\" has no region: choose one, such as us-east-1");
+    assert_eq!(studio.set_provider(&json!({ "provider": "bedrock", "auth": "profile", "profile": "a b" })).unwrap_err(), "that does not look like an AWS profile name");
+    assert_eq!(studio.status()["bedrock"]["settings"]["profile"], "work", "a refused profile changes nothing");
     let _ = fs::remove_dir_all(base);
 }
 

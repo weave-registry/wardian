@@ -41,7 +41,7 @@ Files marked *private* are written readable by their owner only (mode `600`). Fi
 | `service-account.json` | The uploaded Google service account key. *Private, sealed.* |
 | `anthropic-key` | The Anthropic API key. *Private, sealed.* |
 | `anthropic-workspace` | The Anthropic workspace ID, if you gave one. *Private.* |
-| `bedrock.json` | The Amazon Bedrock region and keys. *Private, sealed.* |
+| `bedrock.json` | The Amazon Bedrock region and keys, or the AWS profile's name, its region and the AWS CLI's path (never a profile's keys). *Private, sealed.* |
 | `ai-provider` | Which Claude provider Settings chose: `anthropic` or `bedrock`. *Private.* |
 | `agent.json` | Claude's models, the limits of **Make an app** and `claude:sample`, and the daily caps ([Keys and Claude settings](/docs/keys)). *Private.* |
 | `usage.json` | The tokens Claude used, by UTC day and by app, for the last 31 days. *Private.* |
@@ -78,6 +78,10 @@ the setup again and fills `apps/` from `./apps`.
 | `AWS_REGION` | none | Bedrock region. `AWS_DEFAULT_REGION` is read if this is not set. |
 | `AWS_BEARER_TOKEN_BEDROCK` | none | Bedrock API key. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | none | AWS access keys for Bedrock, instead of an API key. The session token is for temporary keys. |
+| `AWS_PROFILE` | none | An AWS profile for Bedrock, when neither an API key nor access keys are set. Its region is used unless `AWS_REGION` is set ([Claude inside your app](/docs/ai#amazon-bedrock)). |
+| `AWS_CONFIG_FILE` | `~/.aws/config` | The AWS config file, where Settings → Claude finds profiles. `wardian start` passes it to the service. |
+| `AWS_SHARED_CREDENTIALS_FILE` | `~/.aws/credentials` | The AWS credentials file, read with the config file. `wardian start` passes it to the service. |
+| `WARDIAN_AWS_CLI` | the first `aws` on `PATH`, then in `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` | The AWS CLI that signs in to a profile. `none` reads profiles without it. |
 | `WARDIAN_BEDROCK_MODEL` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` | The Bedrock model that writes apps. A model chosen in **Settings → Claude** wins. |
 | `WARDIAN_BEDROCK_QUICK_MODEL` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | The Bedrock model for quick requests. A model chosen in **Settings → Claude** wins. |
 | `SPLUNK_URL` | none | Splunk management address. Used only if none is saved in Settings. |
@@ -95,7 +99,8 @@ the setup again and fills `apps/` from `./apps`.
 An empty variable counts as not set.
 
 Bedrock from the environment needs a region and either `AWS_BEARER_TOKEN_BEDROCK` or both access key
-variables. Wardian does not read AWS profiles, SSO or instance roles.
+variables, or `AWS_PROFILE` (the region may then come from the profile). Wardian does not read
+instance roles or container credentials.
 
 The test scripts read more variables, such as `WARDIAN_BROWSER`. [Contributing](/docs/contributing)
 lists them.

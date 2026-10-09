@@ -44,6 +44,9 @@ pub trait Builder: Send + Sync {
     fn set_key(&self, key: &str, workspace: Option<&str>) -> Result<Value, String>;
     /// Chooses where Claude is reached: the Anthropic API or Amazon Bedrock (ADR-2610071106).
     fn set_provider(&self, body: &Value) -> Result<Value, String>;
+    /// The AWS profiles on this machine (ADR-2610091530): {profiles: [{name, region}], files, cli}.
+    /// Never a key.
+    fn aws_profiles(&self) -> Value;
     fn send(&self, body: &Value) -> Result<Value, String>;
     fn sample(&self, body: &Value) -> Result<Value, String>;
     fn stop(&self, session: &str) -> Result<Value, String>;

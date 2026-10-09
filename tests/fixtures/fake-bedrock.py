@@ -2,24 +2,30 @@
 # does — the URL, the body and the sign-in, with the SigV4 signature recomputed from the known test
 # secret — and answers like Bedrock on errors. A good request is handed on to a fake Anthropic API
 # (fake-anthropic.py or fake-builder.py) as a Messages request, so both providers get the same
-# answers. GET /prompts and /log are passed through, for the tests that read them.
+# answers. GET /prompts and /log are passed through, for the tests that read them. GET /seen says
+# how each request signed in; GET /signed lists the access key ID and session token of each SigV4
+# request, for the AWS profile runs (ADR-2610091530).
 #
 # usage: fake-bedrock.py PORT UPSTREAM_URL
 import hashlib, hmac, json, re, sys, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 TOKEN = "test-bedrock-token"
-KEY_ID, SECRET = "AKIDTEST", "test-secret"
+# Access key ID → secret. ASIAPROFILETEST is what the profile runs' credential_process and fake
+# `aws` print, with a session token that must be signed too.
+SECRETS = {"AKIDTEST": "test-secret", "ASIAPROFILETEST": "profile-test-secret"}
+PROFILE_SESSION = "profile-test-session-token"
 MODELS = {"us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0"}
 UPSTREAM = sys.argv[2].rstrip("/")
 SEEN = []   # how each request signed in: "bearer" or "sigv4"
+SIGNED = [] # {key_id, session_token} of each good SigV4 request
 
 def uri_encode(s, keep_slash):
     safe = "-_.~" + ("/" if keep_slash else "")
     return "".join(c if (c.isascii() and c.isalnum()) or c in safe else "".join("%%%02X" % b for b in c.encode()) for c in s)
 
-def sign_key(date, region):
-    k = ("AWS4" + SECRET).encode()
+def sign_key(secret, date, region):
+    k = ("AWS4" + secret).encode()
     for part in (date, region, "bedrock", "aws4_request"):
         k = hmac.new(k, part.encode(), hashlib.sha256).digest()
     return k
@@ -35,6 +41,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/seen": return self.reply(200, SEEN)
+        if self.path == "/signed": return self.reply(200, SIGNED)
         with urllib.request.urlopen(UPSTREAM + self.path) as r:
             return self.reply(r.status, json.loads(r.read()))
 
@@ -46,7 +53,10 @@ class H(BaseHTTPRequestHandler):
         if not m:
             return "The security token included in the request is invalid."
         key_id, date, region, signed, sig = m.groups()
-        if key_id != KEY_ID:
+        if key_id not in SECRETS:
+            return "The security token included in the request is invalid."
+        session = self.headers.get("X-Amz-Security-Token", "")
+        if key_id.startswith("ASIA") and (session != PROFILE_SESSION or "x-amz-security-token" not in signed.split(";")):
             return "The security token included in the request is invalid."
         names = signed.split(";")
         if "host" not in names or "x-amz-date" not in names:
@@ -56,10 +66,10 @@ class H(BaseHTTPRequestHandler):
         canonical = "\n".join(["POST", uri_encode(self.path, True), "", canonical_headers, signed, hashlib.sha256(payload).hexdigest()])
         scope = "%s/%s/bedrock/aws4_request" % (date, region)
         to_sign = "\n".join(["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canonical.encode()).hexdigest()])
-        want = hmac.new(sign_key(date, region), to_sign.encode(), hashlib.sha256).hexdigest()
+        want = hmac.new(sign_key(SECRETS[key_id], date, region), to_sign.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(want, sig):
             return "The request signature we calculated does not match the signature you provided."
-        SEEN.append("sigv4"); return None
+        SEEN.append("sigv4"); SIGNED.append({"key_id": key_id, "session_token": session}); return None
 
     def do_POST(self):
         payload = self.rfile.read(int(self.headers["Content-Length"]))

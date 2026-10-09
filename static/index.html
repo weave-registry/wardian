@@ -495,7 +495,13 @@
           <select id="bdAuth" aria-label="How to sign in to AWS">
             <option value="api-key">Bedrock API key</option>
             <option value="access-keys">AWS access keys</option>
+            <option value="profile">AWS profile</option>
           </select>
+        </div>
+        <div class="row hidden" id="bdProfileRow" style="margin-bottom:.5rem">
+          <select id="bdProfile" aria-label="AWS profile"></select>
+          <input type="text" id="bdProfileOther" class="hidden" style="flex:1;min-width:10rem" placeholder="Profile name" aria-label="AWS profile name" autocomplete="off" spellcheck="false">
+          <span id="bdProfileNote" class="muted" style="font-size:.85rem"></span>
         </div>
         <div class="row" id="bdKeyRow" style="margin-bottom:.5rem">
           <input type="password" id="bdToken" style="flex:1;min-width:14rem" placeholder="Bedrock API key" aria-label="Bedrock API key" autocomplete="off">
@@ -509,7 +515,7 @@
           <button id="bdSave" class="primary">Test and use Bedrock</button>
           <button id="bdForget" class="hidden">Forget Bedrock settings</button>
         </div>
-        <p class="muted" style="font-size:.85rem">Claude through your AWS account, billed by AWS, in the region you choose. The model must be enabled for the account in that region (Bedrock console → Model access). Wardian tests the settings with one tiny request before it saves them, keeps them on this server only, and never sends a key or secret back to the browser. Leave a key field empty to keep the saved one.</p>
+        <p class="muted" style="font-size:.85rem">Claude through your AWS account, billed by AWS, in the region you choose. The model must be enabled for the account in that region (Bedrock console → Model access). Wardian tests the settings with one tiny request before it saves them, keeps them on this server only, and never sends a key or secret back to the browser. Leave a key field empty to keep the saved one. With an AWS profile from <code>~/.aws/config</code>, Wardian keeps only the profile's name and region, and gets short-lived keys from AWS CLI v2 (or the profile itself) when it needs them; after an SSO sign-in expires, run <code>aws sso login --profile</code> with the profile's name.</p>
       </div>
       <p id="aiKeyMsg" role="status"></p>
     </div>
@@ -710,7 +716,7 @@ function renderStatus() {
   const bd = ai.bedrock || {}, bds = bd.settings || null;
   if (ai.provider === 'bedrock') {
     $('aiKeyState').textContent = ai.ready
-      ? `Ready, on Amazon Bedrock in ${bds.region} (${bds.auth === 'api-key' ? 'Bedrock API key' : 'AWS access keys'}, from ${bds.from === 'environment' ? 'the AWS variables' : 'these settings'}). Models: ${bd.model} and ${bd.quick_model}.`
+      ? `Ready, on Amazon Bedrock in ${bds.region} (${bds.auth === 'api-key' ? 'Bedrock API key' : bds.auth === 'profile' ? `AWS profile ${bds.profile}` : 'AWS access keys'}, from ${bds.from === 'environment' ? 'the AWS variables' : 'these settings'}). Models: ${bd.model} and ${bd.quick_model}.`
       : 'Amazon Bedrock is chosen but not set up yet. Fill in the region and the sign-in below.';
   } else {
     $('aiKeyState').textContent = ai.ready
@@ -719,7 +725,7 @@ function renderStatus() {
     if (ai.ready && ai.workspace) $('aiKeyState').textContent += ` Workspace: ${ai.workspace}.`;
   }
   if (!aiProviderShown) aiShowProvider(ai.provider === 'bedrock' ? 'bedrock' : 'anthropic');
-  if (bds && document.activeElement !== $('bdRegion') && !$('bdRegion').value) { $('bdRegion').value = bds.region; $('bdAuth').value = bds.auth; aiShowAuth(); }
+  if (bds && document.activeElement !== $('bdRegion') && !$('bdRegion').value) { $('bdRegion').value = bds.region; $('bdAuth').value = bds.auth; bdSavedProfile = bds.profile || ''; aiShowAuth(); }
   $('bdForget').classList.toggle('hidden', !(bds && bds.from === 'settings'));
   if (document.activeElement !== $('aiWorkspace')) $('aiWorkspace').value = ai.workspace || '';
   $('aiKeyRemove').classList.toggle('hidden', ai.key_from !== 'settings');
@@ -2793,11 +2799,46 @@ function aiShowProvider(p) {
   $('aiBedrockBox').classList.toggle('hidden', p !== 'bedrock');
 }
 function aiShowAuth() {
-  const keys = $('bdAuth').value === 'access-keys';
-  $('bdKeyRow').classList.toggle('hidden', keys);
-  $('bdAccessRow').classList.toggle('hidden', !keys);
+  const auth = $('bdAuth').value;
+  $('bdKeyRow').classList.toggle('hidden', auth !== 'api-key');
+  $('bdAccessRow').classList.toggle('hidden', auth !== 'access-keys');
+  $('bdProfileRow').classList.toggle('hidden', auth !== 'profile');
+  if (auth === 'profile' && !bdProfiles) bdLoadProfiles();
 }
-$('bdAuth').onchange = aiShowAuth;
+$('bdAuth').onchange = () => { bdProfiles = null; aiShowAuth(); };
+// AWS profiles (ADR-2610091530): the names and regions in ~/.aws/config and ~/.aws/credentials,
+// never their keys. "Other…" takes a typed name. The region follows the profile unless typed.
+let bdProfiles = null, bdSavedProfile = '', bdRegionFromProfile = true;
+async function bdLoadProfiles() {
+  const sel = $('bdProfile');
+  try { bdProfiles = await api('/api/ai/aws-profiles'); }
+  catch { bdProfiles = { profiles: [] }; }
+  const list = bdProfiles.profiles || [];
+  sel.replaceChildren();
+  for (const p of list) {
+    const o = document.createElement('option');
+    o.value = p.name; o.textContent = p.region ? `${p.name} (${p.region})` : p.name;
+    sel.append(o);
+  }
+  const other = document.createElement('option');
+  other.value = ''; other.textContent = 'Other…';
+  sel.append(other);
+  const known = list.some(p => p.name === bdSavedProfile);
+  sel.value = known ? bdSavedProfile : (bdSavedProfile || !list.length ? '' : list[0].name);
+  if (!known && bdSavedProfile) $('bdProfileOther').value = bdSavedProfile;
+  $('bdProfileNote').textContent = list.length ? (bdProfiles.cli ? 'Signs in with the AWS CLI.' : '') : `No profiles in ${(bdProfiles.files || []).join(' or ') || '~/.aws'}.`;
+  // A region already there (the saved one, or typed) stays; an empty one takes the profile's.
+  bdRegionFromProfile = !$('bdRegion').value.trim();
+  bdProfileChosen();
+}
+function bdProfileName() { return $('bdProfile').value || $('bdProfileOther').value.trim(); }
+function bdProfileChosen() {
+  $('bdProfileOther').classList.toggle('hidden', $('bdProfile').value !== '');
+  const p = ((bdProfiles || {}).profiles || []).find(x => x.name === $('bdProfile').value);
+  if (p && p.region && (bdRegionFromProfile || !$('bdRegion').value.trim())) { $('bdRegion').value = p.region; bdRegionFromProfile = true; }
+}
+$('bdProfile').onchange = bdProfileChosen;
+$('bdRegion').addEventListener('input', () => { bdRegionFromProfile = false; });
 $('aiProvAnthropic').onchange = async () => {
   aiShowProvider('anthropic');
   if ((status.ai || {}).provider !== 'bedrock') return;
@@ -2810,18 +2851,22 @@ $('aiProvBedrock').onchange = async () => {
   if (!bd || (status.ai || {}).provider === 'bedrock') { aiKeyMsg(bd ? '' : 'Fill in the region and the sign-in, then press Test and use Bedrock.'); return; }
   // Settings saved earlier: test them again and switch.
   aiKeyMsg('Testing the saved Bedrock settings…');
-  try { status.ai = await api('/api/ai/provider', { provider: 'bedrock', region: bd.region, auth: bd.auth }); renderStatus(); aiKeyMsg('Claude now runs on Amazon Bedrock.'); }
+  try { status.ai = await api('/api/ai/provider', { provider: 'bedrock', region: bd.region, auth: bd.auth, profile: bd.profile || '' }); renderStatus(); aiKeyMsg('Claude now runs on Amazon Bedrock.'); }
   catch (e) { aiKeyMsg(`Not switched: ${e.message}`, true); }
 };
 $('bdSave').onclick = async () => {
   const body = { provider: 'bedrock', region: $('bdRegion').value.trim(), auth: $('bdAuth').value,
     token: $('bdToken').value.trim(), access_key_id: $('bdKeyId').value.trim(),
     secret_access_key: $('bdSecret').value.trim(), session_token: $('bdSession').value.trim() };
-  if (!body.region) return aiKeyMsg('Type the AWS region first, such as us-east-1.', true);
+  if (body.auth === 'profile') {
+    body.profile = bdProfileName();
+    if (!body.profile) return aiKeyMsg('Choose the AWS profile, or type its name under Other…', true);
+  } else if (!body.region) return aiKeyMsg('Type the AWS region first, such as us-east-1.', true);
   aiKeyMsg('Testing Bedrock with one tiny request…');
   try {
     status.ai = await api('/api/ai/provider', body);
     for (const id of ['bdToken', 'bdKeyId', 'bdSecret', 'bdSession']) $(id).value = '';
+    if (status.ai.bedrock && status.ai.bedrock.settings) { $('bdRegion').value = status.ai.bedrock.settings.region; bdSavedProfile = status.ai.bedrock.settings.profile || ''; }
     renderStatus();
     aiKeyMsg('Bedrock works. Close Settings and press Make an app.');
   } catch (e) { aiKeyMsg(`Not saved: ${e.message}`, true); }

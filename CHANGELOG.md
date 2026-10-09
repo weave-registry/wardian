@@ -23,6 +23,19 @@ Wardian 1.0") is done or written down there as left out.
   `SplunkCommonCA`) gets one button, **Trust Splunk's own certificate and try again**, and another
   authority's points at the new **CA file** field. `WARDIAN_SPLUNK_API_PORT` changes the port tried
   after the one given. Wardian no longer follows redirects from Splunk.
+### Added
+
+- **Bedrock through an AWS profile** (ADR-2610091530). Settings → Claude → Amazon Bedrock offers
+  "AWS profile": the profiles in `~/.aws/config` and `~/.aws/credentials` (or the files
+  `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` name) with their regions, or a typed name.
+  Wardian keeps the profile's name and region, never its keys: AWS CLI v2 signs in
+  (`aws configure export-credentials`), which covers SSO, assumed roles, MFA and
+  `credential_process`; without it Wardian reads a profile's keys or runs its `credential_process`
+  itself. Keys stay in memory until five minutes before they expire. The CLI's full path is
+  recorded when the profile is saved, so a Wardian started with `wardian start` finds it.
+  `AWS_PROFILE` means the same from the environment. An expired SSO sign-in says to run
+  `aws sso login --profile <name>`; an unknown profile names the files read. `GET /api/ai/aws-profiles`
+  (admins only) lists profile names and regions. `WARDIAN_AWS_CLI` names the CLI, or `none`.
 
 ## [0.4.5] - 2026-10-08
 

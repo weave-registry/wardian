@@ -11,11 +11,13 @@
 //! JavaScript, HTML and CSS: a page app (Wardian adds an empty app.wasm, the
 //! marker that makes a folder an app) or a suite.
 
+use super::aws_profiles::AwsProfiles;
 use super::catalog::Hub;
 use super::check::Checker;
 use super::keys::{KeyChecks, KeyEntry, KeyOwner};
 use super::usage::Meter;
 use crate::domain::agent::{AgentSettings, BUILDER, LIMITS};
+use crate::domain::aws_profile;
 use crate::domain::components::{files_for, page_tags, wire_suite, GUIDE};
 use crate::domain::package::{safe_rel, SKIP_DIRS};
 use crate::domain::studio::{free_name, json_in, size_text, Session, EMPTY_WASM};
@@ -127,6 +129,7 @@ fn api_error(e: LlmError) -> String {
         LlmError::Status(code, msg) => format!("the API answered HTTP {code}: {msg}"),
         LlmError::Transport(why) => format!("cannot reach the API: {why}"),
         LlmError::Unreadable(why) => format!("unreadable reply from the API: {why}"),
+        LlmError::SignIn(why) => why,
     }
 }
 
@@ -236,6 +239,7 @@ impl Api {
                 let said = format!("refused while {} used it (HTTP {code}) {msg}", self.payer);
                 self.checks.record::<()>(self.provider_id, &Err(said.trim().to_string()));
             }
+            Err(LlmError::SignIn(why)) => self.checks.record::<()>(self.provider_id, &Err(why.clone())),
             Err(_) => {}
         }
         out
@@ -271,6 +275,24 @@ impl BedrockSettings {
         match self.auth {
             BedrockAuth::ApiKey(_) => "api-key",
             BedrockAuth::AccessKeys { .. } => "access-keys",
+            BedrockAuth::Profile { .. } => "profile",
+        }
+    }
+
+    /// The AWS profile's name, for a profile; never a key.
+    fn profile(&self) -> Option<&str> {
+        match &self.auth {
+            BedrockAuth::Profile { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
+    /// How it signs in, in words.
+    fn auth_words(&self) -> String {
+        match &self.auth {
+            BedrockAuth::ApiKey(_) => "API key".into(),
+            BedrockAuth::AccessKeys { .. } => "access keys".into(),
+            BedrockAuth::Profile { name, .. } => format!("AWS profile {name}"),
         }
     }
 
@@ -280,15 +302,18 @@ impl BedrockSettings {
             BedrockAuth::AccessKeys { id, secret, session } => {
                 json!({ "region": self.region, "auth": "access-keys", "access_key_id": id, "secret_access_key": secret, "session_token": session })
             }
+            BedrockAuth::Profile { name, cli } => json!({ "region": self.region, "auth": "profile", "profile": name, "aws_cli": cli }),
         }
     }
 
     /// From the settings page or bedrock.json. Fields left empty keep the values of `keep`, so the
-    /// browser never needs the saved secrets to change the region.
+    /// browser never needs the saved secrets to change the region. A profile's region may be
+    /// empty here: the caller takes the profile's own.
     fn from_json(v: &Value, keep: Option<&BedrockSettings>) -> Result<BedrockSettings, String> {
         let s = |k: &str| v[k].as_str().unwrap_or("").trim().to_string();
         let region = s("region");
-        if region.is_empty() || region.len() > 40 || !region.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        let profile = v["auth"].as_str() == Some("profile");
+        if (region.is_empty() && !profile) || region.len() > 40 || !region.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
             return Err("give the AWS region, such as us-east-1".into());
         }
         let field = |name: &str, kept: Option<&String>| -> Result<String, String> {
@@ -320,7 +345,20 @@ impl BedrockSettings {
                 }
                 BedrockAuth::AccessKeys { id, secret, session: field("session_token", ksession)? }
             }
-            other => return Err(format!("unknown sign-in \"{other}\": use api-key or access-keys")),
+            "profile" => {
+                let kept = keep.and_then(|k| k.profile());
+                let typed = s("profile");
+                let name = if typed.is_empty() { kept.unwrap_or("").to_string() } else { typed };
+                if name.is_empty() {
+                    return Err("choose the AWS profile".into());
+                }
+                if !aws_profile::valid_profile_name(&name) {
+                    return Err("that does not look like an AWS profile name".into());
+                }
+                let cli = s("aws_cli");
+                BedrockAuth::Profile { name, cli }
+            }
+            other => return Err(format!("unknown sign-in \"{other}\": use api-key, access-keys or profile")),
         };
         Ok(BedrockSettings { region, auth })
     }
@@ -335,8 +373,11 @@ pub struct Providers {
     pub anthropic_workspace: Option<String>,
     /// WARDIAN_AI_PROVIDER, used when Settings has not chosen.
     pub provider: Option<String>,
-    /// AWS_REGION with AWS_BEARER_TOKEN_BEDROCK or the AWS access keys, used when Settings has none.
+    /// AWS_REGION with AWS_BEARER_TOKEN_BEDROCK or the AWS access keys, or AWS_PROFILE, used when
+    /// Settings has none.
     pub bedrock_env: Option<BedrockSettings>,
+    /// The AWS profiles on this machine (ADR-2610091530).
+    pub profiles: Arc<AwsProfiles>,
 }
 
 /// Where the studio keeps what it holds (ADR-2610081500).
@@ -363,6 +404,7 @@ pub struct Studio {
     bedrock_path: PathBuf,
     bedrock: Mutex<Option<(BedrockSettings, &'static str)>>,
     env_bedrock: Option<BedrockSettings>,
+    profiles: Arc<AwsProfiles>,
     assets: Arc<dyn Assets>,
     hub: Arc<Hub>,
     checker: Arc<Checker>,
@@ -406,7 +448,7 @@ impl Studio {
             }
             None => AgentSettings::default(),
         };
-        let Providers { anthropic: llm, bedrock: bedrock_llm, anthropic_key: env_key, anthropic_workspace: env_workspace, provider: env_provider, bedrock_env: env_bedrock } = providers;
+        let Providers { anthropic: llm, bedrock: bedrock_llm, anthropic_key: env_key, anthropic_workspace: env_workspace, provider: env_provider, bedrock_env: env_bedrock, profiles } = providers;
         // Settings saved in the data folder win over the environment, as for the Anthropic key.
         let provider_path = data_dir.join("ai-provider");
         let chosen = fs.read(&provider_path).map(|b| String::from_utf8_lossy(&b).trim().to_string()).or(env_provider);
@@ -447,6 +489,7 @@ impl Studio {
             bedrock_path,
             bedrock: Mutex::new(bedrock),
             env_bedrock,
+            profiles,
             assets,
             hub,
             checker,
@@ -600,7 +643,7 @@ impl Studio {
         let key = self.key.lock().unwrap();
         let ws = self.workspace.lock().unwrap();
         let bedrock = self.bedrock.lock().unwrap();
-        let bedrock_info = bedrock.as_ref().map(|(b, from)| json!({ "region": b.region, "auth": b.auth_kind(), "from": from }));
+        let bedrock_info = bedrock.as_ref().map(|(b, from)| json!({ "region": b.region, "auth": b.auth_kind(), "profile": b.profile(), "from": from }));
         let ready = match provider {
             Provider::Anthropic => key.is_some(),
             Provider::Bedrock => bedrock.is_some(),
@@ -626,7 +669,8 @@ impl Studio {
             Some("bedrock") if body["forget"].as_bool() == Some(true) => self.forget_bedrock(),
             Some("bedrock") => {
                 let keep = self.bedrock.lock().unwrap().as_ref().map(|(b, _)| b.clone());
-                let settings = BedrockSettings::from_json(body, keep.as_ref())?;
+                let mut settings = BedrockSettings::from_json(body, keep.as_ref())?;
+                self.with_profile(&mut settings)?;
                 self.test_bedrock(&settings)?;
                 let bytes = serde_json::to_vec_pretty(&settings.to_json()).map_err(|e| e.to_string())?;
                 self.secrets.write(&self.bedrock_path, &bytes).map_err(|e| format!("saving the Bedrock settings: {e}"))?;
@@ -638,6 +682,26 @@ impl Studio {
             _ => return Err("provider must be \"anthropic\" or \"bedrock\"".into()),
         }
         Ok(self.status())
+    }
+
+    /// For an AWS profile (ADR-2610091530): checks the profile is there, takes its region when
+    /// none was chosen, and records where the AWS CLI is now, so a Wardian started as a service,
+    /// with a bare PATH, finds it.
+    fn with_profile(&self, settings: &mut BedrockSettings) -> Result<(), String> {
+        let BedrockAuth::Profile { name, cli } = &mut settings.auth else { return Ok(()) };
+        let region = self.profiles.region_of(name)?;
+        if settings.region.is_empty() {
+            settings.region = region.ok_or_else(|| aws_profile::no_region(name))?;
+        }
+        *cli = self.profiles.find_cli().unwrap_or_default();
+        // Keys kept from before are not trusted for a new test.
+        crate::ports::llm::AwsCredentials::forget(&*self.profiles, name);
+        Ok(())
+    }
+
+    /// The AWS profiles for Settings: names and regions, never keys.
+    pub fn aws_profiles(&self) -> Value {
+        self.profiles.list()
     }
 
     /// Answers one `claude:sample` request from an app. `body`: {prompt, json, tier}.
@@ -1140,6 +1204,9 @@ impl Builder for Studio {
     fn set_provider(&self, body: &Value) -> Result<Value, String> {
         Studio::set_provider(self, body)
     }
+    fn aws_profiles(&self) -> Value {
+        Studio::aws_profiles(self)
+    }
     fn send(&self, body: &Value) -> Result<Value, String> {
         Studio::send(self, body)
     }
@@ -1194,7 +1261,7 @@ impl KeyOwner for Studio {
             name: "Amazon Bedrock",
             from: bedrock.as_ref().map(|(_, from)| *from),
             detail: match &*bedrock {
-                Some((b, _)) => format!("region {}, {}, model {}", b.region, if b.auth_kind() == "api-key" { "API key" } else { "access keys" }, self.model_of(Provider::Bedrock, Tier::Main)),
+                Some((b, _)) => format!("region {}, {}, model {}", b.region, b.auth_words(), self.model_of(Provider::Bedrock, Tier::Main)),
                 None => "not set".into(),
             },
             error: unreadable.get("bedrock").cloned(),

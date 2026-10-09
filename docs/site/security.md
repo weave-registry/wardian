@@ -218,11 +218,17 @@ ask the server first before it sends those across sites, and Wardian never says 
   Settings, without opening the data folder.
 - Each app's `claude:sample` use is capped per day: 200,000 tokens by default, set per app in
   **Settings → Usage**. Past it, the app gets `over_budget` and no request is sent.
+- An AWS profile for Bedrock is saved as its name and region only (ADR-2610091530). Its keys are
+  fetched when a request needs them, from AWS CLI v2 or the profile's `credential_process` (run as
+  the user, without a shell, stopped after 30 seconds) or the profile's own files, and kept in
+  memory until five minutes before they expire. Wardian never writes them to disk, logs what the
+  program prints, or repeats it in a message; a failure shows only the last line the program wrote
+  to standard error.
 - An exported `.wardian` file never holds keys, accounts, permission answers or history, even with
   data (`src/domain/export.rs`).
 - The test `secrets_never_leave_in_answers_exports_or_logs` (`src/tests.rs`) fills every key and
-  setting, then searches every API answer, the key list and its tests, an export, its import preview
-  and the server's output for them.
+  setting, AWS profiles' keys included, then searches every API answer, the key list and its tests,
+  an export, its import preview and the server's output for them.
 
 ## Imports
 

@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+# A fake AWS CLI v2 for the e2e tests (ADR-2610091530). It knows one command,
+# `aws configure export-credentials --profile <name> --format process`: profile "e2e" gets keys
+# tests/fixtures/fake-bedrock.py accepts; "e2e-expired" gets the CLI's words for an expired SSO
+# sign-in; any other profile is not found. Each run is noted in $FAKE_AWS_LOG.
+import datetime, json, os, sys
+
+args = sys.argv[1:]
+log = os.environ.get("FAKE_AWS_LOG")
+if log:
+    with open(log, "a") as f:
+        f.write("aws " + " ".join(args) + "\n")
+if args[:2] != ["configure", "export-credentials"] or "--profile" not in args or args[-2:] != ["--format", "process"]:
+    print("usage: aws [options] <command> <subcommand> [<subcommand> ...] [parameters]", file=sys.stderr)
+    sys.exit(252)
+name = args[args.index("--profile") + 1]
+if name == "e2e-expired":
+    print("\nError when retrieving token from sso: Token has expired and refresh failed", file=sys.stderr)
+    sys.exit(255)
+if name != "e2e":
+    print("\nThe config profile (%s) could not be found" % name, file=sys.stderr)
+    sys.exit(255)
+expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+print(json.dumps({
+    "Version": 1,
+    "AccessKeyId": "ASIAPROFILETEST",
+    "SecretAccessKey": "profile-test-secret",
+    "SessionToken": "profile-test-session-token",
+    "Expiration": expires.isoformat(),
+}, indent=2))

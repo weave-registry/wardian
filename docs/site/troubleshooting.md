@@ -279,6 +279,21 @@ Other results have other causes:
 | an error with `e.code` `rate_limited` | The provider's rate limit was reached. Try again later. |
 | Bedrock says the model is not enabled | Turn on the model for your account in that region (Bedrock console → Model access). |
 
+## Bedrock through an AWS profile
+
+Wardian signs in with the profile when it saves it, and again whenever its keys run out
+(ADR-2610091530). It says what went wrong:
+
+| Message | Fix |
+|---|---|
+| *the AWS sign-in of profile "work" has expired. Run `aws sso login --profile work`, then try again* | The IAM Identity Center (SSO) sign-in ran out. Run `aws sso login --profile work` in a terminal, then press **Test and use Bedrock** again, or retry what failed. |
+| `there is no AWS profile "work" in /Users/you/.aws/config or /Users/you/.aws/credentials` | The name is in neither file. Check the spelling, or set `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` if your files are elsewhere. A file that is missing says `(not there)`. |
+| `AWS profile "work" has no region: choose one, such as us-east-1` | Type a region in Settings, or add `region = …` to the profile. |
+| `AWS profile "work" signs in through IAM Identity Center (SSO), which needs AWS CLI v2: …` | Install AWS CLI v2, then save the profile again so Wardian records where it is. The same for a profile that assumes a role. |
+| `the AWS CLI at … is version 1, …` | Install AWS CLI v2; version 1 cannot hand over a profile's keys. |
+| `the credential_process of AWS profile "work" failed: …` | The program the profile names failed; the end of what it wrote to standard error follows. Run it in a terminal to see more. |
+| `… did not finish within 30 seconds` | The AWS CLI or the `credential_process` waited, often for a browser sign-in or an MFA code. Sign in in a terminal first. |
+
 ## Splunk
 
 Wardian tests the Splunk settings before it saves them. It takes the address as in your browser
