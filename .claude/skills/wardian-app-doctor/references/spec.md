@@ -305,7 +305,7 @@ Kernel.register({
 | `store.get(key)`, `store.set(key, value)` | Needs `storage`. `get` is synchronous and returns `null` for a missing key. Values MUST be JSON-compatible. |
 | `asset(path)` | Needs `asset`. A promise of an `ArrayBuffer` with the bytes of `path`, a file in this suite's package, e.g. `ctx.asset('text.wasm')`. |
 | `cap(name)` | Needs `claude:<name>`. A promise of the capability, or `null` if this host cannot provide it. |
-| `channel(name)` | Format 2. `{ send(data), on(fn) }` for a channel to other packages. See 6.9. |
+| `channel(name)` | Format 2. `{ send(data, {name}), on(fn) }` for a channel to other packages. See 6.9. |
 | `observe(el, fn)` | Call `fn` when `el` changes size. |
 | `source(id)` | Needs `source`. The text of an inlined script, e.g. `ctx.source('lib-src')`. |
 | `spawn(code)` | Needs `worker`. A Web Worker that runs `code`, or `null` if workers are not available. |
@@ -375,7 +375,7 @@ by its frame, never by the message's content.
 | `{k:'asset', id, path}` | `ctx.asset` |
 | `{k:'cap', id, name}`, `{k:'capop', id, name, op, args}` | `ctx.cap` and a capability's methods. |
 | `{k:'size', h, bg}` | The frame's content height and background color. |
-| `{k:'chsend', id, channel, data}`, `{k:'chon', id, channel}` | `ctx.channel(name).send` and `.on`. |
+| `{k:'chsend', id, channel, data, name}`, `{k:'chon', id, channel}` | `ctx.channel(name).send` and `.on`. |
 | `{k:'fault', message}` | An error inside the app. |
 | `{k:'snapshot', id, html, css \| error}` | The answer to `snapshot`: the frame's rendering (7.4). |
 
@@ -385,7 +385,7 @@ by its frame, never by the message's content.
 | `{k:'msg', topic, payload}` | A message for `ctx.on`. |
 | `{k:'invoke', id, method, args}` | Another app calls a provided method. |
 | `{k:'reply', id, ok, value \| error}` | The answer to `call`, `asset`, `cap`, `capop`, `chsend` or `chon`. |
-| `{k:'chmsg', channel, data, from, at}` | A message on a channel, for `ctx.channel(name).on`. |
+| `{k:'chmsg', channel, data, id, name, from, at}` | A message on a channel, for `ctx.channel(name).on`. Here `id` is the message's id (6.9.6), not a request number. |
 | `{k:'snapshot', id, css}` | Save as web page asks for a rendering; `css` asks for the frame's styles too. |
 
 ### 6.9. Channels between packages
@@ -409,13 +409,20 @@ packages, the user decides, the way a phone asks before an app uses the camera.
    the sending package's name, so a package cannot pretend to be another.
 5. **Keep the latest.** The host keeps the latest message on each channel. A
    package that starts receiving gets it first, like a retained topic.
+6. **Name each message.** The host stamps each message with an `id`, a version 4 UUID that it
+   makes itself; an app cannot choose it. The sender MAY give the message a `name`: text of 1–120
+   characters after trimming. The host refuses any other name before the message goes. With no
+   name, `name` is `null`. The sender and every receiver see the same `id` and `name`, so the user
+   can match a message across apps (ADR-2610091338). The `id` names the message, not its content:
+   sending the same data twice makes two ids.
 
 A table too large for one message travels as a **dataset reference**: the message carries
 `{ dataset: { package, table, total, columns, fields } }` (and MAY carry the first rows inline), and
 a receiving suite app that declares `db` reads the rows with `ctx.cap('db').readPage({ package,
 table, … })`, read-only, after the user allows it to read that package's tables.
 
-Data MUST be JSON-compatible and at most 256 KB, counted as the characters of its JSON text. A package may send at most 100 allowed messages in 10
+Data MUST be JSON-compatible. The whole message, with its name and the host's stamps, is at most
+256 KB, counted as the characters of its JSON text. A package may send at most 100 allowed messages in 10
 seconds from one browser tab. The permission belongs to the package, not to one app inside a suite: in a suite, only
 the entries that declare a channel can use it.
 
@@ -426,7 +433,7 @@ Kernel.register({
   name: 'view',
   channels: { receive: ['budget'] },      // the same as in suite.json
   init(ctx) {
-    ctx.channel('budget').on((data, { from }) => { /* from: the sending package */ })
+    ctx.channel('budget').on((data, { id, name, from, at }) => { /* from: the sending package */ })
       .catch(e => { /* the user did not allow it */ });
   }
 });
@@ -437,12 +444,14 @@ Kernel.register({
 ```html
 <script src="/sdk/wardian.js"></script>
 <script>
-  wardian.channel('budget').send({ monthly: 1798.65 })
+  wardian.channel('budget').send({ monthly: 1798.65 }, { name: 'March budget' })
+    .then(({ id, name, at }) => { /* show the user what went, and its id */ })
     .catch(e => { /* not allowed, or the page was opened outside Wardian */ });
 </script>
 ```
 
-`send(data)` resolves once the message is delivered. `on(fn)` resolves once receiving is allowed.
+`send(data, { name })` resolves to `{ id, name, at }` once the message is delivered. `on(fn)`
+resolves once receiving is allowed, and calls `fn(data, { id, name, from, at })` for each message.
 Both reject when the user does not allow the channel. A page opened on its own, outside Wardian's
 app list, has no channels: both calls reject.
 

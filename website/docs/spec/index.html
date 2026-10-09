@@ -344,7 +344,7 @@ seconds is shown as "this part could not be saved". <code>snapshot</code> is not
 <tr><td><code>store.get(key)</code>, <code>store.set(key, value)</code></td><td>Needs <code>storage</code>. <code>get</code> is synchronous and returns <code>null</code> for a missing key. Values MUST be JSON-compatible.</td></tr>
 <tr><td><code>asset(path)</code></td><td>Needs <code>asset</code>. A promise of an <code>ArrayBuffer</code> with the bytes of <code>path</code>, a file in this suite's package, e.g. <code>ctx.asset('text.wasm')</code>.</td></tr>
 <tr><td><code>cap(name)</code></td><td>Needs <code>claude:&lt;name&gt;</code>. A promise of the capability, or <code>null</code> if this host cannot provide it.</td></tr>
-<tr><td><code>channel(name)</code></td><td>Format 2. <code>{ send(data), on(fn) }</code> for a channel to other packages. See 6.9.</td></tr>
+<tr><td><code>channel(name)</code></td><td>Format 2. <code>{ send(data, {name}), on(fn) }</code> for a channel to other packages. See 6.9.</td></tr>
 <tr><td><code>observe(el, fn)</code></td><td>Call <code>fn</code> when <code>el</code> changes size.</td></tr>
 <tr><td><code>source(id)</code></td><td>Needs <code>source</code>. The text of an inlined script, e.g. <code>ctx.source('lib-src')</code>.</td></tr>
 <tr><td><code>spawn(code)</code></td><td>Needs <code>worker</code>. A Web Worker that runs <code>code</code>, or <code>null</code> if workers are not available.</td></tr>
@@ -404,7 +404,7 @@ by its frame, never by the message's content.</p>
 <tr><td><code>{k:'asset', id, path}</code></td><td><code>ctx.asset</code></td></tr>
 <tr><td><code>{k:'cap', id, name}</code>, <code>{k:'capop', id, name, op, args}</code></td><td><code>ctx.cap</code> and a capability's methods.</td></tr>
 <tr><td><code>{k:'size', h, bg}</code></td><td>The frame's content height and background color.</td></tr>
-<tr><td><code>{k:'chsend', id, channel, data}</code>, <code>{k:'chon', id, channel}</code></td><td><code>ctx.channel(name).send</code> and <code>.on</code>.</td></tr>
+<tr><td><code>{k:'chsend', id, channel, data, name}</code>, <code>{k:'chon', id, channel}</code></td><td><code>ctx.channel(name).send</code> and <code>.on</code>.</td></tr>
 <tr><td><code>{k:'fault', message}</code></td><td>An error inside the app.</td></tr>
 <tr><td><code>{k:'snapshot', id, html, css | error}</code></td><td>The answer to <code>snapshot</code>: the frame's rendering (7.4).</td></tr>
 </tbody></table>
@@ -413,7 +413,7 @@ by its frame, never by the message's content.</p>
 <tr><td><code>{k:'msg', topic, payload}</code></td><td>A message for <code>ctx.on</code>.</td></tr>
 <tr><td><code>{k:'invoke', id, method, args}</code></td><td>Another app calls a provided method.</td></tr>
 <tr><td><code>{k:'reply', id, ok, value | error}</code></td><td>The answer to <code>call</code>, <code>asset</code>, <code>cap</code>, <code>capop</code>, <code>chsend</code> or <code>chon</code>.</td></tr>
-<tr><td><code>{k:'chmsg', channel, data, from, at}</code></td><td>A message on a channel, for <code>ctx.channel(name).on</code>.</td></tr>
+<tr><td><code>{k:'chmsg', channel, data, id, name, from, at}</code></td><td>A message on a channel, for <code>ctx.channel(name).on</code>. Here <code>id</code> is the message's id (6.9.6), not a request number.</td></tr>
 <tr><td><code>{k:'snapshot', id, css}</code></td><td>Save as web page asks for a rendering; <code>css</code> asks for the frame's styles too.</td></tr>
 </tbody></table>
 <h3 id="6-9-channels-between-packages">6.9. Channels between packages<a class="anchor" href="#6-9-channels-between-packages" aria-label="Link to this section">#</a></h3>
@@ -436,11 +436,18 @@ channel, in every Wardian tab of this browser, except the sender. It stamps each
 the sending package's name, so a package cannot pretend to be another.</li>
 <li><strong>Keep the latest.</strong> The host keeps the latest message on each channel. A
 package that starts receiving gets it first, like a retained topic.</li>
+<li><strong>Name each message.</strong> The host stamps each message with an <code>id</code>, a version 4 UUID that it
+makes itself; an app cannot choose it. The sender MAY give the message a <code>name</code>: text of 1–120
+characters after trimming. The host refuses any other name before the message goes. With no
+name, <code>name</code> is <code>null</code>. The sender and every receiver see the same <code>id</code> and <code>name</code>, so the user
+can match a message across apps (ADR-2610091338). The <code>id</code> names the message, not its content:
+sending the same data twice makes two ids.</li>
 </ol>
 <p>A table too large for one message travels as a <strong>dataset reference</strong>: the message carries
 <code>{ dataset: { package, table, total, columns, fields } }</code> (and MAY carry the first rows inline), and
 a receiving suite app that declares <code>db</code> reads the rows with <code>ctx.cap('db').readPage({ package, table, … })</code>, read-only, after the user allows it to read that package's tables.</p>
-<p>Data MUST be JSON-compatible and at most 256 KB, counted as the characters of its JSON text. A package may send at most 100 allowed messages in 10
+<p>Data MUST be JSON-compatible. The whole message, with its name and the host's stamps, is at most
+256 KB, counted as the characters of its JSON text. A package may send at most 100 allowed messages in 10
 seconds from one browser tab. The permission belongs to the package, not to one app inside a suite: in a suite, only
 the entries that declare a channel can use it.</p>
 <p><strong>In a suite app:</strong></p>
@@ -448,7 +455,7 @@ the entries that declare a channel can use it.</p>
   name: 'view',
   channels: { receive: ['budget'] },      // the same as in suite.json
   init(ctx) {
-    ctx.channel('budget').on((data, { from }) =&gt; { /* from: the sending package */ })
+    ctx.channel('budget').on((data, { id, name, from, at }) =&gt; { /* from: the sending package */ })
       .catch(e =&gt; { /* the user did not allow it */ });
   }
 });
@@ -456,11 +463,13 @@ the entries that declare a channel can use it.</p>
 <p><strong>In a page app</strong>, load the host's small library, then use the same calls:</p>
 <pre><code class="language-html">&lt;script src="/sdk/wardian.js"&gt;&lt;/script&gt;
 &lt;script&gt;
-  wardian.channel('budget').send({ monthly: 1798.65 })
+  wardian.channel('budget').send({ monthly: 1798.65 }, { name: 'March budget' })
+    .then(({ id, name, at }) =&gt; { /* show the user what went, and its id */ })
     .catch(e =&gt; { /* not allowed, or the page was opened outside Wardian */ });
 &lt;/script&gt;
 </code></pre>
-<p><code>send(data)</code> resolves once the message is delivered. <code>on(fn)</code> resolves once receiving is allowed.
+<p><code>send(data, { name })</code> resolves to <code>{ id, name, at }</code> once the message is delivered. <code>on(fn)</code>
+resolves once receiving is allowed, and calls <code>fn(data, { id, name, from, at })</code> for each message.
 Both reject when the user does not allow the channel. A page opened on its own, outside Wardian's
 app list, has no channels: both calls reject.</p>
 <h3 id="6-10-standard-components">6.10. Standard components<a class="anchor" href="#6-10-standard-components" aria-label="Link to this section">#</a></h3>

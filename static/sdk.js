@@ -2,8 +2,8 @@
      <script src="/sdk/wardian.js"></script>
    then:
      const budget = wardian.channel('budget');
-     budget.on((data, {from}) => ...);     // resolves once the user allows it
-     budget.send({monthly: 1798.65});      // resolves once delivered
+     budget.on((data, {id, name, from}) => ...);       // resolves once the user allows it
+     budget.send({monthly: 1798.65}, {name: 'March'}); // resolves to {id, name, at} once delivered
    Declare each channel in app.json ("channels": {"send": [...], "receive": [...]}, "format": 2).
    Wardian asks the user the first time. A page opened on its own, outside Wardian, has no channels. */
 window.wardian = (() => {
@@ -18,7 +18,7 @@ window.wardian = (() => {
       pending.delete(m.id);
       if (m.ok) p.res(m.value); else p.rej(new Error(m.error));
     } else if (m.k === 'msg') {
-      (handlers.get(m.channel) || []).forEach(fn => { try { fn(m.data, {from: m.from, at: m.at}); } catch (err) { console.error(err); } });
+      (handlers.get(m.channel) || []).forEach(fn => { try { fn(m.data, {id: m.id, name: m.name, from: m.from, at: m.at}); } catch (err) { console.error(err); } });
     }
   });
   function request(m){
@@ -34,7 +34,7 @@ window.wardian = (() => {
   return Object.freeze({
     channel(name){
       return Object.freeze({
-        send: data => request({k: 'send', channel: name, data}),
+        send: (data, opts) => request({k: 'send', channel: name, data, name: opts && opts.name}),
         on(fn){
           if (!handlers.has(name)) handlers.set(name, []);
           handlers.get(name).push(fn);

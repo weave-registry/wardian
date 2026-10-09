@@ -44,6 +44,14 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
   ok((await view.locator('#v').textContent()) === '1798.65', 'viewer in the other tab received the message');
   ok((await view.locator('#from').textContent()) === 'from chan-sender', 'the sender is stamped by Wardian', `(${await view.locator('#from').textContent()})`);
 
+  // ADR-2610091338 / SPEC 6.9.6: the host stamps an id; both sides see the same id and name.
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const receipt = (await page.locator('#receipt').textContent()).split(' ');
+  const sentId = receipt[0];
+  ok(UUID.test(sentId) && receipt.slice(1).join(' ') === 'Monthly budget', 'send() resolves to a UUID and the name', `(${receipt.join(' ')})`);
+  ok(await view.locator('#id').textContent() === sentId && await view.locator('#name').textContent() === 'Monthly budget',
+    'the receiver gets the same id and name', `(${await view.locator('#id').textContent()} ${await view.locator('#name').textContent()})`);
+
   await press(page, '#sneak');
   await page.locator('#out:has-text("error")').waitFor();
   ok(/not in app.json/.test(await page.locator('#out').textContent()), 'an undeclared channel is refused without asking');
@@ -56,6 +64,8 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
   const late = c.frameLocator('.suiteframe').frameLocator('iframe[title="view"]');
   await late.locator('#v:has-text("1798.65")').waitFor({ timeout: 5000 }).catch(() => {});
   ok((await late.locator('#v').textContent()) === '1798.65', 'a viewer opened later gets the latest message without asking again');
+  ok(await late.locator('#id').textContent() === sentId && await late.locator('#name').textContent() === 'Monthly budget',
+    'a viewer opened later sees the same id and name', `(${await late.locator('#id').textContent()})`);
 
   const frameIn = (p, part) => p.frames().find(f => f.url().includes(part));
   const senderF = frameIn(b, '/apps/chan-sender/');
@@ -69,6 +79,13 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
   await viewA.locator('#v:has-text("42")').waitFor({ timeout: 5000 }).catch(() => {});
   ok(await viewA.locator('#v').textContent() === '42' && await viewA.locator('#from').textContent() === 'from chan-sender',
     'a `from` the app sets is replaced by the real package name', `(${await viewA.locator('#v').textContent()} ${await viewA.locator('#from').textContent()})`);
+  // ADR-2610091338: the id is the host's, never taken from the request, and no name means null.
+  const rawId = await viewA.locator('#id').textContent();
+  ok(UUID.test(rawId) && rawId !== sentId && await viewA.locator('#name').textContent() === 'null',
+    'each message gets a new id from the host, and a message with no name has name null', `(${rawId} ${await viewA.locator('#name').textContent()})`);
+  const badNames = await senderF.evaluate(() => Promise.all([42, '   ', 'x'.repeat(121)].map(name =>
+    wardian.channel('budget').send({ monthly: 0 }, { name }).then(() => 'sent', e => e.message))));
+  ok(badNames.every(m => /name/.test(m)), 'a name that is not 1–120 characters is refused', `(${badNames.join(' | ')})`);
 
   // SPEC 6.9.4: every package allowed to receive gets it, except the sender.
   const selfSend = viewF.evaluate(() => window.sendBudget({ monthly: 'self' }));
@@ -77,13 +94,18 @@ const ok = (cond, what, extra = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'
   const selfSent = await selfSend;
   await a.waitForTimeout(1000);
   const kept = (await (await fetch(`${base}/api/state/channel/budget`)).json()).message || {};
-  ok(selfSent === 'sent' && kept.from === 'chan-viewer' && kept.data?.monthly === 'self', 'the viewer sent on budget', `(${selfSent}, kept ${JSON.stringify(kept)})`);
+  ok(selfSent === 'sent' && kept.from === 'chan-viewer' && kept.data?.monthly === 'self' && UUID.test(kept.id) && 'name' in kept,
+    'the viewer sent on budget, and the kept message has its id and name', `(${selfSent}, kept ${JSON.stringify(kept)})`);
   ok(await viewA.locator('#v').textContent() === '42' && await late.locator('#v').textContent() === '42',
     'the sending package does not receive its own message, in this tab or another', `(${await viewA.locator('#v').textContent()}, ${await late.locator('#v').textContent()})`);
 
   // SPEC 6.9: data is at most 256 KB.
   const big = await senderF.evaluate(() => wardian.channel('budget').send('x'.repeat(256 * 1024)).then(() => 'sent', e => e.message));
   ok(/at most 256 KB/.test(big), 'a send over 256 KB is refused', `(${big})`);
+  // ADR-2610091338: the limit counts the whole message, so data just under it cannot pass the
+  // browser and then be refused by the server.
+  const edge = await senderF.evaluate(() => wardian.channel('budget').send('x'.repeat(256 * 1024 - 8)).then(() => 'sent', e => e.message));
+  ok(/at most 256 KB/.test(edge), 'the limit counts the name and the host\'s stamps too', `(${edge})`);
 
   // SPEC 6.9: a package may send at most 100 messages in 10 seconds. A new tab starts its own count.
   const d = await open('Channel sender');

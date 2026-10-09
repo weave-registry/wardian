@@ -335,14 +335,14 @@
     async chsend(app, m){
       if (!frames.get(app).contract.channels.send.includes(m.channel)) return refuse(app, m.id, `may not send on channel "${m.channel}" (not in suite.json)`);
       note('channel', app, 'send ' + m.channel);
-      try { await WardianChannels.send(suiteName, m.channel, m.data); reply(app, m.id, true, null); }
+      try { reply(app, m.id, true, await WardianChannels.send(suiteName, m.channel, m.data, {name: m.name})); }
       catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
     },
     async chon(app, m){
       if (!frames.get(app).contract.channels.receive.includes(m.channel)) return refuse(app, m.id, `may not receive on channel "${m.channel}" (not in suite.json)`);
       note('channel', app, 'receive ' + m.channel);
       try {
-        await WardianChannels.receive(suiteName, m.channel, (data, info) => send(app, {k: 'chmsg', channel: m.channel, data, from: info.from, at: info.at}));
+        await WardianChannels.receive(suiteName, m.channel, (data, info) => send(app, {k: 'chmsg', channel: m.channel, data, ...info}));
         reply(app, m.id, true, null);
       } catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
     },

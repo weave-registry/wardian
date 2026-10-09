@@ -91,13 +91,14 @@ const Kernel = (() => {
       return sample;
     }
     // A channel to other packages. The kernel asks the user the first time; send() and on()
-    // reject if the answer is no. on(fn) calls fn(data, {from, at}).
+    // reject if the answer is no. send(data, {name}) resolves to {id, name, at}; on(fn) calls
+    // fn(data, {id, name, from, at}).
     function channel(name){
       const decl = contract.channels || {send: [], receive: []};
       return Object.freeze({
-        send(data){
+        send(data, opts){
           if (!decl.send.includes(name)) return Promise.reject(new Error(def.name + ' may not send on channel "' + name + '" (not in its contract)'));
-          return request({k: 'chsend', channel: name, data});
+          return request({k: 'chsend', channel: name, data, name: opts && opts.name});
         },
         on(fn){
           if (!decl.receive.includes(name)) return Promise.reject(new Error(def.name + ' may not receive on channel "' + name + '" (not in its contract)'));
@@ -152,7 +153,7 @@ const Kernel = (() => {
         .then(value => post({k: 'result', id: m.id, ok: true, value}),
               err => post({k: 'result', id: m.id, ok: false, error: String(err && err.message || err)}));
     } else if (m.k === 'chmsg'){
-      (chans.get(m.channel) || []).forEach(fn => safe(() => fn(m.data, {from: m.from, at: m.at})));
+      (chans.get(m.channel) || []).forEach(fn => safe(() => fn(m.data, {id: m.id, name: m.name, from: m.from, at: m.at})));
     } else if (m.k === 'snapshot'){
       // Save as web page (ADR-2610080905): the app's own snapshot(ctx) if it has one, else a copy
       // of what the frame shows. If its own fails, the copy is used instead.

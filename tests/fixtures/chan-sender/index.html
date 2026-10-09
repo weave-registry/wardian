@@ -4,9 +4,11 @@
 <script src="/sdk/wardian.js"></script>
 <p><input id="amount" value="1798.65" aria-label="Amount"> <button id="send">Send</button> <button id="sneak">Send on an undeclared channel</button></p>
 <p id="out">idle</p>
+<p id="receipt"></p>
 <script>
   const out = document.getElementById('out');
-  const show = p => p.then(() => out.textContent = 'sent', e => out.textContent = 'error: ' + e.message);
-  document.getElementById('send').onclick = () => show(wardian.channel('budget').send({ monthly: +document.getElementById('amount').value }));
+  const show = p => p.then(r => { out.textContent = 'sent'; if (r) document.getElementById('receipt').textContent = r.id + ' ' + r.name; },
+    e => out.textContent = 'error: ' + e.message);
+  document.getElementById('send').onclick = () => show(wardian.channel('budget').send({ monthly: +document.getElementById('amount').value }, { name: 'Monthly budget' }));
   document.getElementById('sneak').onclick = () => show(wardian.channel('secrets').send('x'));
 </script>

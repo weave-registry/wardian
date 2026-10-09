@@ -59,11 +59,14 @@ const WardianChannels = (() => {
     return answer === 'allow';
   }
 
+  // What a receiver learns about a message besides its data. A message kept before ids existed has none.
+  const info = m => ({id: m.id ?? null, name: m.name ?? null, from: m.from, at: m.at});
+
   function deliver(msg){
     for (const s of subs.get(msg.channel) || []) {
       if (s.pkg === msg.from) continue;                               // a package does not hear itself
       if (grants && grants.get(key(s.pkg, msg.channel, 'receive')) !== true) continue;   // taken back meanwhile
-      try { s.fn(structuredClone(msg.data), {from: msg.from, at: msg.at}); } catch (e) { console.error(e); }
+      try { s.fn(structuredClone(msg.data), info(msg)); } catch (e) { console.error(e); }
     }
   }
   bus.onmessage = e => { if (e.data && typeof e.data.channel === 'string') deliver(e.data); };
@@ -72,24 +75,46 @@ const WardianChannels = (() => {
   // browser, still gets it.
   const latest = channel => WardianState.channel.latest(channel);
 
-  /** Sends `data` (JSON-compatible) on `channel` for package `pkg`. Rejects if the user said no. */
-  async function send(pkg, channel, data){
+  // A version 4 UUID. crypto.randomUUID() exists only in a secure context, and Wardian also runs
+  // over plain HTTP on a LAN; getRandomValues() works in both.
+  function uuid(){
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+  // What the sender calls the message: 1–120 characters after trimming, or null for none.
+  function messageName(name){
+    if (name == null) return null;
+    const n = typeof name === 'string' ? name.trim() : '';
+    if (!n || n.length > 120) throw new Error('a message name must be text of 1 to 120 characters');
+    return n;
+  }
+
+  /** Sends `data` (JSON-compatible) on `channel` for package `pkg`, called `name` (or null).
+      Resolves to {id, name, at}: the id is the host's, never the app's. Rejects if the user said no. */
+  async function send(pkg, channel, data, {name} = {}){
     checkName(channel);
-    const json = JSON.stringify(data ?? null);
-    if (json.length > MAX_BYTES) throw new Error(`a channel message may be at most ${MAX_BYTES / 1024} KB`);
+    name = messageName(name);
     const now = Date.now();
+    const msg = {channel, from: pkg, at: now, id: uuid(), name, data: data ?? null};
+    // The whole message counts, as the server counts what it keeps.
+    const json = JSON.stringify(msg);
+    if (json.length > MAX_BYTES) throw new Error(`a channel message may be at most ${MAX_BYTES / 1024} KB`);
     const times = (sent.get(pkg) || []).filter(t => now - t < RATE.perMs);
     if (times.length >= RATE.max) throw new Error('too many channel messages; slow down');
     if (!(await allowed(pkg, channel, 'send'))) throw new Error(`not allowed to send on "${channel}"`);
     times.push(now); sent.set(pkg, times);
-    const msg = {channel, from: pkg, at: now, data: JSON.parse(json)};
-    WardianState.channel.keep(channel, msg);   // live delivery below does not wait for it
-    bus.postMessage(msg);
-    deliver(msg);
+    // Stamped once the user has answered, which can take a while. The length of `at` is the same.
+    const out = Object.assign(JSON.parse(json), {at: Date.now()});
+    WardianState.channel.keep(channel, out);   // live delivery below does not wait for it
+    bus.postMessage(out);
+    deliver(out);
+    return {id: out.id, name, at: out.at};
   }
 
-  /** Calls fn(data, {from, at}) for each message on `channel`, starting with the latest one kept.
-      Resolves to a function that stops listening. Rejects if the user said no. */
+  /** Calls fn(data, {id, name, from, at}) for each message on `channel`, starting with the latest
+      one kept. Resolves to a function that stops listening. Rejects if the user said no. */
   async function receive(pkg, channel, fn){
     checkName(channel);
     if (!(await allowed(pkg, channel, 'receive'))) throw new Error(`not allowed to receive on "${channel}"`);
@@ -97,7 +122,7 @@ const WardianChannels = (() => {
     if (!subs.has(channel)) subs.set(channel, new Set());
     subs.get(channel).add(s);
     const last = await latest(channel);
-    if (last && last.from !== pkg) setTimeout(() => { try { fn(last.data, {from: last.from, at: last.at}); } catch (e) { console.error(e); } }, 0);
+    if (last && last.from !== pkg) setTimeout(() => { try { fn(last.data, info(last)); } catch (e) { console.error(e); } }, 0);
     return () => subs.get(channel).delete(s);
   }
 

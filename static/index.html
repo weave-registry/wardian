@@ -1897,12 +1897,13 @@ addEventListener('message', async (e) => {
     const decl = await p.decl;
     if (m.k === 'send') {
       if (!decl.send.includes(m.channel)) throw new Error(`${p.pkg} may not send on channel "${m.channel}" (not in app.json)`);
-      await WardianChannels.send(p.pkg, m.channel, m.data);
-      log(`[${p.pkg}] sent on channel ${m.channel}`, 'a');
+      const sent = await WardianChannels.send(p.pkg, m.channel, m.data, { name: m.name });
+      log(`[${p.pkg}] sent ${sent.name ? `"${sent.name}" ` : ''}on channel ${m.channel} (#${sent.id.slice(0, 6)})`, 'a');
+      return answer(true, sent);
     } else if (m.k === 'on') {
       if (!decl.receive.includes(m.channel)) throw new Error(`${p.pkg} may not receive on channel "${m.channel}" (not in app.json)`);
       p.stops.push(await WardianChannels.receive(p.pkg, m.channel, (data, info) =>
-        win.postMessage({ wardian: 'ch', k: 'msg', channel: m.channel, data, from: info.from, at: info.at }, '*')));
+        win.postMessage({ wardian: 'ch', k: 'msg', channel: m.channel, data, ...info }, '*')));
     } else throw new Error('unknown channel request');
     answer(true, null);
   } catch (err) { answer(false, err.message); log(`[${p.pkg}] ${err.message}`, 'e'); }
