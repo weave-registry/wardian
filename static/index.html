@@ -91,6 +91,8 @@
   main { display: grid; grid-template-columns: 15rem 1fr; min-height: calc(100vh - 3rem); }
   aside { border-right: 1px solid var(--line); padding: .75rem; background: var(--panel); }
   aside input { width: 100%; margin-bottom: .5rem; }
+  #appFooter { font-size: .75rem; padding: .5rem 1rem 1rem; text-align: center; }
+  #appFooter a { color: inherit; }
   #apps { list-style: none; margin: 0; padding: 0; }
   #apps li button {
     width: 100%; text-align: left; border: 0; background: none; padding: .4rem .5rem; border-radius: 6px;
@@ -355,6 +357,7 @@
     </div>
   </section>
 </main>
+<footer id="appFooter" class="muted"></footer>
 
 <dialog id="settings" aria-labelledby="settingsTitle">
   <div class="dlg-head">
@@ -680,7 +683,21 @@ function health(s) {
   return [st.last_ok ? 'ok' : 'warn', label];
 }
 
+// The footer: the version, and the commit this Wardian was built from, linked to its source.
+function renderFooter() {
+  const f = $('appFooter');
+  if (!status.version) { f.replaceChildren(); return; }
+  const b = status.build || {};
+  const when = b.date ? new Date(b.date + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const parts = [`Wardian ${status.version}`];
+  const nodes = [parts[0]];
+  if (b.commit) nodes.push(' · build ', el('a', { href: `https://github.com/weave-registry/wardian/commit/${encodeURIComponent(b.commit)}`, textContent: b.commit, target: '_blank', rel: 'noopener' }));
+  if (when) nodes.push(` · ${when}`);
+  f.replaceChildren(...nodes);
+}
+
 function renderStatus() {
+  renderFooter();
   const s = status;
   const [cls, label] = health(s);
   $('badge').replaceChildren(el('span', { className: `dot ${cls}` }), el('span', { textContent: label }));

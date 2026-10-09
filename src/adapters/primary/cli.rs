@@ -70,7 +70,9 @@ pub fn run(args: &[String], tools: &dyn PackageTools, pages: &dyn Pages, data_di
         Some("key") => Command::Exit(master_key(&args[1..], &*key())),
         Some(cmd @ ("start" | "stop" | "status")) => Command::Exit(background(cmd, &args[1..], service)),
         Some("--version" | "-V") => {
-            println!("Wardian {} (package format {FORMAT})", env!("CARGO_PKG_VERSION"));
+            let (commit, date) = (env!("WARDIAN_COMMIT"), env!("WARDIAN_COMMIT_DATE"));
+            let build = if commit.is_empty() { String::new() } else { format!(", build {commit} of {date}") };
+            println!("Wardian {} (package format {FORMAT}{build})", env!("CARGO_PKG_VERSION"));
             Command::Exit(0)
         }
         Some("--help" | "-h" | "help") => {

@@ -201,6 +201,7 @@ impl Hub {
             Serving::Local => json!({
                 "source": "local",
                 "version": env!("CARGO_PKG_VERSION"),
+                "build": { "commit": env!("WARDIAN_COMMIT"), "date": env!("WARDIAN_COMMIT_DATE") },
                 "local_root": self.local_root.display().to_string(),
                 "apps": apps,
                 "client_email": client_email,
@@ -208,6 +209,7 @@ impl Hub {
             Serving::Drive(d) => json!({
                 "source": "drive",
                 "version": env!("CARGO_PKG_VERSION"),
+                "build": { "commit": env!("WARDIAN_COMMIT"), "date": env!("WARDIAN_COMMIT_DATE") },
                 "local_root": self.local_root.display().to_string(),
                 "folder_id": d.folder_id(),
                 "folder_name": d.folder_name(),

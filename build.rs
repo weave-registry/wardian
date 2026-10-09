@@ -2,7 +2,7 @@
 //! however it was installed or started. The examples are the folders `.gitignore` names with
 //! `!/apps/<name>/`, the same ones git tracks; build output inside them is left out.
 
-use std::{env, fs, path::Path};
+use std::{env, fs, path::Path, process::Command};
 
 const SKIP: [&str; 3] = ["target", "node_modules", "Cargo.lock"];
 
@@ -24,7 +24,20 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
     }
 }
 
+/// The commit this build is made from and its date (YYYY-MM-DD), for the version line and the page's
+/// footer. Empty outside a git checkout, such as a build from a source tarball.
+fn build_info() {
+    let git = |args: &[&str]| {
+        Command::new("git").args(args).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+    };
+    println!("cargo:rustc-env=WARDIAN_COMMIT={}", git(&["rev-parse", "--short=7", "HEAD"]));
+    println!("cargo:rustc-env=WARDIAN_COMMIT_DATE={}", git(&["log", "-1", "--format=%cs"]));
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs/heads");
+}
+
 fn main() {
+    build_info();
     println!("cargo:rerun-if-changed=.gitignore");
     println!("cargo:rerun-if-changed=apps");
     let apps = Path::new("apps");
