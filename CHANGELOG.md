@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.6] - 2026-10-09
+
 ### Changed
 
 - **Splunk setup finds the API** (ADR-2610091500). Settings → Splunk takes the address as in your
