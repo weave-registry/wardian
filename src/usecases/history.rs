@@ -4,8 +4,8 @@
 
 use super::workspace::copy_tree;
 use crate::domain::history::{change, kept_in_copies, line_diff, next_number, prune, Change, Version, KEEP_VERSIONS};
-use crate::domain::package::{random_u32, safe_segment, unix_now, APP_MARKERS};
-use crate::ports::{service::AppHistory, storage::FileSystem};
+use crate::domain::package::{safe_segment, APP_MARKERS};
+use crate::ports::{clock::Clock, service::AppHistory, storage::FileSystem};
 use serde_json::{json, Value};
 use std::{
     collections::BTreeSet,
@@ -22,11 +22,12 @@ pub struct History {
     apps: PathBuf,
     /// One change to the history at a time.
     lock: Mutex<()>,
+    clock: Arc<dyn Clock>,
 }
 
 impl History {
-    pub fn new(fs: Arc<dyn FileSystem>, data_dir: &Path, apps: &Path) -> History {
-        History { fs, dir: data_dir.join("history"), apps: apps.to_path_buf(), lock: Mutex::new(()) }
+    pub fn new(fs: Arc<dyn FileSystem>, data_dir: &Path, apps: &Path, clock: Arc<dyn Clock>) -> History {
+        History { fs, dir: data_dir.join("history"), apps: apps.to_path_buf(), lock: Mutex::new(()), clock }
     }
 
     fn app_dir(&self, app: &str) -> PathBuf {
@@ -51,7 +52,7 @@ impl History {
         let mut log = self.log(app);
         let n = next_number(&log);
         copy_tree(&*self.fs, &self.apps.join(app), &self.app_dir(app).join(n.to_string()))?;
-        log.push(Version { n, at: unix_now(), by: by.into(), why: why.chars().take(500).collect() });
+        log.push(Version { n, at: self.clock.now(), by: by.into(), why: why.chars().take(500).collect() });
         for old in prune(&mut log, KEEP_VERSIONS) {
             self.fs.remove_dir_all(&self.app_dir(app).join(old.to_string()));
             // The data an import replaced is kept next to its version, and goes with it.
@@ -160,14 +161,14 @@ impl AppHistory for History {
         let from = self.version_dir(app, n)?;
         let target = self.apps.join(app);
         self.before_change(app);
-        let staging = self.apps.join(format!(".restore-{}-{:08x}", unix_now(), random_u32()));
+        let staging = self.apps.join(format!(".restore-{}-{:08x}", self.clock.now(), self.clock.nonce()));
         copy_tree(&*self.fs, &from, &staging)?;
         if !self.is_app(&staging) {
             self.fs.remove_dir_all(&staging);
             return Err(format!("version {n} of {app} is not a complete app"));
         }
         // Move the current copy aside first, so the app is never missing for longer than a rename.
-        let old = self.apps.join(format!(".old-{}-{:08x}", app, random_u32()));
+        let old = self.apps.join(format!(".old-{}-{:08x}", app, self.clock.nonce()));
         if self.fs.exists(&target) {
             self.fs.rename(&target, &old).map_err(|e| format!("replacing {app}: {e}"))?;
         }

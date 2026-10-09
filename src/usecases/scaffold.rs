@@ -7,7 +7,7 @@ use super::workspace;
 use crate::domain::components::{files_for, page_tags, wire_suite, Added, UI_PAGE, UI_SUITE};
 use crate::domain::history::Promoted;
 use crate::domain::package::safe_segment;
-use crate::ports::{assets::Assets, storage::FileSystem, tools::PackageTools};
+use crate::ports::{assets::Assets, clock::Clock, storage::FileSystem, tools::PackageTools};
 use serde_json::Value;
 use std::{path::Path, sync::Arc};
 
@@ -15,6 +15,7 @@ pub struct Scaffold {
     fs: Arc<dyn FileSystem>,
     assets: Arc<dyn Assets>,
     checker: Arc<Checker>,
+    clock: Arc<dyn Clock>,
 }
 
 impl PackageTools for Scaffold {
@@ -30,14 +31,14 @@ impl PackageTools for Scaffold {
     fn promote(&self, app: &str, data_dir: &Path, source: &Path) -> Result<Promoted, String> {
         let working = data_dir.join("apps");
         let done = workspace::promote(&*self.fs, app, &working, source)?;
-        History::new(Arc::clone(&self.fs), data_dir, &working).record(app, "promote", &format!("promoted to {}", source.display()));
+        History::new(Arc::clone(&self.fs), data_dir, &working, Arc::clone(&self.clock)).record(app, "promote", &format!("promoted to {}", source.display()));
         Ok(done)
     }
 }
 
 impl Scaffold {
-    pub fn new(fs: Arc<dyn FileSystem>, assets: Arc<dyn Assets>, checker: Arc<Checker>) -> Scaffold {
-        Scaffold { fs, assets, checker }
+    pub fn new(fs: Arc<dyn FileSystem>, assets: Arc<dyn Assets>, checker: Arc<Checker>, clock: Arc<dyn Clock>) -> Scaffold {
+        Scaffold { fs, assets, checker, clock }
     }
 
     /// Writes a package of `kind` at `path`. "{{name}}" in text files becomes the package name.

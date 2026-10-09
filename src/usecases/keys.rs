@@ -2,8 +2,7 @@
 //! `KeyOwner`; the keyring asks each owner what it holds, and passes on "test again" and "remove".
 //! It also holds the admin token, and `KeyChecks`, the record of every test.
 
-use crate::domain::package::unix_now;
-use crate::ports::{secrets::Secrets, service::Keys, storage::FileSystem};
+use crate::ports::{clock::Clock, secrets::Secrets, service::Keys, storage::FileSystem};
 use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
@@ -44,12 +43,13 @@ pub struct KeyChecks {
     checks: Mutex<BTreeMap<String, Value>>,
     /// The file is there but cannot be read, and could not be moved aside: it is never written over.
     held: bool,
+    clock: Arc<dyn Clock>,
 }
 
 impl KeyChecks {
     /// A file that cannot be read is moved to `key-checks.json.unreadable`, so a new record never
     /// writes over the tests it holds.
-    pub fn new(fs: Arc<dyn FileSystem>, data_dir: &Path) -> KeyChecks {
+    pub fn new(fs: Arc<dyn FileSystem>, data_dir: &Path, clock: Arc<dyn Clock>) -> KeyChecks {
         let path = data_dir.join("key-checks.json");
         let read = fs.read(&path).and_then(|b| serde_json::from_slice(&b).ok());
         let mut held = false;
@@ -63,7 +63,7 @@ impl KeyChecks {
                 }
             }
         }
-        KeyChecks { fs, path, checks: Mutex::new(read.unwrap_or_default()), held }
+        KeyChecks { fs, path, checks: Mutex::new(read.unwrap_or_default()), held, clock }
     }
 
     /// Records a test of `id`: when, whether it passed, and what the service said.
@@ -73,7 +73,7 @@ impl KeyChecks {
             Err(e) => e.clone(),
         };
         let mut checks = self.checks.lock().unwrap();
-        checks.insert(id.into(), json!({ "at": unix_now(), "ok": outcome.is_ok(), "said": said }));
+        checks.insert(id.into(), json!({ "at": self.clock.now(), "ok": outcome.is_ok(), "said": said }));
         self.save(&checks);
     }
 
