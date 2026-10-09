@@ -12,6 +12,12 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- CI downloads hexa from https://github.com/gaberger/hexa at a pinned version and checks it against
+  its checksums. Every push runs `hexa analyze . --grade A` and `hexa adr doctor`; pull requests,
+  releases and runs by hand also run `hexa adr gates`.
+
 ## [0.4.8] - 2026-10-09
 
 ### Changed

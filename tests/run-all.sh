@@ -32,7 +32,7 @@ if command -v hexa >/dev/null 2>&1; then
   step "hexa adr gates"
   hexa adr gates
 else
-  step "hexa: SKIP (not installed; it lives at https://git.local/gary/hexa)"
+  step "hexa: SKIP (not installed; get it from https://github.com/gaberger/hexa/releases)"
 fi
 
 for runner in tests/run-*-e2e.sh; do

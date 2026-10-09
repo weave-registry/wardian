@@ -88,9 +88,11 @@ A release (`release.yml`) builds nothing until the full set passes on the tagged
 by hand: **Actions → CI → Run workflow**, with **Also run the load test** if wanted.
 `tests/run-all.sh` runs everything on one machine, except the live checks.
 
-hexa lives on git.local, which GitHub's runners cannot reach. So its two steps run only when the
-repository variable `HEXA_INSTALL` holds a command that installs it. Otherwise the job notes that it
-skipped them, and `tests/run-all.sh` on a machine with hexa covers them.
+CI downloads [hexa](https://github.com/gaberger/hexa) from its GitHub release, at the version
+`HEXA_VERSION` in `ci.yml` names, and checks it against the release's `SHA256SUMS.txt`. The fast
+checks run `hexa analyze . --grade A` and `hexa adr doctor`; the full set runs `hexa adr gates`, every
+ADR's gate, on a runner with Chromium and the WebAssembly target. To move to a newer hexa, change
+`HEXA_VERSION`.
 
 ### Live checks
 
@@ -118,7 +120,7 @@ lists each check's variables and what it proves. Run them once per release.
 
 ### hexa
 
-[hexa](https://git.local/gary/hexa) grades Wardian's structure and keeps the work loop
+[hexa](https://github.com/gaberger/hexa) grades Wardian's structure and keeps the work loop
 ([below](#the-hexa-loop)). [How Wardian is built](/docs/architecture#hexa-gates) explains both, and
 [Decisions](/docs/decisions) explains how an ADR and its gate are written.
 

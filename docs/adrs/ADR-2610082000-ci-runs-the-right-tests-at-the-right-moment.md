@@ -8,13 +8,15 @@ pushed many times an hour and each release waited for a full run.
 
 ## Decision
 
-1. **Every push to `main`: the fast checks.** `cargo test --release`, hexa when it can be installed,
-   and the install test. A few minutes.
+1. **Every push to `main`: the fast checks.** `cargo test --release`, `hexa analyze . --grade A` and
+   `hexa adr doctor`, and the install test. A few minutes. hexa is downloaded from its GitHub
+   release (https://github.com/gaberger/hexa), at a pinned version, checked against its checksums.
 2. **Pull requests, releases and runs by hand: every browser suite, side by side.** One runner per
    `tests/run-*-e2e.sh` (but the install test, in the fast checks, and the load test), plus the
    Splunk and Make-an-app suites through a fake Bedrock. A new suite is picked up by its file name.
    The whole set takes about as long as its slowest suite.
-3. **The load test: every night, or by hand.**
+3. **The load test: every night, or by hand.** `hexa adr gates`, every ADR's gate, runs with the
+   browser suites, on a runner with Chromium and the WebAssembly target.
 4. **A release builds nothing until the full set passes** on the tagged commit: `release.yml` calls
    `ci.yml` and its build jobs wait for it.
 

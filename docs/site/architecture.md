@@ -192,7 +192,7 @@ website show one text. [Contributing](/docs/contributing#add-a-docs-page) says h
 
 ## hexa gates
 
-[hexa](https://git.local/gary/hexa) is the tool that grades Wardian's structure. Its settings are in
+[hexa](https://github.com/gaberger/hexa) is the tool that grades Wardian's structure. Its settings are in
 `.hexa/`:
 
 | File | Holds |

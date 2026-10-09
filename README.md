@@ -586,10 +586,9 @@ chromium`), as CI does. `tests/run-all.sh` stops at the first failure.
 CI (`.github/workflows/ci.yml`) runs the fast checks (unit tests, hexa, the install test) on every
 push to `main`; every browser suite at once, one runner each, on pull requests, before each release
 and by hand; and the load test every night (ADR-2610082000). A release builds nothing until the full
-set passes. hexa lives on
-git.local, which GitHub's runners cannot reach, so its two steps run only when the repository
-variable `HEXA_INSTALL` holds a command that installs it; otherwise the job notes that it skipped
-them, and `tests/run-all.sh` on a machine with hexa covers them.
+set passes. CI downloads [hexa](https://github.com/gaberger/hexa) from its GitHub release, at the
+version `HEXA_VERSION` in `ci.yml` names, and checks it against its checksums: the fast checks run
+`hexa analyze . --grade A` and `hexa adr doctor`, and the full set runs `hexa adr gates`.
 
 ## Live checks
 
