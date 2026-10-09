@@ -12,6 +12,22 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.10] - 2026-10-09
+
+### Added
+
+- Every message on a channel has an id, which Wardian makes, and may have a name, which the sending
+  app gives: `send(data, {name})` returns `{id, name, at}`, and the receiving app gets the same id
+  and name. The two apps of a share can now show the user the same thing (ADR-2610091338).
+- Four components: `surface` (frosted glass over a slow light in Wardian's greens), `type` (a light
+  display serif), `bento` (tiles that follow their own box's width) and `receipt` (a shared message
+  shown the same way in both apps). See them at Components in the app list.
+
+### Fixed
+
+- A channel message just under 256 KB passed the browser and was then refused by the server, so the
+  latest message was lost without a word. The limit now counts the whole message.
+
 ## [0.4.9] - 2026-10-09
 
 ### Changed
