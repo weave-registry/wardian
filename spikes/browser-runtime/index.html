@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>The core in a browser worker</title>
+<pre id="out">running</pre>
+<script>
+// Phase 1 is the page as a plain static host serves it. Phase 2 is the same page after the
+// service worker has added the isolation headers. Each phase runs the core in a worker.
+const phase = new URL(location).searchParams.get('phase') || '1';
+function ask(w, msg, key) { return new Promise((res) => { w.addEventListener('message', function on(e) { if (key in e.data) { w.removeEventListener('message', on); res(e.data); } }); w.postMessage(msg); }); }
+async function sealedFrame() {
+  return new Promise((res) => {
+    const f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-scripts');
+    f.srcdoc = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'"><script>let s='readable';try{localStorage.length}catch(e){s='blocked'}parent.postMessage({frame:{origin:self.origin,storage:s}},'*')<\/script>`;
+    const t = setTimeout(() => res('no report within 5s'), 5000);
+    addEventListener('message', (e) => { if (e.data.frame) { clearTimeout(t); res(e.data.frame); } });
+    document.body.append(f);
+  });
+}
+(async () => {
+  if (phase === '1') {
+    await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+  }
+  const r = { phase, cross_origin_isolated: self.crossOriginIsolated };
+  const w = new Worker('worker.js');
+  r.worker = (await ask(w, 'tests', 'tests')).tests;
+  // While a background job runs in the worker, how long does a short request wait?
+  const t = performance.now();
+  const done = ask(w, 'long-task', 'done');
+  await new Promise((res) => setTimeout(res, 20));
+  const t2 = performance.now();
+  await ask(w, 'ping', 'pong');
+  r.ping_during_job_ms = Math.round(performance.now() - t2);
+  await done;
+  r.long_task_ms = Math.round(performance.now() - t);
+  r.sealed_frame = await sealedFrame();
+  window.__results = r;
+  document.getElementById('out').textContent = JSON.stringify(r, null, 1);
+})();
+</script>

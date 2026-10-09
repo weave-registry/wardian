@@ -1,7 +1,7 @@
 # Spike: Wardian on a phone, with no computer behind it
 
 Can Wardian itself run in a phone's browser, compiled to WebAssembly, with a service worker in
-place of its web server? Two things decide it. Both are measured here. Neither folder is part of
+place of its web server? Three things decide it. All three are measured here. Neither folder is part of
 Wardian's build, its tests or its grade (`.hexa/project.json` excludes `spikes`).
 
 ## 1. Does the core compile and run as WebAssembly?
@@ -11,8 +11,7 @@ by path, with no copy and no adapter, and builds them for `wasm32-unknown-unknow
 
     rustup target add wasm32-unknown-unknown
     (cd spikes/wasm-core && cargo build --release --target wasm32-unknown-unknown)
-    NODE_PATH=$(npm root -g) node spikes/wasm-core/probe/run.js \
-      spikes/wasm-core/target/wasm32-unknown-unknown/release/wardian_wasm_core_spike.wasm
+    spikes/browser-runtime/run.sh
 
 **It compiles unchanged:** 0 errors, 0 warnings. The domain and use cases import no file,
 network, process or SQLite code; the hexagonal split already holds. The dependencies they need
@@ -27,8 +26,12 @@ in memory, and a suite part's frame document is built as the server builds it. T
 | a thread (`thread::spawn`, `thread::sleep`) | `jobs`, `studio`, `splunk` | 5 calls | a job-runner port; the browser adapter runs the job as a task and waits with a timer |
 
 `std` compiles both for `wasm32-unknown-unknown` and traps on the first call, so "it compiles"
-proves nothing here. The probes are the gate: when the two ports land, flip the last two checks
-in `probe/run.js` to expect a value.
+proves nothing here.
+
+**Fixed by ADR-2610091040.** Time and background work are now the `Clock` and `Tasks` ports, and
+a test keeps the core from reading the clock or starting a thread itself. `wasm-core/src/browser.rs`
+is a browser adapter for both: the page supplies the time and a blocking wait as imports, and
+tasks queue up. The real `JobRunner` runs a job through them in section 3.
 
 ## 2. Can a sealed frame work with no server?
 
@@ -62,16 +65,49 @@ apps would need C. The bridge covers `fetch`, which also covers
 `XMLHttpRequest`, `new Worker(url)` and dynamic `import()`, by rewriting them to `blob:` URLs made
 inside the frame, or by refusing them in `wardian check`.
 
+## 3. How does the core block, in a browser?
+
+The core is synchronous: its ports block (a file read, a database query, a model request, a
+sleep). A page cannot block. `browser-runtime/` runs the core in a dedicated worker, which can,
+and loads the page twice: as a plain static host serves it, and after a service worker has added
+the two headers that make it cross-origin isolated (COOP `same-origin`, COEP `require-corp`).
+
+    spikes/browser-runtime/run.sh
+
+| In the worker | Plain host | Isolated by the service worker |
+|---|---|---|
+| `SharedArrayBuffer` | no | yes |
+| `Clock::sleep(200 ms)` | 200 ms, by busy-waiting | 201 ms, by `Atomics.wait` |
+| the real `JobRunner`: a job polling 3 × 100 ms | done in 300 ms | done in 302 ms |
+| `wardian check`, a suite frame | run | run |
+| a blocking request (sync XHR) | works | works |
+| a blocking file (OPFS sync access handle) | works | works |
+| a request sent while a job runs | waits 280 ms | waits 281 ms |
+| a sealed frame (approach C) | opaque, no storage | opaque, no storage |
+
+- **Every blocking port has a blocking browser call in a worker.** Sleep is `Atomics.wait`; the
+  network is a synchronous `XMLHttpRequest`; files are OPFS sync access handles (and SQLite's
+  WebAssembly build uses the same handles). So the core needs no rewrite to `async`.
+- **`Atomics.wait` needs isolation, and a service worker can provide it.** A static host that
+  sends no headers is enough: the service worker adds them to every response, and the page is
+  isolated from its next load. Without isolation a sleep can only spin, burning battery.
+- **Isolation does not break the seal.** A sandboxed frame built as one document still runs with
+  an opaque origin and no storage.
+- **One worker is one thread.** A request sent while a background job runs waits for the job. A
+  300 ms job is harmless; a minute-long Make an app turn, or a Splunk search, would freeze the app
+  list for its length. Not measured here: a model request through sync XHR to Anthropic (it needs
+  the network and a key), and WebAssembly threads, which would give `Tasks` real concurrency.
+
 ## What this means
 
 Wardian in the browser is feasible without weakening the seal. The work it implies, in order:
 
-1. A `Clock` port and a job-runner port, so the core runs on the browser's clock and tasks.
-   Small; it changes no behaviour on the server.
+1. ~~A `Clock` port and a job-runner port.~~ Done: ADR-2610091040.
 2. Page frames built as one document with a bridge (C), on the server too, so one model of a
    frame holds everywhere and the browser suites test it.
-3. Browser adapters behind the ports: the service worker as the primary adapter, OPFS for
-   files, SQLite's WebAssembly build for `db`, WebCrypto for sealed keys, `fetch` for Claude.
+3. Browser adapters behind the ports, in a dedicated worker (ADR-2610091300): the service worker
+   as the primary adapter and the isolation headers, OPFS sync handles for files, SQLite's
+   WebAssembly build for `db`, WebCrypto for sealed keys, sync XHR for Claude.
 4. Installed to the home screen (a manifest), since Safari may clear a site's storage after
    about a week of non-use unless it is installed.
 

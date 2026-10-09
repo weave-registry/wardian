@@ -29,3 +29,4 @@ service-account.json
 /dist
 /spikes/*/target
 /spikes/*/Cargo.lock
+/spikes/browser-runtime/core.wasm

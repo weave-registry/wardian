@@ -3,6 +3,7 @@
 //! real source files from ../../src by path; it holds no copy of them.
 #![allow(dead_code, unused_imports)]
 
+mod browser;
 mod probe;
 
 #[path = "../../../src/domain"]
@@ -29,6 +30,7 @@ mod domain {
 mod ports {
     pub mod assets;
     pub mod calendar;
+    pub mod clock;
     pub mod db;
     pub mod drive;
     pub mod llm;
