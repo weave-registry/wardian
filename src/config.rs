@@ -2,6 +2,7 @@
 //! Part of the composition root: main.rs hands these values to the adapters and use cases.
 
 use crate::domain::splunk::SplunkConfig;
+use crate::usecases::aws_profiles::AwsEnv;
 use crate::ports::storage::FileSystem;
 use std::{
     path::{Path, PathBuf},
@@ -239,9 +240,10 @@ fn valid_label(l: &str) -> bool {
 }
 
 /// The service's variables beside DATA_DIR and WARDIAN_NO_OPEN (ADR-2610081800): the address, the
-/// home folder (which places the master key) and where the master key is, when set. Never a secret.
+/// home folder (which places the master key and `~/.aws`), where the master key is, and where the
+/// AWS config and credentials files are (ADR-2610091530), when set. Never a secret.
 pub fn service_env() -> Vec<(String, String)> {
-    ["ADDR", "HOME", "XDG_CONFIG_HOME", "WARDIAN_MASTER_KEY_FILE"].iter().filter_map(|k| env(k).map(|v| (k.to_string(), v))).collect()
+    ["ADDR", "HOME", "XDG_CONFIG_HOME", "WARDIAN_MASTER_KEY_FILE", "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE"].iter().filter_map(|k| env(k).map(|v| (k.to_string(), v))).collect()
 }
 
 /// The repository's example apps, which seed the working folder on the first start.
@@ -280,6 +282,10 @@ pub struct Settings {
     pub aws_access_key_id: Option<String>,
     pub aws_secret_access_key: Option<String>,
     pub aws_session_token: Option<String>,
+    /// An AWS profile (ADR-2610091530): AWS_PROFILE, the files AWS_CONFIG_FILE and
+    /// AWS_SHARED_CREDENTIALS_FILE name, WARDIAN_AWS_CLI, and PATH and HOME to find the rest.
+    pub aws: AwsEnv,
+    pub aws_profile: Option<String>,
     pub bedrock_base: Option<String>,
     pub bedrock_model: Option<String>,
     pub bedrock_quick_model: Option<String>,
@@ -321,6 +327,14 @@ impl Settings {
             aws_access_key_id: env("AWS_ACCESS_KEY_ID"),
             aws_secret_access_key: env("AWS_SECRET_ACCESS_KEY"),
             aws_session_token: env("AWS_SESSION_TOKEN"),
+            aws: AwsEnv {
+                home: env("HOME").map(PathBuf::from),
+                config_file: env("AWS_CONFIG_FILE").map(PathBuf::from),
+                credentials_file: env("AWS_SHARED_CREDENTIALS_FILE").map(PathBuf::from),
+                path: env("PATH"),
+                cli: env("WARDIAN_AWS_CLI"),
+            },
+            aws_profile: env("AWS_PROFILE"),
             bedrock_base: env("WARDIAN_BEDROCK_BASE_URL"),
             bedrock_model: env("WARDIAN_BEDROCK_MODEL"),
             bedrock_quick_model: env("WARDIAN_BEDROCK_QUICK_MODEL"),

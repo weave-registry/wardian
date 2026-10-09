@@ -564,6 +564,8 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
         // name accounts, models and apps, never a secret.
         (Method::Get, ["api", "keys"]) if admin => json_resp(200, s.keys.list()),
         (Method::Get, ["api", "agent"]) if admin => json_resp(200, studio.agent()),
+        (Method::Get, ["api", "ai", "aws-profiles"]) if admin => json_resp(200, studio.aws_profiles()),
+        (Method::Get, ["api", "ai", "aws-profiles"]) => json_resp(403, json!({ "error": "settings are locked" })),
         (Method::Get, ["api", "usage"]) if admin => json_resp(200, studio.usage()),
         (Method::Get, ["api", "keys" | "agent" | "usage"]) => json_resp(403, json!({ "error": "settings are locked" })),
         (Method::Get, ["api", "ai", "sessions"]) if admin => json_resp(200, studio.sessions()),

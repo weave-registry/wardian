@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+# An AWS profile's credential_process for the e2e tests (ADR-2610091530): prints the process JSON
+# with keys tests/fixtures/fake-bedrock.py accepts, valid for an hour, and notes each run in
+# $FAKE_AWS_LOG.
+import datetime, json, os, sys
+
+log = os.environ.get("FAKE_AWS_LOG")
+if log:
+    with open(log, "a") as f:
+        f.write("creds " + " ".join(sys.argv[1:]) + "\n")
+expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+print(json.dumps({
+    "Version": 1,
+    "AccessKeyId": "ASIAPROFILETEST",
+    "SecretAccessKey": "profile-test-secret",
+    "SessionToken": "profile-test-session-token",
+    "Expiration": expires.strftime("%Y-%m-%dT%H:%M:%SZ"),
+}))

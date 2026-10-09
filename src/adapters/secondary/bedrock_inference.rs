@@ -3,12 +3,15 @@
 //!
 //! Bedrock takes the model in the URL, not the body, and wants `anthropic_version`. It signs in
 //! with a Bedrock API key (a bearer token) or AWS access keys signed with Signature Version 4,
-//! done here with `ring`, which Wardian already carries for TLS, so there is no AWS SDK.
+//! done here with `ring`, which Wardian already carries for TLS, so there is no AWS SDK. With an
+//! AWS profile (ADR-2610091530) it asks the credentials port for keys before each request, and
+//! signs with them the same way.
 
 use crate::ports::calendar::Utc;
-use crate::ports::llm::{BedrockAuth, Llm, LlmAuth, LlmError, Tier};
+use crate::ports::llm::{AwsCredentials, BedrockAuth, Llm, LlmAuth, LlmError, Tier};
 use ring::{digest, hmac};
 use serde_json::{json, Value};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// The default models, as Bedrock cross-region inference profiles for the US. Override them with
@@ -23,14 +26,17 @@ pub struct Bedrock {
     base: Option<String>,
     main: String,
     quick: String,
+    /// The keys of AWS profiles.
+    profiles: Arc<dyn AwsCredentials>,
 }
 
 impl Bedrock {
-    pub fn new(base: Option<String>, main: Option<String>, quick: Option<String>) -> Bedrock {
+    pub fn new(base: Option<String>, main: Option<String>, quick: Option<String>, profiles: Arc<dyn AwsCredentials>) -> Bedrock {
         Bedrock {
             base: base.map(|b| b.trim_end_matches('/').to_string()),
             main: main.unwrap_or_else(|| DEFAULT_MODEL.into()),
             quick: quick.unwrap_or_else(|| QUICK_MODEL.into()),
+            profiles,
         }
     }
 
@@ -47,23 +53,37 @@ impl Bedrock {
         let url = format!("{}{path}", self.base(region));
         let payload = serde_json::to_vec(body).map_err(|e| LlmError::Unreadable(e.to_string()))?;
         let mut req = ureq::AgentBuilder::new().timeout(Duration::from_secs(600)).build().post(&url).set("Content-Type", "application/json").set("Accept", "application/json");
-        match auth {
-            BedrockAuth::ApiKey(token) => req = req.set("Authorization", &format!("Bearer {token}")),
-            BedrockAuth::AccessKeys { id, secret, session } => {
-                let host = host_of(&url);
-                let amz_date = amz_date(SystemTime::now());
-                let mut headers = vec![("content-type", "application/json".to_string()), ("host", host), ("x-amz-date", amz_date.clone())];
-                if !session.is_empty() {
-                    headers.push(("x-amz-security-token", session.clone()));
-                }
-                let signed = sign(&Request { method: "POST", path: &path, query: "", headers: &headers, payload: &payload }, &Scope { amz_date: &amz_date, region, service: SERVICE }, id, secret);
-                req = req.set("X-Amz-Date", &amz_date).set("Authorization", &signed);
-                if !session.is_empty() {
-                    req = req.set("X-Amz-Security-Token", session);
-                }
+        let fetched;
+        let keys = match auth {
+            BedrockAuth::ApiKey(token) => {
+                req = req.set("Authorization", &format!("Bearer {token}"));
+                None
+            }
+            BedrockAuth::AccessKeys { id, secret, session } => Some((id, secret, session)),
+            BedrockAuth::Profile { name, cli } => {
+                fetched = self.profiles.keys(name, cli).map_err(LlmError::SignIn)?;
+                Some((&fetched.id, &fetched.secret, &fetched.session))
+            }
+        };
+        if let Some((id, secret, session)) = keys {
+            let host = host_of(&url);
+            let amz_date = amz_date(SystemTime::now());
+            let mut headers = vec![("content-type", "application/json".to_string()), ("host", host), ("x-amz-date", amz_date.clone())];
+            if !session.is_empty() {
+                headers.push(("x-amz-security-token", session.clone()));
+            }
+            let signed = sign(&Request { method: "POST", path: &path, query: "", headers: &headers, payload: &payload }, &Scope { amz_date: &amz_date, region, service: SERVICE }, id, secret);
+            req = req.set("X-Amz-Date", &amz_date).set("Authorization", &signed);
+            if !session.is_empty() {
+                req = req.set("X-Amz-Security-Token", session);
             }
         }
-        let resp = req.send_bytes(&payload).map_err(|e| failure(e, region, model))?;
+        let resp = req.send_bytes(&payload).map_err(|e| failure(e, region, model));
+        // Keys AWS refused (expired early, or revoked) are fetched again next time.
+        if let (Err(LlmError::Status(403, _)), BedrockAuth::Profile { name, .. }) = (&resp, auth) {
+            self.profiles.forget(name);
+        }
+        let resp = resp?;
         resp.into_json().map_err(|e| LlmError::Unreadable(e.to_string()))
     }
 }
@@ -259,6 +279,45 @@ mod tests {
         (format!("http://{addr}"), paths)
     }
 
+    /// Profiles that give the keys `id`/`secret`/`session`, counting fetches and forgets.
+    struct Keys {
+        fetched: std::sync::Mutex<Vec<String>>,
+        fail: Option<&'static str>,
+    }
+    impl AwsCredentials for Keys {
+        fn keys(&self, profile: &str, cli: &str) -> Result<crate::ports::llm::AwsKeys, String> {
+            self.fetched.lock().unwrap().push(format!("keys {profile} {cli}"));
+            match self.fail {
+                Some(why) => Err(why.to_string()),
+                None => Ok(crate::ports::llm::AwsKeys { id: "ASIAPROFILE".into(), secret: "profile-secret".into(), session: "profile-token".into() }),
+            }
+        }
+        fn forget(&self, profile: &str) {
+            self.fetched.lock().unwrap().push(format!("forget {profile}"));
+        }
+    }
+
+    fn no_profiles() -> Arc<dyn AwsCredentials> {
+        Arc::new(Keys { fetched: Default::default(), fail: Some("no profiles here") })
+    }
+
+    /// ADR-2610091530: a profile's keys are asked for at each request and signed with SigV4,
+    /// session token included; a refusal drops them; a profile without keys says why, unchanged.
+    #[test]
+    fn bedrock_profile_keys_sign_the_request() {
+        let (base, _) = fake_bedrock(403, "ExpiredTokenException", "The security token included in the request is expired");
+        let keys = Arc::new(Keys { fetched: Default::default(), fail: None });
+        let b = Bedrock::new(Some(base.clone()), None, None, keys.clone());
+        let auth = LlmAuth::Bedrock { region: "us-east-1".into(), auth: BedrockAuth::Profile { name: "work".into(), cli: "/x/aws".into() } };
+        assert!(matches!(b.test_key(&auth, QUICK_MODEL), Err(LlmError::Status(403, _))));
+        assert_eq!(*keys.fetched.lock().unwrap(), ["keys work /x/aws", "forget work"]);
+        let b = Bedrock::new(Some(base), None, None, Arc::new(Keys { fetched: Default::default(), fail: Some("Run `aws sso login --profile work`, then try again") }));
+        match b.test_key(&auth, QUICK_MODEL) {
+            Err(LlmError::SignIn(why)) => assert_eq!(why, "Run `aws sso login --profile work`, then try again"),
+            _ => panic!("expected the sign-in's own words"),
+        }
+    }
+
     fn api_key() -> LlmAuth {
         LlmAuth::Bedrock { region: "eu-west-1".into(), auth: BedrockAuth::ApiKey("k".into()) }
     }
@@ -268,7 +327,7 @@ mod tests {
     #[test]
     fn claim_a_403_says_to_enable_the_model_in_the_region() {
         let (base, _) = fake_bedrock(403, "AccessDeniedException", "You don't have access to the model with the specified model ID.");
-        let b = Bedrock::new(Some(base), Some("my.model-v1:0".into()), None);
+        let b = Bedrock::new(Some(base), Some("my.model-v1:0".into()), None, no_profiles());
         match b.messages(&api_key(), &json!({ "max_tokens": 1, "messages": [] })) {
             Err(LlmError::Status(403, msg)) => {
                 assert!(msg.contains("cannot use my.model-v1:0 in eu-west-1") && msg.contains("enable it in the Bedrock console under Model access"), "{msg}");
@@ -276,7 +335,7 @@ mod tests {
             _ => panic!("expected a 403"),
         }
         let (base, _) = fake_bedrock(403, "UnrecognizedClientException", "The security token included in the request is invalid.");
-        match Bedrock::new(Some(base), None, None).test_key(&api_key(), QUICK_MODEL) {
+        match Bedrock::new(Some(base), None, None, no_profiles()).test_key(&api_key(), QUICK_MODEL) {
             Err(LlmError::Status(403, msg)) => assert!(msg.starts_with("AWS refused the sign-in"), "{msg}"),
             _ => panic!("expected a 403"),
         }
@@ -287,11 +346,11 @@ mod tests {
     /// in the request's URL too.
     #[test]
     fn claim_the_models_can_be_overridden() {
-        let defaults = Bedrock::new(None, None, None);
+        let defaults = Bedrock::new(None, None, None, no_profiles());
         assert_eq!((defaults.model(Tier::Main), defaults.model(Tier::Quick)), (DEFAULT_MODEL.to_string(), QUICK_MODEL.to_string()));
         assert!(DEFAULT_MODEL.starts_with("us.anthropic.") && QUICK_MODEL.starts_with("us.anthropic."));
         let (base, paths) = fake_bedrock(400, "ValidationException", "stop here");
-        let b = Bedrock::new(Some(base), Some("eu.anthropic.main-v1:0".into()), Some("eu.anthropic.quick-v1:0".into()));
+        let b = Bedrock::new(Some(base), Some("eu.anthropic.main-v1:0".into()), Some("eu.anthropic.quick-v1:0".into()), no_profiles());
         assert_eq!((b.model(Tier::Main), b.model(Tier::Quick)), ("eu.anthropic.main-v1:0".to_string(), "eu.anthropic.quick-v1:0".to_string()));
         let _ = b.messages(&api_key(), &json!({ "max_tokens": 1, "messages": [] }));
         let _ = b.test_key(&api_key(), &b.model(Tier::Quick));

@@ -9,6 +9,7 @@ mod tests;
 
 mod domain {
     pub mod agent;
+    pub mod aws_profile;
     pub mod check;
     pub mod components;
     pub mod db;
@@ -33,6 +34,7 @@ mod ports {
     pub mod db;
     pub mod drive;
     pub mod llm;
+    pub mod programs;
     pub mod secrets;
     pub mod service;
     pub mod service_manager;
@@ -42,6 +44,7 @@ mod ports {
     pub mod web;
 }
 mod usecases {
+    pub mod aws_profiles;
     pub mod background;
     pub mod catalog;
     pub mod check;
@@ -76,6 +79,7 @@ mod adapters {
         pub mod google_drive;
         pub mod link_fetch;
         pub mod local_disk;
+        pub mod local_programs;
         pub mod sealed_secrets;
         pub mod service_host;
         pub mod splunk_rest;
@@ -86,11 +90,12 @@ mod adapters {
 }
 
 use adapters::primary::{cli, http, stop_log::StopLog, terminal};
-use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, sealed_secrets::SealedSecrets, splunk_rest::SplunkRest, sqlite_store::SqliteStore, system_clock::{SystemClock, Threads}, wardian_probe};
+use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, local_programs::LocalPrograms, sealed_secrets::SealedSecrets, splunk_rest::SplunkRest, sqlite_store::SqliteStore, system_clock::{SystemClock, Threads}, wardian_probe};
 use config::Settings;
 use ports::{assets::Assets, clock::{Clock, Tasks}, db::Database, llm::BedrockAuth, secrets::Secrets, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
 use std::sync::Arc;
 use usecases::{
+    aws_profiles::AwsProfiles,
     catalog::{Hub, HubPorts},
     check::Checker,
     db::Db,
@@ -387,13 +392,15 @@ fn serve(cfg: Settings, no_open: bool) {
         cfg.local_root.clone(),
         cfg.refresh_every,
     ));
+    let profiles = Arc::new(AwsProfiles::new(Arc::clone(&fs), Arc::new(LocalPrograms), Arc::clone(&clock), cfg.aws.clone()));
     let providers = Providers {
         anthropic: Arc::new(anthropic_inference::Anthropic::new(cfg.anthropic_base.as_deref().unwrap_or(anthropic_inference::DEFAULT_BASE), cfg.ai_model.clone())),
-        bedrock: Arc::new(Bedrock::new(cfg.bedrock_base.clone(), cfg.bedrock_model.clone(), cfg.bedrock_quick_model.clone())),
+        bedrock: Arc::new(Bedrock::new(cfg.bedrock_base.clone(), cfg.bedrock_model.clone(), cfg.bedrock_quick_model.clone(), profiles.clone())),
         anthropic_key: cfg.anthropic_key.clone(),
         anthropic_workspace: cfg.anthropic_workspace.clone(),
         provider: cfg.ai_provider.clone(),
-        bedrock_env: bedrock_from_env(&cfg),
+        bedrock_env: bedrock_from_env(&cfg, &profiles),
+        profiles,
     };
     let stores = Stores { fs: Arc::clone(&fs), secrets: Arc::clone(&secrets), checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&fs), &cfg.data_dir, Arc::clone(&clock))) };
     let studio = Arc::new(Studio::new(stores, providers, Arc::clone(&assets), Arc::clone(&hub), Arc::clone(&checker), &cfg.data_dir, Arc::clone(&clock), Arc::clone(&tasks)));
@@ -440,13 +447,29 @@ fn serve(cfg: Settings, no_open: bool) {
     std::process::exit(1);
 }
 
-/// Bedrock from the usual AWS variables: a region, and a Bedrock API key or access keys.
-fn bedrock_from_env(cfg: &Settings) -> Option<BedrockSettings> {
-    let region = cfg.aws_region.clone()?;
-    let auth = match (&cfg.bedrock_token, &cfg.aws_access_key_id, &cfg.aws_secret_access_key) {
-        (Some(t), _, _) => BedrockAuth::ApiKey(t.clone()),
-        (None, Some(id), Some(secret)) => BedrockAuth::AccessKeys { id: id.clone(), secret: secret.clone(), session: cfg.aws_session_token.clone().unwrap_or_default() },
+/// Bedrock from the usual AWS variables: a region, and a Bedrock API key or access keys; or,
+/// with neither, AWS_PROFILE (ADR-2610091530), in AWS_REGION or else the profile's region.
+fn bedrock_from_env(cfg: &Settings, profiles: &AwsProfiles) -> Option<BedrockSettings> {
+    let auth = match (&cfg.bedrock_token, &cfg.aws_access_key_id, &cfg.aws_secret_access_key, &cfg.aws_profile) {
+        (Some(t), _, _, _) => BedrockAuth::ApiKey(t.clone()),
+        (None, Some(id), Some(secret), _) => BedrockAuth::AccessKeys { id: id.clone(), secret: secret.clone(), session: cfg.aws_session_token.clone().unwrap_or_default() },
+        (None, _, _, Some(name)) => {
+            let region = match (&cfg.aws_region, profiles.region_of(name)) {
+                (Some(r), _) => r.clone(),
+                (None, Ok(Some(r))) => r,
+                (None, Ok(None)) => {
+                    eprintln!("bedrock: AWS_PROFILE: {}; set AWS_REGION", domain::aws_profile::no_region(name));
+                    return None;
+                }
+                (None, Err(e)) => {
+                    eprintln!("bedrock: AWS_PROFILE: {e}");
+                    return None;
+                }
+            };
+            let cli = profiles.find_cli().unwrap_or_default();
+            return Some(BedrockSettings { region, auth: BedrockAuth::Profile { name: name.clone(), cli } });
+        }
         _ => return None,
     };
-    Some(BedrockSettings { region, auth })
+    Some(BedrockSettings { region: cfg.aws_region.clone()?, auth })
 }

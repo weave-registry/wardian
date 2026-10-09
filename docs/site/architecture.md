@@ -37,6 +37,7 @@ command line or the web server. `config.rs` is the one place that reads environm
 
 | Module | Does |
 |---|---|
+| `aws_profile.rs` | AWS profiles for Bedrock: the INI form of `~/.aws/config` and `~/.aws/credentials`, which profile signs in how, the process JSON, and the words for each failure. |
 | `check.rs` (and `check/split.rs`) | The rules of `wardian check`: does a package follow the format, and if not, what is wrong, in words. `split.rs` warns about a suite part that does too much. |
 | `components.rs` | The component library as data: which components exist, which files each needs, how a suite lists them. |
 | `db.rs` | The rules and limits of the `db` capability. |
@@ -61,7 +62,8 @@ command line or the web server. `config.rs` is the one place that reads environm
 | `storage.rs` | the disk |
 | `db.rs` | each package's SQLite database |
 | `drive.rs` | Google Drive |
-| `llm.rs` | Claude, through the Anthropic API or Amazon Bedrock |
+| `llm.rs` | Claude, through the Anthropic API or Amazon Bedrock, and the keys of an AWS profile |
+| `programs.rs` | running another program (the AWS CLI, a `credential_process`) and reading what it prints |
 | `splunk.rs` | Splunk's REST API |
 | `web.rs` | fetching a zip from a link |
 | `calendar.rs` | UTC dates from a number of seconds; no clock is read here |
@@ -70,6 +72,7 @@ command line or the web server. `config.rs` is the one place that reads environm
 
 | Use case | Does |
 |---|---|
+| `aws_profiles.rs` | AWS profiles for Bedrock: lists them, finds the AWS CLI, and fetches a profile's keys, kept in memory until shortly before they expire. |
 | `catalog.rs` | The live source of apps (local folder or Drive), settings behind it, removing and restoring apps, imports, permissions, and the server-side capability check. |
 | `check.rs` | `wardian check`: a folder, a folder of apps, or a zip unpacked by the real importer. |
 | `db.rs` | The `db` capability, through the database port. |
@@ -98,6 +101,7 @@ command line or the web server. `config.rs` is the one place that reads environm
 | Adapter | Does |
 |---|---|
 | `local_disk.rs` | The disk, including private (mode `600`) writes. |
+| `local_programs.rs` | Runs a program without a shell, with a time limit, and reads its output. |
 | `embedded_assets.rs` | The files built into the program (see [below](#embedded-assets)). |
 | `google_drive.rs` | Drive through a service account: list, download, cache by checksum, refresh. |
 | `link_fetch.rs` | Download a zip from a link, refusing internal addresses. |

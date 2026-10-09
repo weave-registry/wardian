@@ -5,6 +5,8 @@
 // keep (Send, CSV, Save table, saved tables).
 const { chromium } = require('playwright');
 const B = process.env.BASE, SPLUNK = process.env.SPLUNK, ANTHROPIC = process.env.ANTHROPIC;
+// BEDROCK_AUTH=profile-process|profile-cli: Claude on Bedrock through an AWS profile (ADR-2610091530).
+const PROFILE = process.env.PROVIDER === 'bedrock' && (process.env.BEDROCK_AUTH || '').startsWith('profile-');
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ok  ', m); } else { fail++; console.log('  FAIL', m); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -357,6 +359,14 @@ async function answer(page, re, yes, what) {
     r = await post('/api/ai/provider', { provider: 'bedrock', region: 'us-west-2', auth: 'api-key' });
     ok(r.status === 200 && r.body.bedrock.settings.region === 'us-west-2', 'the region changes without typing the key again');
     r = await post('/api/ai/provider', { provider: 'bedrock', region: 'us-east-1', auth: 'api-key' });
+    // BEDROCK_AUTH=profile-…: the samples below sign in with an AWS profile instead (ADR-2610091530).
+    if (PROFILE) {
+      r = await post('/api/ai/provider', { provider: 'bedrock', region: '', auth: 'profile', profile: 'nobody' });
+      ok(r.status === 400 && /^there is no AWS profile "nobody" in .*config or .*credentials/.test(r.body.error), 'an unknown AWS profile names the files read: ' + r.body.error);
+      r = await post('/api/ai/provider', { provider: 'bedrock', region: '', auth: 'profile', profile: 'e2e' });
+      ok(r.status === 200 && r.body.bedrock.settings.auth === 'profile' && r.body.bedrock.settings.profile === 'e2e' && r.body.bedrock.settings.region === 'us-east-1', 'the AWS profile is tested and saved, in its region: ' + JSON.stringify(r.body.bedrock && r.body.bedrock.settings));
+      ok(!/ASIAPROFILETEST|profile-test-se/.test(JSON.stringify(await (await fetch(B + '/api/status')).json())), 'status never shows the profile\'s keys');
+    }
   } else {
     r = await post('/api/ai/key', { key: 'org-key' });
     ok(r.status === 400 && /anthropic-workspace-id/.test(r.body.error), 'a key without a workspace is refused, with the API\'s reason');
@@ -386,7 +396,11 @@ async function answer(page, re, yes, what) {
   ok(/Claude wrote the search/.test(await ai.locator('#status').textContent()) && await ai.locator('wardian-progress').getAttribute('state') === 'done', 'ask says it handed the search over');
   const prompts = await (await fetch(ANTHROPIC + '/prompts')).json();
   ok(prompts.length === 2 && prompts[0].model.includes('haiku'), 'two requests: a quick pick, then the search');
-  if (process.env.PROVIDER === 'bedrock') ok(prompts[0].model.startsWith('us.anthropic.') && (await (await fetch(process.env.BEDROCK + '/seen')).json()).includes('bearer'), 'the requests went through Bedrock with its model ids and the bearer key');
+  if (process.env.PROVIDER === 'bedrock' && !PROFILE) ok(prompts[0].model.startsWith('us.anthropic.') && (await (await fetch(process.env.BEDROCK + '/seen')).json()).includes('bearer'), 'the requests went through Bedrock with its model ids and the bearer key');
+  if (PROFILE) {
+    const signed = await (await fetch(process.env.BEDROCK + '/signed')).json();
+    ok(prompts[0].model.startsWith('us.anthropic.') && signed.length >= 3 && signed.every(x => x.key_id === 'ASIAPROFILETEST' && x.session_token === 'profile-test-session-token'), 'the requests went through Bedrock, signed with SigV4 by the profile\'s key and session token: ' + signed.length);
+  }
   ok(!JSON.stringify(prompts).includes('ann.lee@example.com') && JSON.stringify(prompts).includes('<email>'), 'email addresses never reach Claude');
   await inputs.locator('#tblName', { hasText: 'JMeter' }).waitFor({ timeout: 5000 }).catch(() => {});
   await useTable(inputs);

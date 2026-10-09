@@ -189,6 +189,9 @@ const api = async (p, body) => {
   await page.check('#aiProvBedrock');
   await page.selectOption('#bdAuth', 'access-keys');
   await checkNames(page, '#settings', 'Settings, Claude on Bedrock with access keys', 10);
+  await page.selectOption('#bdAuth', 'profile');
+  await page.locator('#bdProfile option').first().waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
+  await checkNames(page, '#settings', 'Settings, Claude on Bedrock with an AWS profile', 10);
   await page.selectOption('#bdAuth', 'api-key');
   await page.check('#aiProvAnthropic');
   await page.click('#setTab-source');

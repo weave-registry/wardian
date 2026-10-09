@@ -14,6 +14,10 @@ TMP=$(mktemp -d)
 PID=
 trap '[ -n "$PID" ] && kill "$PID" 2>/dev/null; rm -rf "$TMP"' EXIT
 # No apps folder on the command line: Wardian fills <data>/apps from ./apps, as on a real first start.
+# The AWS profile choice in Settings lists profiles from throwaway files, never the user's ~/.aws.
+mkdir -p "$TMP/aws"
+printf '[profile a11y]\nregion = us-east-1\n' >"$TMP/aws/config"
+AWS_CONFIG_FILE="$TMP/aws/config" AWS_SHARED_CREDENTIALS_FILE="$TMP/aws/credentials" WARDIAN_AWS_CLI=none \
 DATA_DIR="$TMP/data" ADDR="127.0.0.1:0" "$BIN" >"$TMP/server.log" 2>&1 &
 PID=$!
 disown "$PID"

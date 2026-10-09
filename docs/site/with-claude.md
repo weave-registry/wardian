@@ -20,17 +20,30 @@ back to the browser. If the key is not scoped to one workspace, also give the wo
 
 ### Amazon Bedrock
 
-If you reach Claude through AWS, choose **Amazon Bedrock** in the same card (ADR-2610071106).
+If you reach Claude through AWS, choose **Amazon Bedrock** in the same card. Wardian signs in to Bedrock in one of three ways (ADR-2610071106, ADR-2610091530). Choose the
+first that fits:
 
-1. Give the region.
-2. Give a Bedrock API key, or AWS access keys (with a session token for temporary credentials).
-3. Press **Test and use Bedrock**.
+1. **An AWS profile.** The profiles in `~/.aws/config` and `~/.aws/credentials` are listed with
+   their regions; choose one, or **Other…** to type a name. The region fills in from the profile.
+   Wardian keeps the profile's name and region, never its keys: it asks AWS CLI v2
+   (`aws configure export-credentials --profile <name> --format process`) for short-lived keys
+   when it needs them, and keeps them in memory until five minutes before they expire. That
+   covers every kind of profile: access keys, IAM Identity Center (SSO), assumed roles, MFA and
+   `credential_process`. Without the AWS CLI, Wardian reads a profile's access keys itself, or
+   runs its `credential_process`; an SSO or role profile then needs AWS CLI v2. Wardian records
+   where the AWS CLI is when you save, so a Wardian started with `wardian start`, which has a bare
+   `PATH`, finds it. When an SSO sign-in expires, run `aws sso login --profile <name>`, then try
+   again.
+2. **A Bedrock API key**, made in the Bedrock console.
+3. **AWS access keys**, with a session token for temporary keys. They expire; a profile does not
+   need them typed again.
 
-Wardian tests them with one small request before it saves them to `data/bedrock.json`. The models
-must be enabled for your account in that region (Bedrock console → Model access). By default Wardian
+Press **Test and use Bedrock**. Wardian signs one tiny request before it saves the settings, sealed,
+in `data/bedrock.json`. The models must be enabled for your account in that region (Bedrock console
+→ Model access). By default Wardian
 uses the US inference profiles of Claude Sonnet 4.5 (to build apps) and Claude Haiku 4.5 (for quick
 requests). Set `WARDIAN_BEDROCK_MODEL` and `WARDIAN_BEDROCK_QUICK_MODEL` for another geography
-(`eu.`, `apac.`, `global.`) or a newer model. AWS profiles, SSO and instance roles are not read.
+(`eu.`, `apac.`, `global.`) or a newer model. Instance roles and container credentials are not read.
 
 ## Describe the app well
 

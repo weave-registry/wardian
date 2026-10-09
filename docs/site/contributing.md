@@ -58,8 +58,8 @@ Claude and Bedrock where it needs them, and drives the pages in a real browser.
 |---|---|
 | `run-suite-e2e.sh` | The kernel runs the USL lab, and a hostile suite (`tests/fixtures/rogue`) is blocked at every way out of its sandbox. |
 | `run-channels-e2e.sh` | A page app sends on a channel and a suite in another tab receives; the permission is asked, remembered, revoked and refused. |
-| `run-splunk-e2e.sh` | The Splunk table app searches a fake Splunk, sends the table on a channel, and the USL lab reads it; `claude:sample` through a fake Anthropic API (or Bedrock with `PROVIDER=bedrock`); the permission questions. |
-| `run-background-e2e.sh` | Make an app keeps working when you leave the chat; the browser test runs out of sight, a failure goes back to Claude, and the button says how it went. |
+| `run-splunk-e2e.sh` | The Splunk table app searches a fake Splunk, sends the table on a channel, and the USL lab reads it; `claude:sample` through a fake Anthropic API (or Bedrock with `PROVIDER=bedrock`, by API key and through two AWS profiles); the permission questions. |
+| `run-background-e2e.sh` | Make an app keeps working when you leave the chat; the browser test runs out of sight, a failure goes back to Claude, and the button says how it went. With `PROVIDER=bedrock` it runs three times: by access keys, through an AWS profile whose `credential_process` prints the keys, and through an SSO profile a fake `aws` on `PATH` signs in to, each in a throwaway `HOME`. |
 | `run-export-e2e.sh` | One Wardian exports an app with its data, and a second, empty Wardian imports it. |
 | `run-layout-e2e.sh` | Arrange keeps each viewer's own layout of a suite, a page app and a module app. |
 | `run-snapshot-e2e.sh` | Save as web page: each file has no script and no `on…` attribute, shows only visible panels, and makes no request; a suite that tries to sneak in a script fails to. |
