@@ -1,6 +1,6 @@
 //! Google Drive as a source of apps, through a service account. Only the adapter talks to Google.
 
-pub use crate::domain::package::{safe_segment, unix_now, valid_drive_id, Folder, RefreshStatus, APP_MARKERS, MAX_APP_FILES, MAX_DEPTH, SKIP_DIRS};
+pub use crate::domain::package::{safe_segment, valid_drive_id, Folder, RefreshStatus, APP_MARKERS, MAX_APP_FILES, MAX_DEPTH, SKIP_DIRS};
 use std::{sync::Arc, time::Duration};
 
 /// Makes a client from a service account key file (its JSON text).

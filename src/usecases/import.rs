@@ -2,8 +2,7 @@
 //! `wardian check`). Which files go where is the domain's plan; this reads the zip and writes.
 
 use crate::domain::import_plan::{entries_declared, entry_parts, is_app_file, plan, within_limits, Entry, Plan, MAX_ENTRIES, MAX_FILE_BYTES, MAX_TOTAL_BYTES};
-use crate::domain::package::{random_u32, unix_now};
-use crate::ports::storage::FileSystem;
+use crate::ports::{clock::Clock, storage::FileSystem};
 use serde::Serialize;
 use std::{
     io::{Cursor, Read},
@@ -19,7 +18,7 @@ pub struct Imported {
 
 /// `before_replace` is called with the name of each app an import is about to replace, so its
 /// history can keep the version that is going away.
-pub fn import_zip(fs: &dyn FileSystem, bytes: &[u8], zip_name: &str, root: &Path, replace: bool, before_replace: &dyn Fn(&str)) -> Result<Imported, String> {
+pub fn import_zip(fs: &dyn FileSystem, clock: &dyn Clock, bytes: &[u8], zip_name: &str, root: &Path, replace: bool, before_replace: &dyn Fn(&str)) -> Result<Imported, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("not a valid zip: {e}"))?;
     let declared = entries_declared(bytes).unwrap_or(zip.len() as u64);
     if zip.len() > MAX_ENTRIES || declared > MAX_ENTRIES as u64 {
@@ -39,7 +38,7 @@ pub fn import_zip(fs: &dyn FileSystem, bytes: &[u8], zip_name: &str, root: &Path
 
     // Unpack everything into a hidden staging folder first, so a bad file
     // part-way through leaves the apps folder exactly as it was.
-    let staging = root.join(format!(".import-{}-{:08x}", unix_now(), random_u32()));
+    let staging = root.join(format!(".import-{}-{:08x}", clock.now(), clock.nonce()));
     let result = stage(fs, &mut zip, &plans, &staging).and_then(|()| commit(fs, &plans, &staging, root, before_replace));
     fs.remove_dir_all(&staging);
     result?;

@@ -10,12 +10,17 @@ use crate::usecases::{check::Checker, docs::Docs, scaffold::Scaffold};
 use serde_json::Value;
 use std::{fs, path::Path, sync::Arc};
 
+/// The system's clock, for the tests that do not set the time.
+fn sys() -> Arc<dyn crate::ports::clock::Clock> {
+    Arc::new(crate::adapters::secondary::system_clock::SystemClock)
+}
+
 fn checker() -> Checker {
-    Checker::new(Arc::new(LocalDisk))
+    Checker::new(Arc::new(LocalDisk), sys())
 }
 
 fn scaffold() -> Scaffold {
-    Scaffold::new(Arc::new(LocalDisk), Arc::new(Embedded), Arc::new(checker()))
+    Scaffold::new(Arc::new(LocalDisk), Arc::new(Embedded), Arc::new(checker()), sys())
 }
 
 fn passes(path: &Path) -> bool {
@@ -531,7 +536,7 @@ fn seeding_history_and_promote() {
     assert!(workspace::add_examples(&disk, Some(&source), &[], &working).unwrap().is_empty(), "an example already given is not added again");
 
     // The first change keeps the original as version 1; saves add versions; a restore is a version.
-    let history = History::new(Arc::new(LocalDisk), &data, &working);
+    let history = History::new(Arc::new(LocalDisk), &data, &working, sys());
     assert_eq!(history.before_change("hello"), Some(1));
     write(&working.join("hello/index.html"), "<p>two</p>\n");
     assert_eq!(history.record("hello", "make-an-app", "says two"), Some(2));
@@ -607,7 +612,7 @@ fn splunk_results_load_into_a_table_in_chunks_and_page() {
     let fake = Arc::new(FakeSplunk { rows: 120_000, asked: std::sync::Mutex::new(Vec::new()) });
     let cfg = crate::ports::splunk::SplunkConfig { url: "https://splunk.test:8089".into(), token: "t".into(), ..Default::default() };
     let (secrets, checks) = key_stores(&dir);
-    let splunk = Splunk::new(secrets, checks, Arc::new(Arc::clone(&fake)), Arc::clone(&db), &dir, Some(cfg));
+    let splunk = Splunk::new(secrets, checks, Arc::new(Arc::clone(&fake)), Arc::clone(&db), &dir, Some(cfg), sys());
     let out = splunk.search_into("splunk-table", "search", "index=x", "-24h", "", &crate::ports::service::Unwatched).unwrap();
     assert_eq!(out["total"], 120_000);
     assert_eq!(out["columns"], json!(["n", "host"]), "internal fields stay out");
@@ -687,23 +692,33 @@ impl crate::ports::service::Builder for NoBuilder {
 /// Secrets as the server keeps them, sealed over the real disk, with their tests recorded in `dir`.
 fn key_stores(dir: &Path) -> (Arc<dyn crate::ports::secrets::Secrets>, Arc<crate::usecases::keys::KeyChecks>) {
     use crate::adapters::secondary::sealed_secrets::SealedSecrets;
-    (Arc::new(SealedSecrets::with_key(Arc::new(LocalDisk), [3; 32])), Arc::new(crate::usecases::keys::KeyChecks::new(Arc::new(LocalDisk), dir)))
+    (Arc::new(SealedSecrets::with_key(Arc::new(LocalDisk), [3; 32])), Arc::new(crate::usecases::keys::KeyChecks::new(Arc::new(LocalDisk), dir, sys())))
 }
 
 /// The master key every test server seals with, so no test touches the user's key file (ADR-2610081501).
 const TEST_MASTER_KEY: &str = "0101010101010101010101010101010101010101010101010101010101010101";
 
 fn job_runner(tag: &str, rows: usize) -> (crate::usecases::jobs::JobRunner, Arc<SlowSplunk>, std::path::PathBuf) {
+    use crate::adapters::secondary::system_clock::{SystemClock, Threads};
+    let (splunk, fake, dir) = splunk_with(tag, rows, Arc::new(SystemClock));
+    (crate::usecases::jobs::JobRunner::new(Arc::new(splunk), Arc::new(NoBuilder), Arc::new(SystemClock), Arc::new(Threads)), fake, dir)
+}
+
+fn job_runner_with(tag: &str, clock: Arc<dyn crate::ports::clock::Clock>, tasks: Arc<dyn crate::ports::clock::Tasks>) -> (crate::usecases::jobs::JobRunner, Arc<SlowSplunk>, std::path::PathBuf) {
+    let (splunk, fake, dir) = splunk_with(tag, 0, Arc::clone(&clock));
+    (crate::usecases::jobs::JobRunner::new(Arc::new(splunk), Arc::new(NoBuilder), clock, tasks), fake, dir)
+}
+
+/// Splunk over the slow fake, with its own database and keys in a fresh folder.
+fn splunk_with(tag: &str, rows: usize, clock: Arc<dyn crate::ports::clock::Clock>) -> (crate::usecases::splunk::Splunk, Arc<SlowSplunk>, std::path::PathBuf) {
     use crate::adapters::secondary::sqlite_store::SqliteStore;
     use crate::ports::db::Database;
-    use crate::usecases::{jobs::JobRunner, splunk::Splunk};
     let dir = tmp(tag);
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&dir));
     let fake = Arc::new(SlowSplunk { rows, done: Default::default(), cancelled: Default::default() });
     let cfg = crate::ports::splunk::SplunkConfig { url: "https://splunk.test:8089".into(), token: "t".into(), ..Default::default() };
     let (secrets, checks) = key_stores(&dir);
-    let splunk = Splunk::new(secrets, checks, Arc::new(Arc::clone(&fake)), db, &dir, Some(cfg));
-    (JobRunner::new(Arc::new(splunk), Arc::new(NoBuilder)), fake, dir)
+    (crate::usecases::splunk::Splunk::new(secrets, checks, Arc::new(Arc::clone(&fake)), db, &dir, Some(cfg), clock), fake, dir)
 }
 
 /// Asks for the job every 50 ms until `until` holds, for at most 20 s.
@@ -791,8 +806,8 @@ fn export_with_data_round_trips_and_never_carries_secrets() {
         let apps = data.join("apps");
         let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), data));
         let db: Arc<dyn Database> = Arc::new(SqliteStore::new(data));
-        let history = Arc::new(History::new(Arc::clone(&fs), data, &apps));
-        (Exporter::new(Arc::clone(&fs), Arc::new(checker()), Arc::clone(&db), Arc::clone(&state), history, &apps, data), state, db)
+        let history = Arc::new(History::new(Arc::clone(&fs), data, &apps, sys()));
+        (Exporter::new(Arc::clone(&fs), Arc::new(checker()), Arc::clone(&db), Arc::clone(&state), history, &apps, data, sys()), state, db)
     };
 
     // A Wardian with the loan planner, its data, a build folder, history, and every secret filled.
@@ -846,7 +861,7 @@ fn export_with_data_round_trips_and_never_carries_secrets() {
     assert_eq!(preview["data"]["tables"][0]["rows"], 2);
 
     // Into a fresh Wardian, without the data: the app only.
-    import_zip(&*fs, &full, "loan-planner.wardian", &b.join("apps"), false, &|_| {}).unwrap();
+    import_zip(&*fs, &*sys(), &full, "loan-planner.wardian", &b.join("apps"), false, &|_| {}).unwrap();
     assert!(b.join("apps/loan-planner/suite.json").is_file());
     assert!(!b.join("apps/loan-planner/.wardian").exists(), "the manifest folder is not installed as part of the app");
     assert_eq!(state_b.app_data("loan-planner").unwrap(), json!({}), "no data unless asked");
@@ -964,7 +979,7 @@ fn hostile_zips_are_refused_and_nothing_lands_outside() {
         zip_of(&v)
     };
     let refused = |bytes: &[u8], why: &str| {
-        let e = import_zip(&disk, bytes, "x.zip", &apps, true, &|_| {}).err().unwrap_or_else(|| panic!("{why}: the zip was imported"));
+        let e = import_zip(&disk, &*sys(), bytes, "x.zip", &apps, true, &|_| {}).err().unwrap_or_else(|| panic!("{why}: the zip was imported"));
         assert!(e.contains(why) && e.contains("refused"), "expected \"{why}\", got: {e}");
         assert_eq!(files_under(&base), Vec::<String>::new(), "{why}: nothing may be written");
     };
@@ -982,7 +997,7 @@ fn hostile_zips_are_refused_and_nothing_lands_outside() {
     refused(&zip_with_link(&files, "hello/passwd", "/etc/passwd"), "symbolic link");
     refused(&zip_with_link(&files, "hello/ui", "../../.."), "symbolic link");
     let ignored = zip_with_link(&files, "hello/node_modules/.bin/tool", "/bin/sh");
-    let done = import_zip(&disk, &ignored, "x.zip", &apps, true, &|_| {}).unwrap();
+    let done = import_zip(&disk, &*sys(), &ignored, "x.zip", &apps, true, &|_| {}).unwrap();
     assert!(done.skipped.iter().any(|s| s.contains("a link")), "{:?}", done.skipped);
     assert!(!apps.join("hello/node_modules").exists());
     fs::remove_dir_all(apps.join("hello")).unwrap();
@@ -1013,7 +1028,7 @@ fn hostile_zips_are_refused_and_nothing_lands_outside() {
 
     assert!(!outside.exists(), "nothing was written outside the apps folder");
     // A sound zip still imports.
-    import_zip(&disk, &app(&[]), "x.zip", &apps, false, &|_| {}).unwrap();
+    import_zip(&disk, &*sys(), &app(&[]), "x.zip", &apps, false, &|_| {}).unwrap();
     assert!(apps.join("hello/app.wasm").is_file());
     let _ = fs::remove_dir_all(base);
 }
@@ -1030,11 +1045,11 @@ fn hostile_data_in_a_wardian_file_is_refused_and_the_app_keeps_its_own() {
     let apps = data.join("apps");
     let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&disk), &data));
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&data));
-    let history = Arc::new(History::new(Arc::clone(&disk), &data, &apps));
-    let ex = Exporter::new(Arc::clone(&disk), Arc::new(checker()), Arc::clone(&db), Arc::clone(&state), history, &apps, &data);
+    let history = Arc::new(History::new(Arc::clone(&disk), &data, &apps, sys()));
+    let ex = Exporter::new(Arc::clone(&disk), Arc::new(checker()), Arc::clone(&db), Arc::clone(&state), history, &apps, &data, sys());
 
     // The app is installed and has data of its own.
-    import_zip(&*disk, &zip_of(&[("hello/app.wasm", EMPTY_WASM)]), "hello.zip", &apps, false, &|_| {}).unwrap();
+    import_zip(&*disk, &*sys(), &zip_of(&[("hello/app.wasm", EMPTY_WASM)]), "hello.zip", &apps, false, &|_| {}).unwrap();
     db.create_table("hello", "kept", &["a".into()], &["INTEGER"], true).unwrap();
     db.insert_rows("hello", "kept", &["a".into()], &[vec![json!(7)]]).unwrap();
     state.set_app_value("hello", "main", "k", json!("mine")).unwrap();
@@ -1506,8 +1521,8 @@ fn hub_with_drive(apps: &Path, data: &Path, drive: Arc<dyn crate::ports::drive::
     use crate::usecases::{catalog::{Hub, HubPorts}, history::History};
     let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
     let (secrets, checks) = key_stores(data);
-    let ports = HubPorts { fs: Arc::clone(&fs), drive, web: Arc::new(LinkFetcher::new(false)), assets: Arc::new(Embedded), secrets };
-    let history = Arc::new(History::new(fs, data, apps));
+    let ports = HubPorts { fs: Arc::clone(&fs), drive, web: Arc::new(LinkFetcher::new(false)), assets: Arc::new(Embedded), secrets, clock: sys() };
+    let history = Arc::new(History::new(fs, data, apps, sys()));
     Hub::new(ports, checks, history, data.to_path_buf(), apps.to_path_buf(), std::time::Duration::from_secs(60))
 }
 
@@ -1836,11 +1851,11 @@ fn claim_an_import_refuses_a_taken_name() {
     fs::write(apps.join("hello/index.html"), b"<p>mine</p>").unwrap();
     let before = files_under(&base);
     let zip = zip_of(&[("hello/app.wasm", EMPTY_WASM), ("hello/index.html", b"<p>theirs</p>"), ("hello/new.js", b"//")]);
-    let e = import_zip(&LocalDisk, &zip, "hello.zip", &apps, false, &|_| {}).err().expect("a taken name is refused");
+    let e = import_zip(&LocalDisk, &*sys(), &zip, "hello.zip", &apps, false, &|_| {}).err().expect("a taken name is refused");
     assert!(e.contains("already in the local folder: hello"), "{e}");
     assert_eq!(files_under(&base), before, "no file was added or removed");
     assert_eq!(fs::read(apps.join("hello/index.html")).unwrap(), b"<p>mine</p>");
-    import_zip(&LocalDisk, &zip, "hello.zip", &apps, true, &|_| {}).unwrap();
+    import_zip(&LocalDisk, &*sys(), &zip, "hello.zip", &apps, true, &|_| {}).unwrap();
     assert_eq!(fs::read(apps.join("hello/index.html")).unwrap(), b"<p>theirs</p>", "Replace overwrites it");
     let _ = fs::remove_dir_all(base);
 }
@@ -1858,7 +1873,7 @@ fn claim_a_zip_of_more_than_10000_entries_is_refused() {
     let mut entries: Vec<(&str, &[u8])> = vec![("hello/app.wasm", EMPTY_WASM)];
     entries.extend(names.iter().map(|n| (n.as_str(), b"x".as_slice())));
     assert_eq!(entries.len(), MAX_ENTRIES + 1);
-    let e = import_zip(&LocalDisk, &zip_of(&entries), "x.zip", &apps, true, &|_| {}).err().expect("refused");
+    let e = import_zip(&LocalDisk, &*sys(), &zip_of(&entries), "x.zip", &apps, true, &|_| {}).err().expect("refused");
     assert!(e.contains("more than 10000 entries"), "{e}");
     assert_eq!(files_under(&base), Vec::<String>::new(), "nothing was written");
     let _ = fs::remove_dir_all(base);
@@ -1924,7 +1939,7 @@ fn claim_zip_wardian_and_rustle_files_are_accepted() {
     let zip = zip_of(&[("app.wasm", EMPTY_WASM), ("index.html", b"<p>hi</p>")]);
     for ext in ["zip", "wardian", "rustle"] {
         let apps = base.join(ext);
-        let done = import_zip(&LocalDisk, &zip, &format!("my-app.{ext}"), &apps, false, &|_| {}).unwrap();
+        let done = import_zip(&LocalDisk, &*sys(), &zip, &format!("my-app.{ext}"), &apps, false, &|_| {}).unwrap();
         assert_eq!(done.apps, ["my-app"], ".{ext}: named after the file");
         let file = base.join(format!("my-app.{ext}"));
         fs::write(&file, &zip).unwrap();
@@ -1943,7 +1958,7 @@ fn claim_import_is_lenient() {
     let import = |entries: &[(&str, &[u8])], zip_name: &str| {
         n.set(n.get() + 1);
         let apps = base.join(format!("t{}", n.get()));
-        let done = import_zip(&LocalDisk, &zip_of(entries), zip_name, &apps, false, &|_| {}).unwrap();
+        let done = import_zip(&LocalDisk, &*sys(), &zip_of(entries), zip_name, &apps, false, &|_| {}).unwrap();
         (done, apps)
     };
     let w = EMPTY_WASM;
@@ -2051,9 +2066,9 @@ fn studio_on(fake: &Arc<FakeClaude>, base: &Path) -> (crate::usecases::studio::S
     fs::create_dir_all(&data).unwrap();
     let (secrets, checks) = key_stores(&data);
     let disk: Arc<dyn FileSystem> = Arc::new(LocalDisk);
-    let stores = Stores { fs: Arc::clone(&disk), secrets, checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&disk), &data)) };
+    let stores = Stores { fs: Arc::clone(&disk), secrets, checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&disk), &data, sys())) };
     let providers = Providers { anthropic: fake.clone(), bedrock: fake.clone(), anthropic_key: None, anthropic_workspace: None, provider: None, bedrock_env: None };
-    let studio = Studio::new(stores, providers, Arc::new(Embedded), Arc::new(hub(&apps, &data)), Arc::new(Checker::new(disk)), &data);
+    let studio = Studio::new(stores, providers, Arc::new(Embedded), Arc::new(hub(&apps, &data)), Arc::new(Checker::new(disk, sys())), &data, sys(), Arc::new(crate::adapters::secondary::system_clock::Threads));
     (studio, checks, data)
 }
 
@@ -2083,7 +2098,7 @@ fn usage_sample_is_counted_per_app_and_stopped_at_its_cap() {
     assert_eq!(usage["totals"]["notes"]["requests"], 2);
     assert_eq!(usage["caps"]["notes"], 300);
     assert_eq!(usage["caps"]["other"], 200_000, "the default cap");
-    let again = crate::usecases::usage::Meter::new(Arc::new(LocalDisk), &data);
+    let again = crate::usecases::usage::Meter::new(Arc::new(LocalDisk), &data, sys());
     assert_eq!(again.used_today("notes"), 300, "usage.json keeps the count");
     let _ = fs::remove_dir_all(base);
 }
@@ -2098,7 +2113,7 @@ fn usage_make_an_app_stops_at_its_cap() {
     let (studio, _, data) = studio_on(&fake, &base);
     studio.set_key(GOOD_KEY, None).unwrap();
     studio.set_agent(&json!({ "build_daily_tokens": 100 })).unwrap();
-    crate::usecases::usage::Meter::new(Arc::new(LocalDisk), &data).record(BUILDER, &json!({ "usage": { "input_tokens": 100 } }));
+    crate::usecases::usage::Meter::new(Arc::new(LocalDisk), &data, sys()).record(BUILDER, &json!({ "usage": { "input_tokens": 100 } }));
     // A fresh studio reads the count the meter above saved.
     let (studio, _, _) = studio_on(&fake, &base);
     studio.set_key(GOOD_KEY, None).unwrap();
@@ -2463,7 +2478,7 @@ fn keys_a_test_running_when_its_key_is_removed_leaves_no_test() {
     test.join().unwrap();
     remove.join().unwrap();
     assert_eq!(checks.last("splunk"), Value::Null, "the key is gone, so its test is gone");
-    assert_eq!(KeyChecks::new(Arc::new(LocalDisk), &base).last("splunk"), Value::Null, "and stays gone after a restart");
+    assert_eq!(KeyChecks::new(Arc::new(LocalDisk), &base, sys()).last("splunk"), Value::Null, "and stays gone after a restart");
     let _ = fs::remove_dir_all(base);
 }
 
@@ -2475,10 +2490,10 @@ fn keys_an_unreadable_record_of_tests_is_kept() {
     fs::create_dir_all(&base).unwrap();
     let file = base.join("key-checks.json");
     fs::write(&file, b"{\"splunk\": {\"ok\": true, ").unwrap();
-    let checks = KeyChecks::new(Arc::new(LocalDisk), &base);
+    let checks = KeyChecks::new(Arc::new(LocalDisk), &base, sys());
     checks.record::<()>("aws", &Ok(()));
     assert_eq!(fs::read(base.join("key-checks.json.unreadable")).unwrap(), b"{\"splunk\": {\"ok\": true, ", "the old record is kept");
-    assert_eq!(KeyChecks::new(Arc::new(LocalDisk), &base).last("aws")["ok"], true, "and new tests are saved");
+    assert_eq!(KeyChecks::new(Arc::new(LocalDisk), &base, sys()).last("aws")["ok"], true, "and new tests are saved");
     let _ = fs::remove_dir_all(base);
 }
 
@@ -2868,7 +2883,7 @@ fn demos_every_website_download_imports_into_wardian() {
     for (path, bytes) in zips {
         let app = path.trim_start_matches("downloads/").strip_suffix(".wardian").unwrap_or_else(|| panic!("{path} is a .wardian file"));
         let apps = base.join(app);
-        import_zip(&LocalDisk, bytes, &format!("{app}.wardian"), &apps, false, &|_| {}).unwrap_or_else(|e| panic!("{app}: {e}"));
+        import_zip(&LocalDisk, &*sys(), bytes, &format!("{app}.wardian"), &apps, false, &|_| {}).unwrap_or_else(|e| panic!("{app}: {e}"));
         let (ok, report) = checker().check_dir(&apps.join(app), app);
         assert!(ok, "{app} imported and checked: {report}");
     }
@@ -3269,4 +3284,121 @@ mod service_flows {
         let docs = crate::usecases::docs::Docs::new(Arc::new(crate::adapters::secondary::embedded_assets::Embedded));
         assert!(matches!(cli::run(&["start".into(), "--at-logon".into()], &super::scaffold(), &docs, &r.data, &no_export, &no_key, &service), Command::Exit(2)));
     }
+}
+
+// ---------- time and background work are ports (ADR-2610091040) ----------
+
+/// The time a test chooses, a sleep that only moves it on, and a nonce that counts.
+struct TestClock {
+    now_ms: std::sync::atomic::AtomicU64,
+    nonce: std::sync::atomic::AtomicU32,
+}
+
+impl TestClock {
+    fn at(ms: u64) -> Arc<TestClock> {
+        Arc::new(TestClock { now_ms: ms.into(), nonce: 0.into() })
+    }
+}
+
+impl crate::ports::clock::Clock for TestClock {
+    fn now_ms(&self) -> u64 {
+        self.now_ms.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    fn sleep(&self, d: std::time::Duration) {
+        self.now_ms.fetch_add(u64::try_from(d.as_millis()).unwrap_or(u64::MAX), std::sync::atomic::Ordering::SeqCst);
+    }
+    fn nonce(&self) -> u32 {
+        self.nonce.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// Runs each task where it is started, before `spawn` returns.
+struct InlineTasks;
+
+impl crate::ports::clock::Tasks for InlineTasks {
+    fn spawn(&self, task: Box<dyn FnOnce() + Send>) {
+        task()
+    }
+}
+
+/// The source of the core, without its test modules: what would run in a browser.
+fn core_sources() -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut dirs = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src/domain"), Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ports"), Path::new(env!("CARGO_MANIFEST_DIR")).join("src/usecases")];
+    while let Some(dir) = dirs.pop() {
+        for e in fs::read_dir(&dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                dirs.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                let text = fs::read_to_string(&p).unwrap();
+                let code = text.split("#[cfg(test)]").next().unwrap_or("").to_string();
+                out.push((p.display().to_string(), code));
+            }
+        }
+    }
+    assert!(out.len() > 30, "found the core's files: {}", out.len());
+    out
+}
+
+/// The domain, ports and use cases never read the system clock or start a thread: those trap in a
+/// browser (spikes/README.md). They ask the `Clock` and `Tasks` ports.
+#[test]
+fn clock_the_core_reads_no_clock_and_starts_no_thread() {
+    let banned = ["SystemTime", "Instant", "thread::spawn", "thread::sleep", "std::thread"];
+    let found: Vec<String> = core_sources()
+        .iter()
+        .flat_map(|(path, code)| code.lines().enumerate().filter(|(_, l)| !l.trim_start().starts_with("//")).filter_map(move |(i, l)| banned.iter().find(|b| l.contains(*b)).map(|b| format!("{path}:{}: {b}", i + 1))))
+        .collect();
+    assert!(found.is_empty(), "the core reads the clock or starts a thread itself:\n{}", found.join("\n"));
+}
+
+/// A version's time and a job's times come from the clock the use case was given.
+#[test]
+fn clock_use_cases_take_the_time_they_are_given() {
+    use crate::ports::service::{AppHistory, JobKind, Jobs};
+    use crate::usecases::history::History;
+    let dir = tmp("clock-time");
+    let (data, apps) = (dir.join("data"), dir.join("apps"));
+    fs::create_dir_all(apps.join("hello")).unwrap();
+    fs::write(apps.join("hello/app.wasm"), "\0asm\x01\0\0\0").unwrap();
+    let clock = TestClock::at(1_700_000_000_000);
+
+    let history = History::new(Arc::new(LocalDisk), &data, &apps, clock.clone());
+    assert_eq!(history.before_change("hello"), Some(1));
+    assert_eq!(history.versions("hello").unwrap()["versions"][0]["at"], 1_700_000_000, "seconds, from the clock given");
+
+    let (jobs, _, jobs_dir) = job_runner_with("clock-jobs", clock.clone(), Arc::new(InlineTasks));
+    let id = jobs.start(JobKind::AiSample, "splunk-table", "table", &serde_json::json!({"prompt": "hi"})).unwrap()["job"].as_str().unwrap().to_string();
+    let j = jobs.get(&id, Some("splunk-table")).unwrap();
+    assert_eq!(j["started"], 1_700_000_000_000u64, "{j}");
+    assert_eq!(j["state"], "failed", "the task ran through the Tasks port, before start returned: {j}");
+    let _ = (fs::remove_dir_all(dir), fs::remove_dir_all(jobs_dir));
+}
+
+/// Splunk waits between polls by asking the clock to sleep, and times a search out by it: on a
+/// test clock, a search that never finishes reaches its 15-minute limit at once.
+#[test]
+fn clock_splunk_waits_and_times_out_on_the_clock_it_is_given() {
+    use crate::ports::clock::Clock;
+    use std::sync::atomic::Ordering;
+    let clock = TestClock::at(5_000);
+    let (splunk, fake, dir) = splunk_with("clock-splunk", 10, clock.clone());
+    let t = std::time::Instant::now();
+    let err = splunk.search("index=x", "", "", &NoWatch).unwrap_err();
+    assert!(err.contains("longer than 15 minutes"), "{err}");
+    assert!(t.elapsed() < std::time::Duration::from_secs(10), "no real waiting: {:?}", t.elapsed());
+    assert!(clock.now_ms() - 5_000 > 15 * 60 * 1000, "the given clock moved past the limit: {}", clock.now_ms());
+    assert!(fake.cancelled.load(Ordering::SeqCst), "the search was cancelled on Splunk");
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// A watch that never stops.
+struct NoWatch;
+
+impl crate::ports::service::Watch for NoWatch {
+    fn stopped(&self) -> bool {
+        false
+    }
+    fn progress(&self, _: u64) {}
 }

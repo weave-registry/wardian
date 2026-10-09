@@ -17,10 +17,11 @@ use super::keys::{KeyChecks, KeyEntry, KeyOwner};
 use super::usage::Meter;
 use crate::domain::agent::{AgentSettings, BUILDER, LIMITS};
 use crate::domain::components::{files_for, page_tags, wire_suite, GUIDE};
-use crate::domain::package::{random_u32, safe_rel, unix_now, SKIP_DIRS};
+use crate::domain::package::{safe_rel, SKIP_DIRS};
 use crate::domain::studio::{free_name, json_in, size_text, Session, EMPTY_WASM};
 use crate::ports::{
     assets::Assets,
+    clock::{Clock, Tasks},
     llm::{BedrockAuth, Llm, LlmAuth, LlmError, Tier},
     secrets::Secrets,
     service::Builder,
@@ -34,7 +35,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    thread,
     time::Duration,
 };
 
@@ -148,6 +148,7 @@ struct Api {
     /// Where a refused key is recorded, under the provider's id.
     checks: Arc<KeyChecks>,
     provider_id: &'static str,
+    clock: Arc<dyn Clock>,
 }
 
 impl Api {
@@ -179,7 +180,7 @@ impl Api {
                         if cancel.load(Ordering::Relaxed) {
                             return Err("stopped".into());
                         }
-                        thread::sleep(Duration::from_millis(100));
+                        self.clock.sleep(Duration::from_millis(100));
                     }
                     wait *= 2;
                 }
@@ -207,7 +208,7 @@ impl Api {
             match self.call(&body) {
                 Ok(r) => break r,
                 Err(LlmError::Status(code, _)) if matches!(code, 500 | 502 | 503 | 529) && wait <= 8 => {
-                    thread::sleep(Duration::from_secs(wait));
+                    self.clock.sleep(Duration::from_secs(wait));
                     wait *= 2;
                 }
                 Err(LlmError::Status(429, _)) => return Err("rate_limited: Claude's rate limit was reached".into()),
@@ -372,6 +373,8 @@ pub struct Studio {
     workspace_path: PathBuf,
     workspace: Mutex<String>,
     sessions: Mutex<HashMap<String, Arc<Mutex<Session>>>>,
+    clock: Arc<dyn Clock>,
+    tasks: Arc<dyn Tasks>,
 }
 
 /// What the build loop works with: the model, the apps folder and the checker.
@@ -380,10 +383,11 @@ struct Workshop<'a> {
     fs: &'a dyn FileSystem,
     hub: &'a Hub,
     checker: &'a Checker,
+    clock: &'a dyn Clock,
 }
 
 impl Studio {
-    pub fn new(stores: Stores, providers: Providers, assets: Arc<dyn Assets>, hub: Arc<Hub>, checker: Arc<Checker>, data_dir: &Path) -> Studio {
+    pub fn new(stores: Stores, providers: Providers, assets: Arc<dyn Assets>, hub: Arc<Hub>, checker: Arc<Checker>, data_dir: &Path, clock: Arc<dyn Clock>, tasks: Arc<dyn Tasks>) -> Studio {
         let Stores { fs, secrets, checks, meter } = stores;
         let mut unreadable = BTreeMap::new();
         let mut secret = |id: &'static str, path: &Path| match secrets.read(path) {
@@ -452,6 +456,8 @@ impl Studio {
             workspace_path,
             workspace: Mutex::new(workspace),
             sessions: Mutex::new(HashMap::new()),
+            clock,
+            tasks,
         }
     }
 
@@ -481,6 +487,7 @@ impl Studio {
             meter: Arc::clone(&self.meter),
             checks: Arc::clone(&self.checks),
             provider_id: id,
+            clock: Arc::clone(&self.clock),
             llm,
             auth,
             assets: Arc::clone(&self.assets),
@@ -726,8 +733,8 @@ impl Studio {
                         return Err(format!("no local app \"{app}\" to change"));
                     }
                 }
-                let id = format!("{:x}{:08x}", unix_now(), random_u32());
-                let s = Arc::new(Mutex::new(Session::new(app.map(String::from), unix_now())));
+                let id = format!("{:x}{:08x}", self.clock.now(), self.clock.nonce());
+                let s = Arc::new(Mutex::new(Session::new(app.map(String::from), self.clock.now())));
                 self.remember(&id, Arc::clone(&s));
                 (id, s)
             }
@@ -756,15 +763,15 @@ impl Studio {
         let kind = if text.starts_with("[browser test]") { "test" } else { "user" };
         s.events.push(json!({ "kind": kind, "text": text }));
         s.busy = true;
-        s.last_used = unix_now();
+        s.last_used = self.clock.now();
         s.cancel.store(false, Ordering::Relaxed);
         let cancel = Arc::clone(&s.cancel);
         drop(s);
 
-        let (fs, hub, checker) = (Arc::clone(&self.fs), Arc::clone(&self.hub), Arc::clone(&self.checker));
+        let (fs, hub, checker, clock) = (Arc::clone(&self.fs), Arc::clone(&self.hub), Arc::clone(&self.checker), Arc::clone(&self.clock));
         let worker = Arc::clone(&session);
-        thread::spawn(move || {
-            let shop = Workshop { api: &api, fs: &*fs, hub: &hub, checker: &checker };
+        self.tasks.spawn(Box::new(move || {
+            let shop = Workshop { api: &api, fs: &*fs, hub: &hub, checker: &checker, clock: &*clock };
             let result = run_turn(&shop, &worker, &cancel);
             let mut s = worker.lock().unwrap();
             match result {
@@ -773,7 +780,7 @@ impl Studio {
                 Err(e) => s.events.push(json!({ "kind": "error", "text": e })),
             }
             s.busy = false;
-        });
+        }));
         Ok(json!({ "session": id }))
     }
 
@@ -803,7 +810,7 @@ impl Studio {
     /// The chats of the last day, newest first, with what each needs: so any tab can show
     /// "working", pick up a chat, or run the browser test of a save nobody has tested yet.
     pub fn sessions(&self) -> Value {
-        let now = unix_now();
+        let now = self.clock.now();
         let mut out: Vec<(u64, Value)> = self
             .sessions
             .lock()
@@ -822,7 +829,7 @@ impl Studio {
     /// being tested by another tab. Then every tab shows "Trying the app…".
     pub fn claim_test(&self, id: &str, saved: usize) -> Result<Value, String> {
         let s = self.sessions.lock().unwrap().get(id).cloned().ok_or("that chat has ended (Wardian restarted)")?;
-        let ok = s.lock().unwrap().claim_test(saved, unix_now());
+        let ok = s.lock().unwrap().claim_test(saved, self.clock.now());
         Ok(json!({ "claimed": ok }))
     }
 
@@ -830,7 +837,7 @@ impl Studio {
     pub fn tested(&self, id: &str, body: &Value) -> Result<Value, String> {
         let s = self.sessions.lock().unwrap().get(id).cloned().ok_or("that chat has ended (Wardian restarted)")?;
         let saved = usize::try_from(body["saved"].as_u64().ok_or("which save was tested?")?).map_err(|_| "which save was tested?")?;
-        let recorded = s.lock().unwrap().record_test(saved, body["ok"].as_bool() == Some(true), body["text"].as_str().unwrap_or(""), unix_now());
+        let recorded = s.lock().unwrap().record_test(saved, body["ok"].as_bool() == Some(true), body["text"].as_str().unwrap_or(""), self.clock.now());
         Ok(json!({ "recorded": recorded }))
     }
 
@@ -870,13 +877,13 @@ fn materialize(fs: &dyn FileSystem, files: &Files, dir: &Path) -> Result<(), Str
 }
 
 /// A hidden folder inside the apps folder, so the final move is one rename.
-fn staging_dir(root: &Path) -> PathBuf {
-    root.join(format!(".ai-{}-{:08x}", unix_now(), random_u32()))
+fn staging_dir(root: &Path, clock: &dyn Clock) -> PathBuf {
+    root.join(format!(".ai-{}-{:08x}", clock.now(), clock.nonce()))
 }
 
 impl Workshop<'_> {
     fn check_files(&self, files: &Files, name: &str) -> Result<(bool, String), String> {
-        let dir = staging_dir(self.hub.local_root());
+        let dir = staging_dir(self.hub.local_root(), self.clock);
         let r = materialize(self.fs, files, &dir).map(|()| self.checker.check_dir(&dir, name));
         self.fs.remove_dir_all(&dir);
         r.map_err(|e| format!("cannot write the files to check them: {e}"))
@@ -890,7 +897,7 @@ impl Workshop<'_> {
             Some(a) => a.to_string(),
             None => free_name(wanted, &|n| self.fs.exists(&root.join(n))),
         };
-        let dir = staging_dir(root);
+        let dir = staging_dir(root, self.clock);
         self.fs.create_dir_all(root)?;
         if let Err(e) = materialize(self.fs, files, &dir) {
             self.fs.remove_dir_all(&dir);
@@ -905,7 +912,7 @@ impl Workshop<'_> {
         let target = root.join(&name);
         let replaced = if self.fs.exists(&target) { history.before_change(&name) } else { None };
         // Move the current copy aside first, so the app is never missing for longer than a rename.
-        let aside = root.join(format!(".old-{name}-{:08x}", random_u32()));
+        let aside = root.join(format!(".old-{name}-{:08x}", self.clock.nonce()));
         if self.fs.exists(&target) {
             if let Err(e) = self.fs.rename(&target, &aside) {
                 self.fs.remove_dir_all(&dir);
