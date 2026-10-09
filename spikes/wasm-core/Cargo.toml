@@ -1,0 +1,19 @@
+[package]
+name = "wardian-wasm-core-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Its own workspace, so the spike never joins Wardian's build.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+# Only what src/domain, src/ports and src/usecases import, at Wardian's versions.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }

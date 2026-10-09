@@ -27,3 +27,5 @@ service-account.json
 # Helper agents work in their own copies here
 /.claude/worktrees/
 /dist
+/spikes/*/target
+/spikes/*/Cargo.lock

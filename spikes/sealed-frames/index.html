@@ -1,0 +1,69 @@
+<!doctype html><meta charset="utf-8"><title>Sealed frames, no server</title>
+<pre id="out">running</pre>
+<script>
+// Three ways to frame a page app when the "server" is a service worker. Each frame reports
+// what worked: its own script, its own data, the host's storage, and the outside network.
+const results = {};
+function frame(name, attrs) {
+  return new Promise((resolve) => {
+    const f = document.createElement('iframe');
+    for (const [k, v] of Object.entries(attrs)) f.setAttribute(k, v);
+    const done = (r) => { results[name] = r; resolve(); };
+    const t = setTimeout(() => done('no report within 5s'), 5000);
+    addEventListener('message', function on(e) {
+      if (e.source !== f.contentWindow || e.data.bridge) return;
+      removeEventListener('message', on); clearTimeout(t); done(e.data);
+    });
+    document.body.append(f);
+  });
+}
+// C: the host builds one document. Scripts the page names are put in the page, and a small
+// bridge answers the frame's relative fetches by asking the service worker, by message.
+async function ask(path) {
+  const id = Math.random();
+  return new Promise((res) => {
+    navigator.serviceWorker.addEventListener('message', function on(e) {
+      if (e.data.id !== id) return;
+      navigator.serviceWorker.removeEventListener('message', on); res(e.data);
+    });
+    navigator.serviceWorker.controller.postMessage({ id, path });
+  });
+}
+const BRIDGE = `<script>(() => {
+  const pending = new Map(); let n = 0;
+  addEventListener('message', (e) => { if (e.source === parent && e.data.bridge) { pending.get(e.data.id)(e.data); pending.delete(e.data.id); } });
+  const real = fetch;
+  self.fetch = (input, init) => {
+    const u = String(input instanceof Request ? input.url : input);
+    if (/^[a-z]+:/i.test(u)) return real(input, init);
+    return new Promise((res, rej) => {
+      const id = ++n;
+      pending.set(id, (m) => m.ok ? res(new Response(m.body, { headers: { 'Content-Type': m.type } })) : rej(new TypeError('not in package')));
+      parent.postMessage({ bridge: true, id, url: u }, '*');
+    });
+  };
+})();<\/script>`;
+async function build(base, path) {
+  let html = (await ask(base + path)).body;
+  const re = /<script src="\.\/([^"]+)"><\/script>/g;
+  for (const [tag, rel] of [...html.matchAll(re)]) {
+    html = html.replace(tag, '<script>' + (await ask(base + rel)).body + '<\/script>');
+  }
+  const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src 'none'">`;
+  return csp + BRIDGE + html;
+}
+addEventListener('message', async (e) => {
+  if (!e.data || !e.data.bridge || e.data.ok !== undefined) return;
+  const r = await ask('/apps/demo/' + e.data.url.replace(/^\.\//, ''));
+  e.source.postMessage({ bridge: true, id: e.data.id, ok: r.ok, type: r.type, body: r.body }, '*');
+});
+(async () => {
+  await navigator.serviceWorker.register('sw.js');
+  if (!navigator.serviceWorker.controller) await new Promise((r) => navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }));
+  await frame('A_sandboxed_src', { sandbox: 'allow-scripts', src: '/apps/demo/index.html' });
+  await frame('B_same_origin_src', { sandbox: 'allow-scripts allow-same-origin', src: '/apps/demo/index.html' });
+  await frame('C_sandboxed_built', { sandbox: 'allow-scripts', srcdoc: await build('/apps/demo/', 'index.html') });
+  document.getElementById('out').textContent = JSON.stringify(results, null, 1);
+  window.__results = results;
+})();
+</script>
