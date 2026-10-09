@@ -1,5 +1,7 @@
 # Wardian
 
+<a href="https://github.com/gaberger/hexa"><img src=".github/assets/built-with-hexa.svg" alt="built with hexa" height="20"></a>
+
 **Small apps, sealed. On your machine.**
 
 Wardian keeps the small tools you make, often with AI, on a computer you control. It serves them
