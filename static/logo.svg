@@ -1,25 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Wardian">
-  <!-- A Wardian case: the sealed glass case that carried living plants safely across oceans.
-       The case is Wardian (sealed); the copper leaf is your app, alive inside it. -->
-  <style>
-    .case { stroke: #2F6F63; }
-    .glass { fill: #2F6F63; fill-opacity: .1; }
-    .base { fill: #2F6F63; }
-    @media (prefers-color-scheme: dark) {
-      .case { stroke: #6CBFAD; } .glass { fill: #6CBFAD; fill-opacity: .14; } .base { fill: #6CBFAD; }
-    }
-  </style>
-  <defs>
-    <linearGradient id="g" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#A63D17"/>
-      <stop offset="1" stop-color="#E9773F"/>
-    </linearGradient>
-  </defs>
-  <path class="glass" d="M6 25V12.5L16 4.5l10 8V25Z"/>
-  <g transform="translate(7.6 10.4) scale(.5)">
-    <path d="M5.5 26.5C5 15 13 5.5 27.5 4.5 28 18.5 18.5 27 5.5 26.5Z" fill="url(#g)"/>
-    <path d="M5.5 26.5 23 9" fill="none" stroke="#FFF6EC" stroke-width="2.4" stroke-linecap="round"/>
-  </g>
-  <path class="case" d="M6 25V12.5L16 4.5l10 8V25M6 12.5h20" fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
-  <rect class="base" x="3.5" y="24.5" width="25" height="4" rx="1.2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Wardian">
+  <!-- A Wardian case: the sealed glass case that carried living plants safely across oceans. The
+       case is Wardian (sealed); the leaves are your app, alive inside it. The website's mark. -->
+  <rect width="40" height="40" rx="10" fill="#183e32"/>
+  <path d="M10 16 20 8l10 8v17H10Z" fill="none" stroke="#dce8a5" stroke-width="1.4"/>
+  <path d="M20 8v25M10 17h20M20 30c-9-1-8-10-8-10 8 0 8 10 8 10Zm0-4c8-1 8-9 8-9-8 0-8 9-8 9Z" fill="none" stroke="#dce8a5" stroke-width="1.3"/>
 </svg>

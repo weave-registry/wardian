@@ -12,6 +12,11 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- One mark everywhere: `/logo.svg`, and with it the docs, the component gallery, and the macOS and
+  Linux app icons, is the website's green Wardian case.
+
 ## [0.4.7] - 2026-10-09
 
 ### Added
