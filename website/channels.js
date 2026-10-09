@@ -119,12 +119,14 @@ const WardianChannels = (() => {
       document.head.append(Object.assign(document.createElement('style'), {id: 'wardian-perm-css', textContent: `
         .wardian-perm { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 0 0 .75rem; padding: .6rem .8rem;
           position: sticky; top: 8px; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,.15);
-          border: 1px solid #e6b89f; border-radius: 8px; background: #fbe9de; color: #3b1d0e; font: 14px/1.4 system-ui, sans-serif; }
+          border: 1px solid #b9c98a; border-radius: 6px; background: #e9efcf; color: #183e32; font: 14px/1.45 'DM Sans', system-ui, sans-serif; }
         .wardian-perm span { flex: 1; min-width: 14rem; }
-        .wardian-perm button { font: inherit; border-radius: 6px; padding: .3rem .7rem; cursor: pointer; border: 1px solid #c9a28c; background: #fff; color: #3b1d0e; }
-        .wardian-perm button.yes { background: #b9471f; border-color: #b9471f; color: #fff; }
-        @media (prefers-color-scheme: dark) { .wardian-perm { background: #3a2418; border-color: #6b3b22; color: #f6e3d6; }
-          .wardian-perm button { background: #1f1b16; color: #f6e3d6; border-color: #6b3b22; } .wardian-perm button.yes { background: #f08a5d; border-color: #f08a5d; color: #1a0f08; } }`}));
+        .wardian-perm button { font: inherit; font-weight: 500; border-radius: 4px; padding: .3rem .7rem; cursor: pointer; border: 1px solid #7d8c6a; background: #fbfbf6; color: #183e32; }
+        .wardian-perm button.yes { background: #183e32; border-color: #183e32; color: #f6f5ef; }
+        .wardian-perm button:focus-visible { outline: 2px solid #788d35; outline-offset: 2px; }
+        @media (prefers-color-scheme: dark) { .wardian-perm { background: #21503f; border-color: #4a6351; color: #f6f5ef; }
+          .wardian-perm button { background: #183e32; color: #f6f5ef; border-color: #6f8f7a; } .wardian-perm button.yes { background: #dce8a5; border-color: #dce8a5; color: #183e32; }
+          .wardian-perm button:focus-visible { outline-color: #94ad51; } }`}));
     }
     return ({pkg, channel, mode}) => new Promise(resolve => {
       const bar = document.createElement('div');

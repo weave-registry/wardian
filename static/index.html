@@ -3,7 +3,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wardian</title>
-<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<!-- The website's mark: a Wardian case in lime on ink. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23183e32'/%3E%3Cpath d='M10 16 20 8l10 8v17H10Z' fill='none' stroke='%23dce8a5' stroke-width='1.4'/%3E%3Cpath d='M20 8v25M10 17h20M20 30c-9-1-8-10-8-10 8 0 8 10 8 10Zm0-4c8-1 8-9 8-9-8 0-8 9-8 9Z' fill='none' stroke='%23dce8a5' stroke-width='1.3'/%3E%3C/svg%3E" type="image/svg+xml">
+<meta name="theme-color" content="#f6f5ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#153629" media="(prefers-color-scheme: dark)">
+<!-- The website's two typefaces, from Google Fonts (the one outside source Wardian allows for styles).
+     Loaded without blocking the page: offline, the system fonts in --sans and --serif stand in. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Libre+Caslon+Display&display=swap" media="print" onload="this.media='all'">
 <script src="/state.js"></script>
 <script src="/channels.js"></script>
 <!-- The component library and Arrange, the same ones apps copy in with `wardian add`.
@@ -18,61 +26,114 @@
 <script src="/ui/tabs.js"></script>
 <script src="/snapshot.js"></script>
 <style>
+  /* Wardian's colours are the website's (website/style.css): forest ink on paper, with lime and
+     olive greens. The dark theme is the website's deep-green sections. Every text colour meets
+     WCAG AA on the backgrounds it is used on: 4.5:1 for text, 3:1 for focus rings and field edges.
+     Like the component library, dark follows the system, and data-theme="light" or "dark" on
+     <html> forces one. */
   :root {
-    color-scheme: light dark;
-    /* Wardian brand: a copper leaf in a verdigris glass case, on warm paper.
-       Copper is for actions; verdigris (oxidised copper) means "sealed" and safe. */
-    --bg: #faf7f2; --panel: #fff; --text: #22201c; --muted: #6f675c; --line: #e8e1d6;
-    --accent: #b9471f; --accent-ink: #fff; --ok: #2f8a4f; --warn: #b7791f; --bad: #c8372d;
-    --code: #f3eee6; --hover: #f6efe6; --brand-soft: #fbe9de;
-    --sealed: #2f6f63; --sealed-soft: #e3efeb;
+    color-scheme: light;
+    --sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --serif: 'Libre Caslon Display', Georgia, 'Times New Roman', serif;
+    --bg: #f6f5ef;          /* paper */
+    --side: #eef0e6;        /* the app list, between paper and the website's #e9ecdf panels */
+    --panel: #fbfbf6;       /* cards and dialogs, as the website's app cards */
+    --text: #183e32;        /* ink */
+    --muted: #5c675e;       /* the website's #69746b, a step darker for 4.5:1 on every panel */
+    --line: #d8ddd2;
+    --field: #7d8c6a;       /* the edge of an input: 3:1 on a card */
+    --input: #fffffb;
+    --accent: #183e32; --accent-ink: #f6f5ef; --accent-hover: #285b46;   /* the website's .button */
+    --select: #dce8a5; --select-ink: #183e32;                            /* lime, for the open app */
+    --olive: #4f6a1e;       /* green text that marks something, on light panels */
+    --focus: #788d35;
+    --hover: #e6eadb; --code: #ebeede; --brand-soft: #e9ecdf; --mark: #94ad51;
+    --ok: #2f6b2a; --warn: #8a5300; --bad: #b02a20; --bad-ink: #fff;
+    --sealed: #3f5a17; --sealed-soft: #e3ebc6;
+    --shadow: 0 12px 35px rgba(61, 83, 59, .16);
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16130f; --panel: #1f1b16; --text: #ede7de; --muted: #a39a8c; --line: #342d25;
-      --accent: #f08a5d; --accent-ink: #1a0f08; --code: #2a241e; --hover: #2a241e; --brand-soft: #3a2418;
-      --ok: #5cbf7e; --warn: #e0a84a; --bad: #f07067;
-      --sealed: #6cbfad; --sealed-soft: #1d3530;
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #153629; --side: #183e32; --panel: #183e32; --text: #f6f5ef; --muted: #b6c7b8;
+      --line: #2f5847; --field: #6f8f7a; --input: #11301f;
+      --accent: #dce8a5; --accent-ink: #183e32; --accent-hover: #cfdda6;   /* the website's .button.light */
+      --select: #dce8a5; --select-ink: #183e32; --olive: #cfdda6; --focus: #94ad51;
+      --hover: #21503f; --code: #0f2a20; --brand-soft: #21503f; --mark: #94ad51;
+      --ok: #a8d38f; --warn: #ecc66f; --bad: #ffa89c; --bad-ink: #183e32;
+      --sealed: #dce8a5; --sealed-soft: #2a5444;
+      --shadow: 0 12px 35px rgba(0, 0, 0, .35);
     }
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
-  button, input { font: inherit; color: inherit; }
-  button {
-    border: 1px solid var(--line); background: var(--panel); border-radius: 6px;
-    padding: .35rem .75rem; cursor: pointer;
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #153629; --side: #183e32; --panel: #183e32; --text: #f6f5ef; --muted: #b6c7b8;
+    --line: #2f5847; --field: #6f8f7a; --input: #11301f;
+    --accent: #dce8a5; --accent-ink: #183e32; --accent-hover: #cfdda6;
+    --select: #dce8a5; --select-ink: #183e32; --olive: #cfdda6; --focus: #94ad51;
+    --hover: #21503f; --code: #0f2a20; --brand-soft: #21503f; --mark: #94ad51;
+    --ok: #a8d38f; --warn: #ecc66f; --bad: #ffa89c; --bad-ink: #183e32;
+    --sealed: #dce8a5; --sealed-soft: #2a5444;
+    --shadow: 0 12px 35px rgba(0, 0, 0, .35);
   }
-  button:hover:not(:disabled) { background: var(--hover); }
+  /* The component library's cards, tabs, badges and fields on this page (the setup, a module app's
+     cards, the job list) take the same greens. Set on body, so the library's own :root rules,
+     which apps share, stay as they are. */
+  body {
+    --w-font: var(--sans); --w-radius: 6px;
+    --w-bg: var(--panel); --w-fg: var(--text); --w-muted: var(--muted); --w-muted-bg: var(--code);
+    --w-border: var(--line); --w-primary: var(--accent); --w-primary-fg: var(--accent-ink);
+    --w-secondary: var(--hover); --w-secondary-fg: var(--text);
+    --w-destructive: var(--bad); --w-destructive-fg: var(--bad-ink); --w-success: var(--ok); --w-ring: var(--focus);
+    --w-shadow: var(--shadow);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 var(--sans); background: var(--bg); color: var(--text); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 4px;
+    padding: .35rem .75rem; cursor: pointer; font-weight: 500;
+    transition: background-color .15s, border-color .15s, color .15s;
+  }
+  button:hover:not(:disabled) { background: var(--hover); border-color: var(--field); }
   button:disabled { opacity: .5; cursor: default; }
   button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  button.link { border: 0; background: none; color: var(--accent); padding: 0; }
-  input[type=text], input[type=password], input:not([type]) {
-    border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: .35rem .5rem;
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button.link { border: 0; background: none; color: var(--olive); padding: 0; text-decoration: underline; text-decoration-color: var(--mark); text-underline-offset: 3px; }
+  button.link:hover:not(:disabled) { background: none; color: var(--text); }
+  a { color: var(--text); text-decoration-color: var(--mark); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: currentColor; }
+  input[type=text], input[type=password], input:not([type]), select {
+    border: 1px solid var(--field); background: var(--input); border-radius: 4px; padding: .35rem .5rem;
   }
+  input[type=radio], input[type=checkbox] { accent-color: var(--accent); }
+  ::placeholder { color: var(--muted); opacity: 1; }
   code, pre { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
   .muted { color: var(--muted); }
   .err { color: var(--bad); }
   .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 
   header {
-    display: flex; align-items: center; gap: 1rem; padding: .6rem 1rem;
-    background: var(--panel); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 1rem; padding: .7rem 1.25rem;
+    background: var(--bg); border-bottom: 1px solid var(--line);
   }
-  .brand { display: flex; align-items: center; gap: .5rem; text-decoration: none; color: var(--text); }
-  .brand img { width: 26px; height: 26px; }
-  .brand b { font-size: 1.25rem; font-weight: 750; letter-spacing: -.03em; }
-  .brand small { color: var(--muted); font-size: .85rem; border-left: 1px solid var(--line); padding-left: .6rem; margin-left: .1rem; }
-  #badge { color: var(--muted); max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The website's wordmark: the mark, then "wardian" in lower case, set tight. */
+  .brand { display: flex; align-items: center; gap: .6rem; text-decoration: none; color: var(--text); }
+  .brand img { width: 28px; height: 28px; border-radius: 7px; box-shadow: 0 0 0 1px var(--line); }   /* an edge on the dark theme */
+  .brand b { font-size: 1.5rem; font-weight: 600; letter-spacing: -.05em; text-transform: lowercase; line-height: 1; }
+  .brand small { color: var(--muted); font-size: .85rem; border-left: 1px solid var(--line); padding-left: .7rem; margin-left: .2rem; white-space: nowrap; }
+  #badge { color: var(--muted); min-width: 0; max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #badge span:last-child { overflow: hidden; text-overflow: ellipsis; }
   .home { text-align: center; padding: 2.5rem 1rem 2rem; }
   .home img { width: 64px; height: 64px; }
-  .card .home h2 { font-size: 1.6rem; letter-spacing: -.02em; margin: .75rem 0 .25rem; }
+  .home img { border-radius: 16px; }
+  .card .home h2 { font: 400 2.6rem/1.05 var(--serif); letter-spacing: -.03em; margin: 1rem 0 .6rem; }
   .home p { color: var(--muted); max-width: 34rem; margin: 0 auto 1.25rem; }
   .home .row { justify-content: center; }
   #apps .kind { color: var(--muted); font-size: .75rem; margin-left: .35rem; }
-  #apps li button.active .kind { color: inherit; opacity: .8; }
-  .badge { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; }
-  .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); flex: none; }
+  #apps li button.active .kind { color: var(--select-ink); opacity: .8; }
+  .badge { display: inline-flex; align-items: center; gap: .45rem; font-size: .85rem; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }   /* the website's status dot */
   /* What a file holds, before it is installed: part of the card, set off by a rule, not a box in a box. */
   #importCard code { overflow-wrap: anywhere; }
   #importPreview { border-top: 1px solid var(--line); padding-top: .75rem; margin-top: .75rem; }
@@ -83,25 +144,26 @@
   .export-data { border: 1px solid var(--line); border-radius: 8px; padding: .4rem .8rem; margin: .5rem 0; }
   p.warn { color: var(--warn); }
   .savebar { margin: .25rem 0 .5rem; }
-  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  .dot.ok { background: var(--mark); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
   header .spacer { flex: 1; }
-  .docslink { color: var(--muted); text-decoration: none; }
-  .docslink:hover { color: var(--accent); }
+  .docslink { color: var(--text); text-decoration: none; font-size: .9rem; font-weight: 500; }
+  .docslink:hover { text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 5px; }
 
   main { display: grid; grid-template-columns: 15rem 1fr; min-height: calc(100vh - 3rem); }
-  aside { border-right: 1px solid var(--line); padding: .75rem; background: var(--panel); }
+  aside { border-right: 1px solid var(--line); padding: .75rem; background: var(--side); }
   aside input { width: 100%; margin-bottom: .5rem; }
-  #appFooter { font-size: .75rem; padding: .5rem 1rem 1rem; text-align: center; }
+  #appFooter { font-size: .75rem; padding: .9rem 1rem 1.1rem; text-align: center; border-top: 1px solid var(--line); }
   #appFooter a { color: inherit; }
   #apps { list-style: none; margin: 0; padding: 0; }
   #apps li button {
-    width: 100%; text-align: left; border: 0; background: none; padding: .4rem .5rem; border-radius: 6px;
+    width: 100%; text-align: left; border: 0; background: none; padding: .4rem .5rem; border-radius: 4px; font-weight: 400;
   }
-  #apps li button.active { background: var(--accent); color: var(--accent-ink); }
+  #apps li button.active { background: var(--select); color: var(--select-ink); font-weight: 500; }
+  #apps li button.active:hover:not(:disabled) { background: var(--select); }
   /* Folders in the app list (ADR-2610081830): one level; apps in no folder first. */
   .apps-tools { display: flex; justify-content: flex-end; margin: -.15rem 0 .35rem; }
   .apps-tools button { font-size: .82rem; padding: .15rem .5rem; color: var(--muted); border-color: transparent; background: none; display: inline-flex; align-items: center; gap: .3rem; }
-  .apps-tools button:hover:not(:disabled) { color: var(--accent); background: var(--hover); }
+  .apps-tools button:hover:not(:disabled) { color: var(--text); background: var(--hover); }
   .apps-tools svg { width: 14px; height: 14px; }
   #apps li.app { display: flex; align-items: center; border-radius: 6px; position: relative; }
   #apps li.app > button.app-open { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -123,7 +185,7 @@
   #apps .folder-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
   #apps .folder-toggle .folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #apps .folder-toggle .count { color: var(--muted); font-weight: 400; font-size: .78rem; margin-left: auto; padding-left: .35rem; font-variant-numeric: tabular-nums; }
-  #apps .folder-toggle.holds-active .folder-name { color: var(--accent); }
+  #apps .folder-toggle.holds-active .folder-name { color: var(--olive); }
   #apps ul.folder-apps { list-style: none; margin: 0 0 .2rem .85rem; padding: 0 0 0 .4rem; border-left: 1px solid var(--line); }
   #apps li.folder-empty { color: var(--muted); font-size: .82rem; padding: .3rem .5rem; }
   #apps input.folder-rename { flex: 1; min-width: 0; margin: .1rem 0; padding: .3rem .45rem; font-weight: 600; }
@@ -131,29 +193,30 @@
      filter so nothing in the list moves under the pointer. */
   aside { position: relative; }
   #dropLoose { display: none; position: absolute; top: .75rem; left: .75rem; right: .75rem; height: 4.1rem; z-index: 5;
-    place-items: center; border: 1.5px dashed var(--accent); border-radius: 8px; background: var(--panel);
+    place-items: center; border: 1.5px dashed var(--focus); border-radius: 6px; background: var(--panel);
     color: var(--muted); font-size: .88rem; text-align: center; padding: 0 .5rem; }
   aside.dragging-app.from-folder #dropLoose { display: grid; }
-  #dropLoose.drop-into { color: var(--accent); background: var(--brand-soft); border-style: solid; }
-  #apps li.folder.drop-into > .folder-row { background: var(--brand-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
-  #apps li.folder.drop-before { box-shadow: 0 -2px 0 var(--accent); }
-  #apps li.folder.drop-after { box-shadow: 0 2px 0 var(--accent); }
+  #dropLoose.drop-into { color: var(--select-ink); background: var(--select); border-color: var(--focus); border-style: solid; }
+  #apps li.folder.drop-into > .folder-row { background: var(--brand-soft); box-shadow: inset 0 0 0 1.5px var(--focus); }
+  #apps li.folder.drop-before { box-shadow: 0 -2px 0 var(--focus); }
+  #apps li.folder.drop-after { box-shadow: 0 2px 0 var(--focus); }
   #apps li.is-dragged { opacity: .45; }
   @media (prefers-reduced-motion: reduce) { #apps .folder-toggle .chev { transition: none; } }
   /* The Move to… and folder menus. */
   .menu { position: fixed; z-index: 40; min-width: 12rem; max-width: min(18rem, calc(100vw - 1rem)); max-height: min(60vh, 24rem); overflow: auto;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .3rem; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: .3rem; box-shadow: var(--shadow); }
   .menu .menu-title { font-size: .75rem; color: var(--muted); padding: .25rem .55rem .2rem; text-transform: uppercase; letter-spacing: .04em; }
   .menu button { display: flex; align-items: center; gap: .45rem; width: 100%; text-align: left; border: 0; background: none; padding: .38rem .55rem; border-radius: 5px; }
   .menu button:hover, .menu button:focus { background: var(--hover); outline: none; }
-  .menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .menu button .tick { width: 1rem; flex: none; color: var(--accent); }
+  .menu button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  .menu button .tick { width: 1rem; flex: none; color: var(--olive); }
   .menu button.danger-item { color: var(--bad); }
   .menu .menu-sep { height: 1px; background: var(--line); margin: .3rem .2rem; }
   #content { padding: 1rem 1.25rem; min-width: 0; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-  .card h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
-  .card h3 { margin: 1rem 0 .5rem; font-size: .95rem; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
+  /* Headings in the website's serif. */
+  .card h2 { margin: 0 0 .75rem; font: 400 1.5rem/1.15 var(--serif); letter-spacing: -.02em; }
+  .card h3 { margin: 1rem 0 .5rem; font-size: .95rem; font-weight: 600; }
 
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -178,21 +241,28 @@
     border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(44rem, calc(100vw - 2rem));
     background: var(--bg); color: var(--text);
   }
-  dialog::backdrop { background: rgba(0, 0, 0, .4); }
+  dialog { box-shadow: var(--shadow); }
+  dialog::backdrop { background: rgba(21, 54, 41, .45); }
   .dlg-head { display: flex; align-items: center; padding: .75rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .dlg-head h2 { margin: 0; font-size: 1.05rem; flex: 1; }
+  .dlg-head h2 { margin: 0; font: 400 1.6rem/1.1 var(--serif); letter-spacing: -.02em; flex: 1; }
   .dlg-body { padding: 1rem; max-height: 75vh; overflow: auto; }
   dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: 0; }
   dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; word-break: break-all; }
   .tabs { display: flex; gap: .25rem; margin-bottom: .75rem; }
   .tabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .tabs button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent-hover); }
   /* Settings sections (ADR-2610072033): the library's tabs, kept in view above the scrolling body. */
   .settings-nav { padding: .6rem 1rem 0; background: var(--panel); border-bottom: 1px solid var(--line); }
   .settings-nav [role="tablist"] { display: flex; flex-wrap: wrap; margin-bottom: .6rem; }
+  /* The open section: paper on ink in light, as the website's .button; ink on lime in dark, as its .button.light. */
+  .settings-nav [role="tab"] { font-family: var(--sans); color: var(--muted); }
+  .settings-nav [role="tab"][aria-selected="true"] { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+  .settings-nav [role="tab"]:hover { color: var(--text); }
+  .settings-nav [role="tab"][aria-selected="true"]:hover { color: var(--accent-ink); }
   #settingsTabs [role="tabpanel"] { padding-top: 0; }
   #settings.is-admin .locked-note, #settings:not(.is-drive) .drive-note { display: none; }
   /* Keyboard users see where they are on every control. */
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }   /* the website's #788d35 */
   /* First-run setup (ADR-2610072033). */
   .setup { display: grid; gap: 1rem; }
   .setup h2:focus { outline: none; }
@@ -201,12 +271,12 @@
   .setup .w-card-content > p:first-child { margin-top: 0; }
   .setup .acts { display: flex; gap: .5rem; flex-wrap: wrap; }
   .step { border-left: 3px solid var(--line); padding-left: .75rem; margin: .75rem 0; }
-  .step.done { border-color: var(--ok); }
+  .step.done { border-color: var(--mark); }
   .crumbs { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; margin-bottom: .5rem; }
   #folders { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; max-height: 15rem; overflow: auto; background: var(--panel); }
   #folders li { display: flex; align-items: center; gap: .5rem; padding: .3rem .5rem; border-bottom: 1px solid var(--line); }
   #folders li:last-child { border-bottom: 0; }
-  #folders li.sel { background: var(--hover); }
+  #folders li.sel { background: var(--select); color: var(--select-ink); }
   #folders li .name { flex: 1; cursor: pointer; }
   .hidden { display: none !important; }
   .apphead { justify-content: space-between; } .apphead h2 { margin: 0; }
@@ -215,14 +285,15 @@
   .sealed summary { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; list-style: none;
     padding: .15rem .6rem .15rem .45rem; border-radius: 999px; background: var(--sealed-soft); color: var(--sealed); font-weight: 600; }
   .sealed summary::-webkit-details-marker { display: none; }
-  .sealed summary:focus-visible { outline: 2px solid var(--sealed); outline-offset: 2px; }
+  .sealed summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .sealed summary svg { width: 13px; height: 13px; }
   .sealed summary .more { font-weight: 400; opacity: .85; }
   .sealed ul { margin: .5rem 0 .25rem; padding-left: 1.2rem; color: var(--muted); }
   .sealed li { margin: .15rem 0; }
   .sealed li.can { color: var(--text); }
   .removebox button { font-size: .85rem; }
-  button.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+  button.danger { background: var(--bad); border-color: var(--bad); color: var(--bad-ink); }
+  button.danger:hover:not(:disabled) { background: var(--bad); border-color: var(--bad); filter: brightness(.92); }
   ul.trash { list-style: none; margin: 0 0 .5rem; padding: 0; }
   ul.trash li { display: flex; gap: .75rem; align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--line); }
   ul.trash li .name { font-weight: 600; flex: 1; }
@@ -246,18 +317,18 @@
   table.usage td.over { color: var(--bad); font-weight: 600; }
   table.usage input { width: 8rem; }
   .suiteframe { height: 85vh !important; }
-  .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 1rem; }
+  .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 1rem; }   /* what apps draw on, unchanged */
   details summary { cursor: pointer; font-weight: 600; margin-bottom: .5rem; }
 
   /* Background jobs (ADR-2610072118): the badge next to Make an app, and its list. */
   .jobs-wrap { position: relative; }
   #jobsBtn { white-space: nowrap; display: inline-flex; align-items: center; gap: .4rem; }
-  #jobsBtn[data-state="finished"] { box-shadow: 0 0 0 2px var(--ok); }
+  #jobsBtn[data-state="finished"] { box-shadow: 0 0 0 2px var(--mark); }
   #jobsBtn .w-badge { font-size: 11px; padding: 0 7px; }
   .jobs-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(30rem, calc(100vw - 2rem));
-                max-height: 70vh; overflow: auto; padding: .75rem 1rem; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+                max-height: 70vh; overflow: auto; padding: .75rem 1rem; box-shadow: var(--shadow); }
   .jobs-head { display: flex; align-items: center; gap: .5rem; }
-  .jobs-head h2 { margin: 0; font-size: 1rem; flex: 1; }
+  .jobs-head h2 { margin: 0; font: 400 1.3rem/1.15 var(--serif); flex: 1; }
   .jobs-note { font-size: .85rem; margin: .35rem 0 .6rem; }
   #jobsList { list-style: none; margin: 0; padding: 0; }
   #jobsList li { display: grid; grid-template-columns: 1fr auto; gap: .15rem .75rem; padding: .5rem 0; border-top: 1px solid var(--line); }
@@ -313,12 +384,13 @@
   @media (max-width: 700px) {
     main { grid-template-columns: 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); }
-    header { flex-wrap: wrap; }
+    header { flex-wrap: wrap; padding: .6rem 1rem; }
+    .brand small { white-space: normal; }
   }
 </style>
 
 <header>
-  <a class="brand" href="/" aria-label="Wardian home"><img src="/logo.svg" alt=""><b>Wardian</b><small id="tagline">Small apps, sealed. On your machine.</small></a>
+  <a class="brand" href="/" aria-label="Wardian home"><img id="mark" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23183e32'/%3E%3Cpath d='M10 16 20 8l10 8v17H10Z' fill='none' stroke='%23dce8a5' stroke-width='1.4'/%3E%3Cpath d='M20 8v25M10 17h20M20 30c-9-1-8-10-8-10 8 0 8 10 8 10Zm0-4c8-1 8-9 8-9-8 0-8 9-8 9Z' fill='none' stroke='%23dce8a5' stroke-width='1.3'/%3E%3C/svg%3E" alt=""><b>Wardian</b><small id="tagline">Small apps, sealed. On your machine.</small></a>
   <span class="badge" id="badge"><span class="dot"></span><span>…</span></span>
   <span class="spacer"></span>
   <a href="/docs" target="_blank" rel="noopener" class="docslink">Docs</a>
@@ -2931,7 +3003,7 @@ function showHome() {
   if (status.admin) acts.append(el('button', { textContent: 'Import a Wardian file', onclick: () => openSettings('import') }));
   acts.append(el('a', { href: '/docs/guide', target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Build one yourself →' }));
   $('runner').replaceChildren(el('div', { className: 'home' },
-    el('img', { src: '/logo.svg', alt: '' }),
+    el('img', { src: $('mark').src, alt: '' }),   // the website's mark, as in the header
     el('h2', { textContent: apps.length ? 'Pick an app to run' : 'Your app shelf is empty' }),
     el('p', { textContent: 'Every app here runs sealed in its own sandbox. It cannot reach your files, your other apps or the network unless Wardian lets it.' }),
     acts));
