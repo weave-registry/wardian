@@ -14,6 +14,14 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Changed
 
+- On a wide screen Wardian's page is one screen tall: the header and the footer stay in view, and
+  the app list and the app scroll on their own. A phone scrolls the page as one.
+- The Splunk table's **Ask Claude** card ("describe what you want, and Claude writes the search")
+  always shows. Without Claude or Splunk it says which is missing and where an admin sets it up,
+  with its box and button turned off, instead of hiding.
+
+### Changed
+
 - CI downloads hexa from https://github.com/gaberger/hexa at a pinned version and checks it against
   its checksums. Every push runs `hexa analyze . --grade A` and `hexa adr doctor`; pull requests,
   releases and runs by hand also run `hexa adr gates`.

@@ -381,6 +381,15 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   #aiPreview iframe { width: 100%; height: 60vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 
+  /* On a wide screen the page is one screen tall: the header and the footer stay in view, and the
+     app list and the app each scroll on their own. On a phone the page scrolls as one. */
+  @media (min-width: 701px) {
+    body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+    body > header, #appFooter { flex: none; }
+    main { flex: 1; min-height: 0; }
+    aside, #content { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+    #appFooter { padding: .45rem 1rem; }
+  }
   @media (max-width: 700px) {
     main { grid-template-columns: 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); }

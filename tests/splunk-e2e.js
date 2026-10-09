@@ -120,7 +120,10 @@ async function answer(page, re, yes, what) {
   let { s, a, rw, k } = partsOf(tab);
   ok((await panels(tab)).join() === 'search,ask,about,rows,keep' && (await tab.evaluate(() => Kernel.started())).length === 5, 'five parts, each its own panel: ' + (await panels(tab)).join());
   const heights = await Promise.all(['search', 'about', 'rows', 'keep'].map(p => frameHeight(tab, p)));
-  ok(heights.every(h => h > 40) && await frameHeight(tab, 'ask') === 0, 'the four panels show; ask stays folded away without Claude: ' + heights.join(', '));
+  const askH = await frameHeight(tab, 'ask');
+  await frameOf(tab, 'ask').locator('#status', { hasText: 'not set up' }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok(heights.every(h => h > 40) && askH > 40 && /Claude is not set up/.test(await frameOf(tab, 'ask').locator('#status').textContent()) && await frameOf(tab, 'ask').locator('#btnAi').isDisabled(),
+    'the five panels show; without Claude, ask says so and where to set it up, its button off: ' + heights.concat(askH).join(', '));
   ok(await s.locator('#btnRun').isEnabled(), 'Run search is enabled');
   await s.locator('#spl').fill('index=loadtest | stats avg(tput) AS x BY concurrency | table concurrency x r');
   await s.locator('#btnRun').click();
@@ -381,7 +384,7 @@ async function answer(page, re, yes, what) {
   ok(await s.locator('wardian-progress').getAttribute('state') === 'error', 'and the progress bar shows the failure');
 
   console.log('== without an Anthropic key, no AI anywhere');
-  ok(await frameHeight(tab, 'ask') === 0, 'no Write with AI: the ask panel is folded away');
+  ok(await frameOf(tab, 'ask').locator('#btnAi').isDisabled() && /Claude is not set up/.test(await frameOf(tab, 'ask').locator('#status').textContent()), 'no Write with AI: the ask panel says Claude is not set up');
   ok(await lab.locator('iframe[title=diagnosis]').evaluate(el => el.offsetHeight) === 0, 'no diagnosis panel');
 
   console.log('== with Claude set up (' + (process.env.PROVIDER || 'anthropic') + '): Claude writes the search, and the diagnosis works');

@@ -1,5 +1,6 @@
 /* ask: Claude writes the search. It finds the likely index, reads its fields and a few events, writes
-   SPL, then hands it to the search part, which runs it. Without Claude or Splunk the panel stays hidden.
+   SPL, then hands it to the search part, which runs it. Without Claude or Splunk the panel says which
+   is missing and where an admin sets it up, with the box and button turned off.
    Emits: search:use.  Capabilities: splunk, claude:sample. */
 Kernel.register({
   name: 'ask',
@@ -10,7 +11,9 @@ Kernel.register({
     function status(text, kind){ const st = $('#status'); st.className = 'status' + (kind ? ' ' + kind : ''); st.textContent = text; }
     const noEmails = s => String(s).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '<email>');
     const str = v => typeof v === 'string' ? v.slice(0, 600) : '';
-    ctx.root.hidden = true;                    // until both Claude and Splunk answer
+    // Off until Claude and Splunk both answer, so nothing is sent from a half-set-up Wardian.
+    const off = why => { $('#aiWhat').disabled = true; $('#btnAi').disabled = true; status(why, 'warn'); };
+    $('#aiWhat').disabled = true; $('#btnAi').disabled = true;
 
     async function write(sample, splunk){
       const what = $('#aiWhat').value.trim(), usl = $('#aiUsl').checked;
@@ -66,10 +69,12 @@ Kernel.register({
 
     (async () => {
       const sample = await ctx.cap('sample').catch(() => null);
-      if (!sample) return;                     // no Claude in this Wardian
       const splunk = await ctx.cap('splunk').catch(() => null);
-      if (!splunk || !(await splunk.status().catch(() => ({ready: false}))).ready) return;
-      ctx.root.hidden = false;
+      const splunkReady = !!splunk && (await splunk.status().catch(() => ({ready: false}))).ready;
+      if (!sample && !splunkReady) return off('Claude and Splunk are not set up in this Wardian. An admin sets them up in Settings → Claude and Settings → Splunk.');
+      if (!sample) return off('Claude is not set up in this Wardian. An admin sets it up in Settings → Claude: an Anthropic API key, or Amazon Bedrock with an AWS profile.');
+      if (!splunkReady) return off('Splunk is not set up in this Wardian. An admin adds it in Settings → Splunk.');
+      $('#aiWhat').disabled = false; $('#btnAi').disabled = false;
       $('#btnAi').addEventListener('click', () => write(sample, splunk));
     })();
   }
