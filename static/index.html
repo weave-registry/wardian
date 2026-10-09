@@ -742,7 +742,10 @@ function renderStatus() {
       : 'No API key yet. Claude needs one to build apps.';
     if (ai.ready && ai.workspace) $('aiKeyState').textContent += ` Workspace: ${ai.workspace}.`;
   }
-  if (!aiProviderShown) aiShowProvider(ai.provider === 'bedrock' ? 'bedrock' : 'anthropic');
+  if (!aiProviderShown) {
+    aiShowProvider(ai.provider === 'bedrock' ? 'bedrock' : 'anthropic');
+    if (s.admin && !ai.ready && !bds) bdOfferProfiles();
+  }
   if (bds && document.activeElement !== $('bdRegion') && !$('bdRegion').value) { $('bdRegion').value = bds.region; $('bdAuth').value = bds.auth; bdSavedProfile = bds.profile || ''; aiShowAuth(); }
   $('bdForget').classList.toggle('hidden', !(bds && bds.from === 'settings'));
   if (document.activeElement !== $('aiWorkspace')) $('aiWorkspace').value = ai.workspace || '';
@@ -2814,6 +2817,22 @@ function aiKeyMsg(text, bad = false) { $('aiKeyMsg').textContent = text; $('aiKe
 
 // Where Claude runs (ADR-2610071106): the Anthropic API or Amazon Bedrock.
 let aiProviderShown = null;
+// Nothing set up yet and AWS profiles on this machine (ADR-2610091530): start on Amazon Bedrock with
+// the profile sign-in, so the profiles are the first thing shown. Asked once per page.
+let bdOffered = false;
+async function bdOfferProfiles() {
+  if (bdOffered) return;
+  bdOffered = true;
+  let found = null;
+  try { found = await api('/api/ai/aws-profiles'); } catch { return; }
+  if (!(found.profiles || []).length || aiProviderShown !== 'anthropic' || $('aiKey').value) return;
+  bdProfiles = found;
+  $('bdAuth').value = 'profile';
+  aiShowProvider('bedrock');
+  bdLoadProfiles();
+  aiShowAuth();
+  aiKeyMsg(`Found ${found.profiles.length === 1 ? 'an AWS profile' : found.profiles.length + ' AWS profiles'} on this computer: choose one, then press Test and use Bedrock. Or choose the Anthropic API above.`);
+}
 function aiShowProvider(p) {
   aiProviderShown = p;
   $('aiProvAnthropic').checked = p === 'anthropic';
@@ -2855,12 +2874,14 @@ async function bdLoadProfiles() {
   bdProfileChosen();
 }
 function bdProfileName() { return $('bdProfile').value || $('bdProfileOther').value.trim(); }
-function bdProfileChosen() {
+// `picked` is true when the viewer chose a profile: the region then follows it. When the list is
+// first filled, a region already there (saved or typed) stays.
+function bdProfileChosen(picked) {
   $('bdProfileOther').classList.toggle('hidden', $('bdProfile').value !== '');
   const p = ((bdProfiles || {}).profiles || []).find(x => x.name === $('bdProfile').value);
-  if (p && p.region && (bdRegionFromProfile || !$('bdRegion').value.trim())) { $('bdRegion').value = p.region; bdRegionFromProfile = true; }
+  if (p && p.region && (picked === true || bdRegionFromProfile || !$('bdRegion').value.trim())) { $('bdRegion').value = p.region; bdRegionFromProfile = true; }
 }
-$('bdProfile').onchange = bdProfileChosen;
+$('bdProfile').onchange = () => bdProfileChosen(true);
 $('bdRegion').addEventListener('input', () => { bdRegionFromProfile = false; });
 $('aiProvAnthropic').onchange = async () => {
   aiShowProvider('anthropic');

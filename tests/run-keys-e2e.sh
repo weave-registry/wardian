@@ -21,7 +21,8 @@ python3 tests/fixtures/fake-anthropic.py "$APORT" &
 PIDS+=($!)
 for _ in $(seq 50); do curl -s "http://127.0.0.1:$APORT/prompts" >/dev/null && break; sleep 0.1; done
 
-ANTHROPIC_BASE_URL="http://127.0.0.1:$APORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:0" "$BIN" "$TMP/apps" >"$TMP/server.log" 2>&1 &
+# No AWS profiles: this test sets up the Anthropic API, and never reads the user's ~/.aws.
+AWS_CONFIG_FILE="$TMP/no-aws-config" AWS_SHARED_CREDENTIALS_FILE="$TMP/no-aws-credentials" WARDIAN_AWS_CLI=none ANTHROPIC_BASE_URL="http://127.0.0.1:$APORT" DATA_DIR="$TMP/data" ADDR="127.0.0.1:0" "$BIN" "$TMP/apps" >"$TMP/server.log" 2>&1 &
 PIDS+=($!)
 BASE=
 for _ in $(seq 100); do

@@ -122,6 +122,13 @@ async function until(fn, ms, what) {
     ok(await a.locator('#bdProfileOther').isVisible(), 'Other… asks for a name');
     await a.selectOption('#bdProfile', 'e2e');
     ok(await a.locator('#bdRegion').inputValue() === 'us-east-1', 'the region is filled in from the profile');
+    // Choosing another profile moves the region with it, though the box already holds one.
+    if (await a.locator('#bdProfile option[value="default"]').count()) {
+      await a.selectOption('#bdProfile', 'default');
+      ok(await a.locator('#bdRegion').inputValue() === 'eu-west-3', 'choosing another profile sets its region: ' + await a.locator('#bdRegion').inputValue());
+      await a.selectOption('#bdProfile', 'e2e');
+      ok(await a.locator('#bdRegion').inputValue() === 'us-east-1', 'and back again: ' + await a.locator('#bdRegion').inputValue());
+    }
     await a.click('#bdSave');
     await a.locator('#aiKeyMsg', { hasText: /Bedrock works|Not saved/ }).waitFor({ timeout: 10000 }).catch(() => {});
     ok(/Bedrock works/.test(await a.locator('#aiKeyMsg').textContent()), 'Test and use Bedrock works with the profile: ' + await a.locator('#aiKeyMsg').textContent());

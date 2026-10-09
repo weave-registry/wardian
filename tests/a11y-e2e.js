@@ -99,7 +99,10 @@ const api = async (p, body) => {
   ok(await page.locator('#setup').isVisible(), 'the setup is shown in place of the home page');
   const setupText = await page.locator('#setup').textContent();
   ok(/Where apps come from/.test(setupText) && /Claude/.test(setupText) && /ADMIN_TOKEN/.test(setupText), 'it covers where apps come from, Claude, and the admin token');
-  ok(await page.locator('#setup #aiCard #aiProvBedrock').count() === 1 && await page.locator('#setup #aiCard #aiKey').isVisible(), 'it offers the Claude settings form itself (Anthropic or Bedrock)');
+  // This Wardian's AWS files hold one profile, so the form starts on Bedrock with the profile listed.
+  await page.locator('#setup #aiCard #bdProfile option[value="a11y"]').waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
+  ok(await page.locator('#setup #aiCard #aiProvBedrock').isChecked() && await page.locator('#setup #aiCard #bdAuth').inputValue() === 'profile' && await page.locator('#setup #aiCard #bdProfile').inputValue() === 'a11y', 'it offers the Claude settings form itself, on Bedrock with the AWS profile found');
+  ok(/Found an AWS profile on this computer/.test(await page.locator('#setup #aiCard #aiKeyMsg').textContent()), 'and says why, with the Anthropic API one click away');
   ok(await page.evaluate(() => document.activeElement.id) === 'setupTitle', 'the focus starts on its heading');
   await checkNames(page, '#setup', 'setup', 5);
   await page.check('#aiProvBedrock');

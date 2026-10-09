@@ -19,6 +19,9 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Fixed
 
+- Settings → Claude: choosing another AWS profile sets the region to that profile's, even when the
+  region box already holds one. With nothing set up and AWS profiles on the computer, the form
+  starts on Amazon Bedrock with the profile sign-in and the profiles listed, and says why.
 - A Bedrock region is checked before anything is sent: one AWS does not use is refused with the
   nearest real ones named ("ua-east-1" is not an AWS region. Did you mean us-east-1 or sa-east-1?),
   for a typed region and for a profile's. The region field lists the usual Bedrock regions.
