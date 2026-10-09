@@ -9,10 +9,11 @@ use super::keys::{KeyChecks, KeyEntry, KeyOwner};
 use super::workspace::FIRST_RUN_MARKER;
 use crate::domain::grants::{self, Answer};
 use crate::domain::import_plan::{app_name_from, MAX_ZIP_BYTES};
-use crate::domain::package::{app_info, drive_file_id, safe_rel, safe_segment, servable_rel, trash_entry, unix_now, valid_drive_id, AppInfo, SourceChoice, APP_MARKERS};
+use crate::domain::package::{app_info, drive_file_id, safe_rel, safe_segment, servable_rel, trash_entry, valid_drive_id, AppInfo, SourceChoice, APP_MARKERS};
 use crate::domain::suite;
 use crate::ports::{
     assets::Assets,
+    clock::Clock,
     drive::{DriveClient, DriveConnector, DriveFolder},
     secrets::Secrets,
     service::Catalog,
@@ -53,6 +54,7 @@ pub struct Hub {
     grants_lock: Mutex<()>,
     /// Every save of a local app is a version here (ADR-2610071122).
     history: Arc<History>,
+    clock: Arc<dyn Clock>,
 }
 
 /// The parts of the outside world the catalog uses.
@@ -62,6 +64,7 @@ pub struct HubPorts {
     pub web: Arc<dyn Downloader>,
     pub assets: Arc<dyn Assets>,
     pub secrets: Arc<dyn Secrets>,
+    pub clock: Arc<dyn Clock>,
 }
 
 impl Hub {
@@ -83,6 +86,7 @@ impl Hub {
             serving: RwLock::new(Arc::new(Serving::Local)),
             grants_lock: Mutex::new(()),
             history,
+            clock: ports.clock,
         }
     }
 
@@ -212,7 +216,7 @@ impl Hub {
                 "drive_email": d.client_email(),
                 "refresh_secs": self.refresh_every.as_secs(),
                 "status": d.status(),
-                "now": unix_now(),
+                "now": self.clock.now(),
             }),
         };
         status["first_run"] = json!(self.first_run());
@@ -359,7 +363,7 @@ impl Hub {
             return Err(format!("\"{name}\" is not an app folder"));
         }
         self.fs.create_dir_all(&self.trash_dir()).map_err(|e| format!("creating the trash: {e}"))?;
-        let mut id = format!("{name}--{}", unix_now());
+        let mut id = format!("{name}--{}", self.clock.now());
         while self.fs.exists(&self.trash_dir().join(&id)) {
             id.push('_');
         }
@@ -405,7 +409,7 @@ impl Hub {
     /// local folder is the source; the reply says whether it is.
     pub fn import(&self, bytes: &[u8], zip_name: &str, replace: bool) -> Result<Value, String> {
         let history = &self.history;
-        let done = import_zip(&*self.fs, bytes, zip_name, &self.local_root, replace, &|app| {
+        let done = import_zip(&*self.fs, &*self.clock, bytes, zip_name, &self.local_root, replace, &|app| {
             history.before_change(app);
         })?;
         println!("import: {} -> {}", zip_name, done.apps.join(", "));
@@ -455,7 +459,7 @@ impl Hub {
     pub fn set_grant(&self, body: &Value) -> Result<Value, String> {
         let answer = Answer::from_json(body);
         let _guard = self.grants_lock.lock().unwrap();
-        let list = grants::apply(self.grant_list(), &answer, unix_now())?;
+        let list = grants::apply(self.grant_list(), &answer, self.clock.now())?;
         let bytes = serde_json::to_vec_pretty(&list).map_err(|e| e.to_string())?;
         self.fs.write_private(&self.grants_path(), &bytes).map_err(|e| format!("saving permissions: {e}"))?;
         println!("permission: {} {} {}: {}", answer.app, answer.mode, answer.channel, answer.decision);

@@ -8,6 +8,7 @@
 use super::keys::{KeyChecks, KeyEntry, KeyOwner};
 use crate::domain::splunk::{fields_of, normalize_search, rows_of, table, SplunkConfig, MAX_SEARCH_TIME};
 use crate::ports::{
+    clock::Clock,
     db::{column_names, column_types, valid_ident, Database, MAX_LOADED_ROWS},
     secrets::Secrets,
     service::{Searches, Watch},
@@ -17,8 +18,7 @@ use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 pub struct Splunk {
@@ -33,6 +33,7 @@ pub struct Splunk {
     cfg: Mutex<Option<(SplunkConfig, &'static str)>>,
     /// Where a search's results go when they are loaded into a table (ADR-2610071219).
     db: Arc<dyn Database>,
+    clock: Arc<dyn Clock>,
 }
 
 /// Rows read from Splunk per request when loading a table.
@@ -51,7 +52,7 @@ fn cut_off(url: &str, reason: &str) -> String {
 }
 
 impl Splunk {
-    pub fn new(secrets: Arc<dyn Secrets>, checks: Arc<KeyChecks>, api: Arc<dyn SplunkApi>, db: Arc<dyn Database>, data_dir: &Path, env_cfg: Option<SplunkConfig>) -> Splunk {
+    pub fn new(secrets: Arc<dyn Secrets>, checks: Arc<KeyChecks>, api: Arc<dyn SplunkApi>, db: Arc<dyn Database>, data_dir: &Path, env_cfg: Option<SplunkConfig>, clock: Arc<dyn Clock>) -> Splunk {
         let path = data_dir.join("splunk.json");
         let (saved, unreadable) = match secrets.read(&path) {
             Ok(b) => (b.and_then(|b| serde_json::from_slice::<SplunkConfig>(&b).ok()), None),
@@ -61,7 +62,7 @@ impl Splunk {
             Some(c) => Some((c, "settings")),
             None => env_cfg.clone().map(|c| (c, "environment")),
         };
-        Splunk { secrets, checks, api, path, unreadable: Mutex::new(unreadable), env_cfg, cfg: Mutex::new(cfg), db }
+        Splunk { secrets, checks, api, path, unreadable: Mutex::new(unreadable), env_cfg, cfg: Mutex::new(cfg), db, clock }
     }
 
     /// What Settings shows. Never the token or the password.
@@ -138,7 +139,7 @@ impl Splunk {
         // One more row than is kept, to know when to say "truncated".
         let body = session.get(&format!("{job}/results"), &[("output_mode", "json"), ("count", "10001")]).map_err(|e| said(e, cut_off))?;
         let mut out = table(&body);
-        out["seconds"] = json!(started.elapsed().as_secs());
+        out["seconds"] = json!(self.seconds_since(started));
         Ok(out)
     }
 
@@ -165,7 +166,7 @@ impl Splunk {
             if total == 0 {
                 fields = fields_of(&body);
                 if fields.is_empty() {
-                    return Ok(json!({ "table": table_name, "columns": [], "fields": [], "total": 0, "truncated": false, "seconds": started.elapsed().as_secs(), "messages": [] }));
+                    return Ok(json!({ "table": table_name, "columns": [], "fields": [], "total": 0, "truncated": false, "seconds": self.seconds_since(started), "messages": [] }));
                 }
                 columns = column_names(&fields);
                 let sample: Vec<Vec<Value>> = rows_of(&body, &fields).into_iter().take(500).collect();
@@ -191,7 +192,12 @@ impl Splunk {
                 return Err(format!("cancelled after {total} rows"));
             }
         }
-        Ok(json!({ "table": table_name, "columns": columns, "fields": fields, "total": total, "truncated": truncated, "seconds": started.elapsed().as_secs(), "messages": messages }))
+        Ok(json!({ "table": table_name, "columns": columns, "fields": fields, "total": total, "truncated": truncated, "seconds": self.seconds_since(started), "messages": messages }))
+    }
+
+    /// Whole seconds since `started`, in the clock's milliseconds.
+    fn seconds_since(&self, started: u64) -> u64 {
+        self.clock.now_ms().saturating_sub(started) / 1000
     }
 
     /// Starts a search job and waits until it is done. A search over weeks of data can take
@@ -199,7 +205,7 @@ impl Splunk {
     /// and the reply arrives half-read ("error while decoding chunks"). So this starts a job, asks
     /// every second whether it is done, and leaves reading the rows to the caller.
     /// When `watch` says stop, the job is cancelled on Splunk as well.
-    fn run_job(&self, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<(Box<dyn SplunkSession>, String, Instant), String> {
+    fn run_job(&self, spl: &str, earliest: &str, latest: &str, watch: &dyn Watch) -> Result<(Box<dyn SplunkSession>, String, u64), String> {
         let cfg = self.cfg.lock().unwrap().as_ref().map(|(c, _)| c.clone());
         let cfg = cfg.ok_or("Splunk is not set up on this Wardian: Settings → Splunk")?;
         let spl = normalize_search(spl)?;
@@ -219,9 +225,10 @@ impl Splunk {
         let sid = created["sid"].as_str().map(String::from).ok_or("Splunk did not start the search (no job id)")?;
         let job = format!("{jobs}/{sid}");
 
-        let started = Instant::now();
+        let started = self.clock.now_ms();
+        let elapsed = || Duration::from_millis(self.clock.now_ms().saturating_sub(started));
         loop {
-            thread::sleep(Duration::from_millis(if started.elapsed() < Duration::from_secs(5) { 300 } else { 1000 }));
+            self.clock.sleep(Duration::from_millis(if elapsed() < Duration::from_secs(5) { 300 } else { 1000 }));
             if watch.stopped() {
                 cancel(&*session, &job);
                 return Err("cancelled".into());
@@ -235,7 +242,7 @@ impl Splunk {
             if c["isDone"].as_bool() == Some(true) || c["dispatchState"] == "DONE" {
                 return Ok((session, job, started));
             }
-            if started.elapsed() > MAX_SEARCH_TIME {
+            if elapsed() > MAX_SEARCH_TIME {
                 cancel(&*session, &job);
                 return Err(format!("the search ran longer than {} minutes, so Wardian stopped it. Try a shorter time range.", MAX_SEARCH_TIME.as_secs() / 60));
             }

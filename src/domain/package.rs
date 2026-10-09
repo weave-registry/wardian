@@ -2,7 +2,6 @@
 //! list shows for it. Pure: it reads a package through the closures it is given.
 
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// How deep an app's own folders may go, and how many files it may have.
 pub const MAX_DEPTH: usize = 8;
@@ -39,10 +38,6 @@ pub fn safe_rel(rel: &str) -> bool {
 /// a build folder, in any case, since a disk that ignores case finds `Target/` as `target/`.
 pub fn servable_rel(rel: &str) -> bool {
     safe_rel(rel) && !rel.split('/').any(|p| SKIP_DIRS.iter().any(|d| p.eq_ignore_ascii_case(d)))
-}
-
-pub fn unix_now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 /// The file ID in a Drive link: .../file/d/<ID>/view or ...?id=<ID>.
@@ -167,15 +162,6 @@ pub struct SourceChoice {
 pub fn trash_entry(id: &str) -> Option<(u64, String)> {
     let (name, when) = id.rsplit_once("--")?;
     Some((when.trim_end_matches('_').parse().ok()?, name.to_string()))
-}
-
-/// A random number, for names that only need to differ (staging folders, chat ids). It comes
-/// from the standard library's per-process random hash keys, so it needs no system call.
-pub fn random_u32() -> u32 {
-    use std::hash::{BuildHasher, Hasher};
-    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-    h.write_u128(SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
-    u32::try_from(h.finish() & 0xffff_ffff).unwrap_or(0)
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@
 use super::import::import_zip;
 use crate::domain::check::{check_package, format_report, Report};
 use crate::domain::package::APP_MARKERS;
-use crate::ports::storage::FileSystem;
+use crate::ports::{clock::Clock, storage::FileSystem};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -13,11 +13,12 @@ use std::{
 
 pub struct Checker {
     fs: Arc<dyn FileSystem>,
+    clock: Arc<dyn Clock>,
 }
 
 impl Checker {
-    pub fn new(fs: Arc<dyn FileSystem>) -> Checker {
-        Checker { fs }
+    pub fn new(fs: Arc<dyn FileSystem>, clock: Arc<dyn Clock>) -> Checker {
+        Checker { fs, clock }
     }
 
     fn is_app(&self, dir: &Path) -> bool {
@@ -45,7 +46,7 @@ impl Checker {
         if self.fs.is_file(path) {
             let tmp = self.fs.temp_path("wardian-check");
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("package.zip");
-            let result = self.fs.read(path).ok_or_else(|| "cannot read the file".to_string()).and_then(|bytes| import_zip(&*self.fs, &bytes, name, &tmp, true, &|_| {}));
+            let result = self.fs.read(path).ok_or_else(|| "cannot read the file".to_string()).and_then(|bytes| import_zip(&*self.fs, &*self.clock, &bytes, name, &tmp, true, &|_| {}));
             let out = match result {
                 Err(e) => (false, vec![format!("{shown}\n  error    {e}\n")]),
                 Ok(done) => {

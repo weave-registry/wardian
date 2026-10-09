@@ -9,8 +9,9 @@ use crate::domain::export::{
     exported, file_name, looks_like_sqlite, manifest, read_manifest, DataIncluded, Manifest, DATA, LAYOUT_FILE, MANIFEST, MAX_EXPORT_BYTES, MIME, NEVER_INCLUDED, STORAGE_FILE,
     TABLES_FILE,
 };
-use crate::domain::package::{app_info, safe_segment, unix_now, APP_MARKERS};
+use crate::domain::package::{app_info, safe_segment, APP_MARKERS};
 use crate::ports::{
+    clock::Clock,
     db::Database,
     service::{Exports, ViewerState},
     storage::FileSystem,
@@ -33,6 +34,7 @@ pub struct Exporter {
     history: Arc<History>,
     apps: PathBuf,
     data_dir: PathBuf,
+    clock: Arc<dyn Clock>,
 }
 
 /// A file opened for import: the zip, and its manifest with the folder it sits in, if it has one.
@@ -45,8 +47,8 @@ struct Data {
 }
 
 impl Exporter {
-    pub fn new(fs: Arc<dyn FileSystem>, checker: Arc<Checker>, db: Arc<dyn Database>, state: Arc<dyn ViewerState>, history: Arc<History>, apps: &Path, data_dir: &Path) -> Exporter {
-        Exporter { fs, checker, db, state, history, apps: apps.to_path_buf(), data_dir: data_dir.to_path_buf() }
+    pub fn new(fs: Arc<dyn FileSystem>, checker: Arc<Checker>, db: Arc<dyn Database>, state: Arc<dyn ViewerState>, history: Arc<History>, apps: &Path, data_dir: &Path, clock: Arc<dyn Clock>) -> Exporter {
+        Exporter { fs, checker, db, state, history, apps: apps.to_path_buf(), data_dir: data_dir.to_path_buf(), clock }
     }
 
     fn app_dir(&self, app: &str) -> Result<PathBuf, String> {
@@ -190,7 +192,7 @@ impl Exports for Exporter {
             return Err(format!("{app}'s {name} is {} MB, and an import reads at most {} MB of it", bytes.len() / (1024 * 1024), MAX_ENTRY_BYTES / (1024 * 1024)));
         }
         let info = app_info(app.to_string(), &|rel| self.fs.read(&dir.join(rel)), &|rel| self.fs.is_file(&dir.join(rel)));
-        let man = manifest(app, info.title.as_deref(), unix_now(), env!("CARGO_PKG_VERSION"), &data.included);
+        let man = manifest(app, info.title.as_deref(), self.clock.now(), env!("CARGO_PKG_VERSION"), &data.included);
 
         let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
         let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);

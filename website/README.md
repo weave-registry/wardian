@@ -5,7 +5,7 @@ host or its app UI.
 
 | Path | What it is | Source |
 |---|---|---|
-| `index.html`, `style.css`, `site.js`, `logo.svg` | the marketing page | edited by hand |
+| `index.html`, `style.css`, `site.js`, `logo.svg`, `built-with-hexa.svg` | the marketing page | edited by hand |
 | `docs/` | the documentation site | written by `wardian docs website` |
 | `schemas/` | the JSON Schemas for `app.json` and `suite.json` | written by `wardian docs website` |
 | `ui/` | the component gallery and its files | written by `wardian docs website` |

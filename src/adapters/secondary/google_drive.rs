@@ -3,7 +3,7 @@
 //! cached by checksum, and the index is refreshed in the background.
 
 use crate::ports::drive::{
-    safe_segment, unix_now, valid_drive_id, DriveClient, DriveConnector, DriveFolder, Folder, RefreshStatus, APP_MARKERS, MAX_APP_FILES, MAX_DEPTH, SKIP_DIRS,
+    safe_segment, valid_drive_id, DriveClient, DriveConnector, DriveFolder, Folder, RefreshStatus, APP_MARKERS, MAX_APP_FILES, MAX_DEPTH, SKIP_DIRS,
 };
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
@@ -12,8 +12,14 @@ use std::{
     io::Read,
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+/// Seconds since 1970, for the token's claims and the refresh status. An adapter reads the system
+/// clock itself; the core asks the `Clock` port (ADR-2610091040).
+fn unix_now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
 
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";

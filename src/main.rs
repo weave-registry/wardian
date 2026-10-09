@@ -29,6 +29,7 @@ mod domain {
 mod ports {
     pub mod assets;
     pub mod calendar;
+    pub mod clock;
     pub mod db;
     pub mod drive;
     pub mod llm;
@@ -79,14 +80,15 @@ mod adapters {
         pub mod service_host;
         pub mod splunk_rest;
         pub mod sqlite_store;
+        pub mod system_clock;
         pub mod wardian_probe;
     }
 }
 
 use adapters::primary::{cli, http, stop_log::StopLog, terminal};
-use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, sealed_secrets::SealedSecrets, splunk_rest::SplunkRest, sqlite_store::SqliteStore, wardian_probe};
+use adapters::secondary::{anthropic_inference, bedrock_inference::Bedrock, embedded_assets::Embedded, google_drive::GoogleDrive, link_fetch::LinkFetcher, local_disk::LocalDisk, sealed_secrets::SealedSecrets, splunk_rest::SplunkRest, sqlite_store::SqliteStore, system_clock::{SystemClock, Threads}, wardian_probe};
 use config::Settings;
-use ports::{assets::Assets, db::Database, llm::BedrockAuth, secrets::Secrets, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
+use ports::{assets::Assets, clock::{Clock, Tasks}, db::Database, llm::BedrockAuth, secrets::Secrets, service::{Builder, Exports, Searches, Services, ViewerState}, storage::FileSystem};
 use std::sync::Arc;
 use usecases::{
     catalog::{Hub, HubPorts},
@@ -108,8 +110,9 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
     let assets: Arc<dyn Assets> = Arc::new(Embedded);
-    let checker = Arc::new(Checker::new(Arc::clone(&fs)));
-    let tools = Scaffold::new(Arc::clone(&fs), Arc::clone(&assets), Arc::clone(&checker));
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let checker = Arc::new(Checker::new(Arc::clone(&fs), Arc::clone(&clock)));
+    let tools = Scaffold::new(Arc::clone(&fs), Arc::clone(&assets), Arc::clone(&checker), Arc::clone(&clock));
     // `wardian export` reads the working folder and the app's data, so it gets the same parts
     // the server would use, built only when that command runs.
     let exports_for_cli = || -> Arc<dyn Exports> {
@@ -117,8 +120,8 @@ fn main() {
         let apps = data_dir.join("apps");
         let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &data_dir));
         let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&data_dir));
-        let history = Arc::new(History::new(Arc::clone(&fs), &data_dir, &apps));
-        Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), db, state, history, &apps, &data_dir))
+        let history = Arc::new(History::new(Arc::clone(&fs), &data_dir, &apps, Arc::clone(&clock)));
+        Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), db, state, history, &apps, &data_dir, Arc::clone(&clock)))
     };
     let docs = Docs::new(Arc::clone(&assets));
     // `wardian key` (ADR-2610081700): the master key in the place the server would use.
@@ -268,7 +271,9 @@ fn serve(cfg: Settings, no_open: bool) {
     let open = terminal::should_open(tty, no_open, std::env::var("WARDIAN_NO_OPEN").ok().as_deref());
     let fs: Arc<dyn FileSystem> = Arc::new(LocalDisk);
     let assets: Arc<dyn Assets> = Arc::new(Embedded);
-    let checker = Arc::new(Checker::new(Arc::clone(&fs)));
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let tasks: Arc<dyn Tasks> = Arc::new(Threads);
+    let checker = Arc::new(Checker::new(Arc::clone(&fs), Arc::clone(&clock)));
     let sealed = secret_store(&cfg, &fs);
     let kept = format!("secrets: {}", sealed.describe()["note"].as_str().unwrap_or(""));
     let secrets: Arc<dyn Secrets> = Arc::new(sealed);
@@ -365,8 +370,8 @@ fn serve(cfg: Settings, no_open: bool) {
             Err(e) => eprintln!("apps: could not add the example apps to {} from {from}: {e}", cfg.local_root.display()),
         }
     }
-    let history = Arc::new(History::new(Arc::clone(&fs), &cfg.data_dir, &cfg.local_root));
-    let checks = Arc::new(KeyChecks::new(Arc::clone(&fs), &cfg.data_dir));
+    let history = Arc::new(History::new(Arc::clone(&fs), &cfg.data_dir, &cfg.local_root, Arc::clone(&clock)));
+    let checks = Arc::new(KeyChecks::new(Arc::clone(&fs), &cfg.data_dir, Arc::clone(&clock)));
     let hub = Arc::new(Hub::new(
         HubPorts {
             fs: Arc::clone(&fs),
@@ -374,6 +379,7 @@ fn serve(cfg: Settings, no_open: bool) {
             web: Arc::new(LinkFetcher::new(cfg.import_allow_lan)),
             assets: Arc::clone(&assets),
             secrets: Arc::clone(&secrets),
+            clock: Arc::clone(&clock),
         },
         Arc::clone(&checks),
         Arc::clone(&history),
@@ -389,19 +395,19 @@ fn serve(cfg: Settings, no_open: bool) {
         provider: cfg.ai_provider.clone(),
         bedrock_env: bedrock_from_env(&cfg),
     };
-    let stores = Stores { fs: Arc::clone(&fs), secrets: Arc::clone(&secrets), checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&fs), &cfg.data_dir)) };
-    let studio = Arc::new(Studio::new(stores, providers, Arc::clone(&assets), Arc::clone(&hub), Arc::clone(&checker), &cfg.data_dir));
+    let stores = Stores { fs: Arc::clone(&fs), secrets: Arc::clone(&secrets), checks: Arc::clone(&checks), meter: Arc::new(Meter::new(Arc::clone(&fs), &cfg.data_dir, Arc::clone(&clock))) };
+    let studio = Arc::new(Studio::new(stores, providers, Arc::clone(&assets), Arc::clone(&hub), Arc::clone(&checker), &cfg.data_dir, Arc::clone(&clock), Arc::clone(&tasks)));
     let db: Arc<dyn Database> = Arc::new(SqliteStore::new(&cfg.data_dir));
-    let splunk = Arc::new(Splunk::new(Arc::clone(&secrets), Arc::clone(&checks), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone()));
+    let splunk = Arc::new(Splunk::new(Arc::clone(&secrets), Arc::clone(&checks), Arc::new(SplunkRest), Arc::clone(&db), &cfg.data_dir, cfg.splunk.clone(), Arc::clone(&clock)));
     detail(&hub.start(cfg.drive_key_file.clone(), cfg.drive_folder.clone()));
 
     let examples = usecases::workspace::example_names(&*fs, cfg.example_apps.as_deref(), assets.example_apps());
     let state: Arc<dyn ViewerState> = Arc::new(State::new(Arc::clone(&fs), &cfg.data_dir).with_examples(examples));
-    let exports = Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), Arc::clone(&db), Arc::clone(&state), Arc::clone(&history), &cfg.local_root, &cfg.data_dir));
+    let exports = Arc::new(Exporter::new(Arc::clone(&fs), Arc::clone(&checker), Arc::clone(&db), Arc::clone(&state), Arc::clone(&history), &cfg.local_root, &cfg.data_dir, Arc::clone(&clock)));
     let owners: Vec<Arc<dyn KeyOwner>> = vec![studio.clone(), splunk.clone(), hub.clone()];
     let keys = Arc::new(Keyring::new(owners, admin, checks, secrets));
     let (builder, searches): (Arc<dyn Builder>, Arc<dyn Searches>) = (studio, splunk);
-    let jobs = Arc::new(JobRunner::new(Arc::clone(&searches), Arc::clone(&builder)));
+    let jobs = Arc::new(JobRunner::new(Arc::clone(&searches), Arc::clone(&builder), clock, tasks));
     detail(JobRunner::NOTE);
     let services = Services { exports, tables: Arc::new(Db::new(db)), history, state, catalog: hub, builder, searches, jobs, pages: Arc::new(Docs::new(assets)), keys };
     // The address actually taken: with port 0 the system picks a free port.
