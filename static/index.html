@@ -491,7 +491,8 @@
       </div>
       <div id="aiBedrockBox" class="hidden">
         <div class="row" style="margin-bottom:.5rem">
-          <input type="text" id="bdRegion" style="width:11rem" placeholder="Region, e.g. us-east-1" aria-label="AWS region" autocomplete="off" spellcheck="false">
+          <input type="text" id="bdRegion" style="width:11rem" placeholder="Region, e.g. us-east-1" aria-label="AWS region" autocomplete="off" spellcheck="false" list="bdRegions">
+          <datalist id="bdRegions"><option value="us-east-1"><option value="us-east-2"><option value="us-west-2"><option value="ca-central-1"><option value="eu-central-1"><option value="eu-west-1"><option value="eu-west-2"><option value="eu-west-3"><option value="eu-north-1"><option value="ap-northeast-1"><option value="ap-northeast-2"><option value="ap-south-1"><option value="ap-southeast-1"><option value="ap-southeast-2"><option value="sa-east-1"><option value="us-gov-west-1"></datalist>
           <select id="bdAuth" aria-label="How to sign in to AWS">
             <option value="api-key">Bedrock API key</option>
             <option value="access-keys">AWS access keys</option>
@@ -2639,10 +2640,15 @@ async function setAdminToken(body) {
     $('adminTokenShown').classList.toggle('hidden', !v.generated);
     $('adminTokenValue').textContent = v.generated ? v.token : '';
     renderKeys(v);
-    adminTokenMsg(v.generated ? 'Saved. Every admin request needs this token from now on.' : 'Saved. Every admin request needs this token from now on. This tab keeps it.');
+    adminTokenMsg(v.generated ? 'Made and saved: Wardian uses this token now. Copy it and keep it somewhere safe; nothing else needs saving.' : 'Saved. Every admin request needs this token from now on. This tab keeps it.');
   } catch (e) { adminTokenMsg(e.message, true); }
 }
-$('adminTokenSave').onclick = () => setAdminToken({ token: $('adminTokenInput').value.trim() });
+$('adminTokenSave').onclick = () => {
+  const typed = $('adminTokenInput').value.trim();
+  // Make one for me saves the token it makes; Save is for a token typed in the box.
+  if (!typed) return adminTokenMsg('Type a token of 24 characters or more in the box first, or press Make one for me, which makes one and saves it.', true);
+  setAdminToken({ token: typed });
+};
 $('adminTokenMake').onclick = () => setAdminToken({ generate: true });
 $('adminTokenCopy').onclick = async () => {
   try { await navigator.clipboard.writeText($('adminTokenValue').textContent); adminTokenMsg('Copied.'); }

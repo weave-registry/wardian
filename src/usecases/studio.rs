@@ -316,6 +316,9 @@ impl BedrockSettings {
         if (region.is_empty() && !profile) || region.len() > 40 || !region.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
             return Err("give the AWS region, such as us-east-1".into());
         }
+        if !region.is_empty() {
+            aws_profile::check_region(&region)?;
+        }
         let field = |name: &str, kept: Option<&String>| -> Result<String, String> {
             let typed = s(name);
             let val = if typed.is_empty() { kept.cloned().unwrap_or_default() } else { typed };
@@ -692,6 +695,7 @@ impl Studio {
         let region = self.profiles.region_of(name)?;
         if settings.region.is_empty() {
             settings.region = region.ok_or_else(|| aws_profile::no_region(name))?;
+            aws_profile::check_region(&settings.region).map_err(|e| format!("AWS profile \"{name}\": {e}"))?;
         }
         *cli = self.profiles.find_cli().unwrap_or_default();
         // Keys kept from before are not trusted for a new test.

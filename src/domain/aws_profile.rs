@@ -404,8 +404,73 @@ pub fn valid_profile_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 128 && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.@+/:=,".contains(c))
 }
 
+/// AWS regions in which a Bedrock region is checked and a typo is matched to the nearest. A region
+/// not listed still passes when it has a region's shape, so a new one works before this list knows it.
+const REGIONS: &[&str] = &[
+    "us-east-1", "us-east-2", "us-west-1", "us-west-2", "us-gov-east-1", "us-gov-west-1",
+    "ca-central-1", "ca-west-1", "mx-central-1", "sa-east-1",
+    "eu-central-1", "eu-central-2", "eu-west-1", "eu-west-2", "eu-west-3", "eu-north-1", "eu-south-1", "eu-south-2",
+    "ap-south-1", "ap-south-2", "ap-east-1", "ap-east-2", "ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
+    "ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4", "ap-southeast-5", "ap-southeast-7",
+    "me-south-1", "me-central-1", "il-central-1", "af-south-1", "cn-north-1", "cn-northwest-1",
+];
+
+/// Whether `region` has the shape of an AWS region: an area AWS uses (us, eu, ap…), a direction,
+/// and a number, as in us-east-1 or us-gov-west-1.
+fn region_shape(region: &str) -> bool {
+    const AREAS: [&str; 11] = ["us-gov", "us", "eu", "ap", "ca", "sa", "me", "af", "il", "mx", "cn"];
+    const WAYS: [&str; 9] = ["north", "south", "east", "west", "central", "northeast", "southeast", "northwest", "southwest"];
+    AREAS.iter().any(|area| {
+        region.strip_prefix(area).and_then(|r| r.strip_prefix('-')).is_some_and(|r| {
+            r.split_once('-').is_some_and(|(way, n)| WAYS.contains(&way) && !n.is_empty() && n.len() <= 2 && n.bytes().all(|b| b.is_ascii_digit()))
+        })
+    })
+}
+
+/// Edits (insert, delete, change) from `a` to `b`.
+fn edits(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for j in 0..b.len() {
+            let next = (prev + usize::from(ca != b[j])).min(row[j] + 1).min(row[j + 1] + 1);
+            prev = row[j + 1];
+            row[j + 1] = next;
+        }
+    }
+    row[b.len()]
+}
+
+/// Checks a Bedrock region before anything is sent to it. A typo gets the nearest real region named.
+pub fn check_region(region: &str) -> Result<(), String> {
+    if REGIONS.contains(&region) || region_shape(region) {
+        return Ok(());
+    }
+    let best = REGIONS.iter().map(|r| edits(region, r)).min().unwrap_or(usize::MAX);
+    let near: Vec<&str> = REGIONS.iter().copied().filter(|r| edits(region, r) == best).take(2).collect();
+    Err(match near.as_slice() {
+        [one] if best <= 3 => format!("\"{region}\" is not an AWS region. Did you mean {one}?"),
+        [one, two] if best <= 3 => format!("\"{region}\" is not an AWS region. Did you mean {one} or {two}?"),
+        _ => format!("\"{region}\" is not an AWS region: use one such as us-east-1, eu-west-1 or ap-northeast-1"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bedrock_profile_regions_are_checked_and_typos_named() {
+        for ok in ["us-east-1", "eu-central-2", "us-gov-west-1", "ap-southeast-7", "eu-west-9"] {
+            assert_eq!(super::check_region(ok), Ok(()), "{ok}");
+        }
+        assert_eq!(super::check_region("ua-east-1").unwrap_err(), "\"ua-east-1\" is not an AWS region. Did you mean us-east-1 or sa-east-1?");
+        assert_eq!(super::check_region("us-east1").unwrap_err(), "\"us-east1\" is not an AWS region. Did you mean us-east-1?");
+        assert_eq!(super::check_region("eu-wst-1").unwrap_err(), "\"eu-wst-1\" is not an AWS region. Did you mean eu-west-1?");
+        assert!(super::check_region("xx-moon-1").unwrap_err().contains("use one such as us-east-1"));
+        assert!(super::check_region("us-east-123").is_err());
+    }
+
     use super::*;
 
     const CONFIG: &str = "# my AWS settings\r\n[default]\r\nregion = us-east-1\r\n\r\n; work account\r\n[profile work]\r\nregion=eu-west-1\r\nsso_session = corp\r\nsso_account_id = 111122223333\r\nsso_role_name = Dev\r\n\r\n[sso-session corp]\r\nsso_start_url = https://corp.awsapps.com/start\r\nsso_region = us-east-1\r\n\r\n[profile  proc ]\r\nregion = us-west-2\r\ncredential_process = \"/opt/my tools/creds\" --account 'dev team' plain\r\ns3 =\r\n  max_concurrent_requests = 20\r\n[profile role]\r\nrole_arn = arn:aws:iam::123:role/x\r\nsource_profile = default\r\n[profile both]\r\naws_access_key_id = CONFIGID\r\naws_secret_access_key = config secret\r\nregion = ap-south-1\r\n[profile cfgkeys]\r\naws_access_key_id = CFGID\r\naws_secret_access_key = cfgsecret\r\n[notaprofile]\r\nregion = xx\r\n";

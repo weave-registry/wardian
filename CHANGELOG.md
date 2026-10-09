@@ -12,6 +12,14 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Fixed
+
+- A Bedrock region is checked before anything is sent: one AWS does not use is refused with the
+  nearest real ones named ("ua-east-1" is not an AWS region. Did you mean us-east-1 or sa-east-1?),
+  for a typed region and for a profile's. The region field lists the usual Bedrock regions.
+- Settings → Keys → Admin token: "Save this token" with an empty box says to type one or to use
+  "Make one for me", which saves the token it makes.
+
 ## [0.4.6] - 2026-10-09
 
 ### Changed
