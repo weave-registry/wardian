@@ -62,8 +62,8 @@ impl Searches for PollingSearches {
     fn status(&self) -> Value {
         Value::Null
     }
-    fn set_config(&self, _: &Value) -> Result<Value, String> {
-        Err("no".into())
+    fn set_config(&self, _: &Value) -> Result<Value, Value> {
+        Err(json!({ "error": "no" }))
     }
     fn search(&self, _: &str, _: &str, _: &str, watch: &dyn Watch) -> Result<Value, String> {
         for i in 0..3 {
@@ -93,6 +93,7 @@ impl Builder for NoBuilder {
     fn agent(&self) -> Value { Value::Null }
     fn set_agent(&self, _: &Value) -> Result<Value, String> { Err("no".into()) }
     fn usage(&self) -> Value { Value::Null }
+    fn aws_profiles(&self) -> Value { Value::Null }
 }
 
 /// The real job runner, on the browser's clock and task queue.

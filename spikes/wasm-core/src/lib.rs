@@ -9,6 +9,7 @@ mod probe;
 #[path = "../../../src/domain"]
 mod domain {
     pub mod agent;
+    pub mod aws_profile;
     pub mod check;
     pub mod components;
     pub mod db;
@@ -34,6 +35,7 @@ mod ports {
     pub mod db;
     pub mod drive;
     pub mod llm;
+    pub mod programs;
     pub mod secrets;
     pub mod service;
     pub mod service_manager;
@@ -44,6 +46,7 @@ mod ports {
 }
 #[path = "../../../src/usecases"]
 mod usecases {
+    pub mod aws_profiles;
     pub mod background;
     pub mod catalog;
     pub mod check;

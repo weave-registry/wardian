@@ -12,7 +12,8 @@ const path = require('path');
   fs.copyFileSync(built, path.join(__dirname, 'core.wasm'));
   const srv = spawn('python3', ['-m', 'http.server', '8793', '--bind', '127.0.0.1', '--directory', __dirname], { stdio: 'ignore' });
   await new Promise((r) => setTimeout(r, 800));
-  const browser = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  // The same browser as the end-to-end tests (tests/browser.js); CHROME names another executable.
+  const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : require('../../tests/browser')());
   const page = await browser.newPage();
   const out = {};
   for (const phase of ['1', '2']) {
