@@ -8,9 +8,12 @@
     "ui/button.css",
     "ui/field.css",
     "ui/card.css",
+    "ui/type.css",
+    "ui/surface.css",
     "style.css"
   ],
   "header": "header.html",
+  "surface": "glass",
   "apps": [
     {
       "name": "text",
@@ -24,7 +27,7 @@
     {
       "name": "input",
       "slot": "aside",
-      "wrap": "<aside class=\"w-card panel\">",
+      "wrap": "<aside class=\"w-card w-glass panel\">",
       "emits": {
         "text:changed": {
           "retain": true
@@ -37,7 +40,7 @@
     {
       "name": "output",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "text:changed"
       ],

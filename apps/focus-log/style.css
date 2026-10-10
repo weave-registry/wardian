@@ -9,7 +9,7 @@
 body { margin: 0; font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
 h1 { margin: 0; font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.02em; }
 h2 { margin: 0; font: 600 var(--w-text-lg)/1.3 var(--w-font); }
-.top { margin-bottom: var(--w-space-5); } .top p { color: var(--w-muted); margin: 6px 0 0; max-width: 72ch; }
+.top { margin-bottom: var(--w-space-5); } .top p { margin: 10px 0 0; max-width: 72ch; }
 code { font: 13px var(--w-font-mono); }
 .panel { padding: var(--w-space-4) var(--w-space-5); }
 main .panel { margin-bottom: var(--w-space-4); }
@@ -33,8 +33,10 @@ main .panel { margin-bottom: var(--w-space-4); }
 
 /* today */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--w-space-3); }
-.tile { border: 1px solid var(--w-border); border-radius: var(--w-radius); padding: 10px 12px; background: var(--w-bg); }
-.tile .value { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; margin: 2px 0; }
+/* On glass a tile is a lighter pane of the same glass; its figure is in the display serif. */
+.tile { border: 1px solid var(--w-glass-edge, var(--w-border)); border-radius: calc(var(--w-radius) * 1.5); padding: 10px 12px;
+  background: color-mix(in srgb, var(--w-bg) 55%, transparent); }
+.tile .value { font: 300 32px/1.1 var(--w-font-display); font-variant-numeric: lining-nums tabular-nums; letter-spacing: -.02em; margin: 4px 0 2px; }
 .goal { display: flex; align-items: flex-end; gap: var(--w-space-4); margin-top: var(--w-space-3); }
 .goal .meter { flex: 1; margin-bottom: 14px; }
 .goalfield { margin: 0; width: 150px; }
@@ -50,7 +52,7 @@ main .panel { margin-bottom: var(--w-space-4); }
 .ax.strong { fill: var(--w-fg); font-weight: 600; }
 .val { fill: var(--w-fg); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .bar { fill: var(--accent-soft); } .bar.today { fill: var(--accent); }
-.hit { fill: transparent; } .hit.on { fill: var(--w-muted-bg); }
+.hit { fill: transparent; } .hit.on { fill: color-mix(in srgb, var(--w-fg) 8%, transparent); }
 .readout { min-height: 1.5em; margin: 8px 0 0; font-size: var(--w-text); font-variant-numeric: tabular-nums; }
 
 /* labels */

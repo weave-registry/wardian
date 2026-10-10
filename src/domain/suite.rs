@@ -95,6 +95,25 @@ mod tests {
         }
     }
 
+    /// ADR-2610100900: a glass suite's frames are see-through and share the kernel's colour scheme;
+    /// a solid suite's frames are as before.
+    #[test]
+    fn glass_suite_frames_are_see_through() {
+        let page = |surface: &str| {
+            let json = format!(r#"{{"surface": {surface}, "header": "h.html", "apps": [{{"name": "a", "slot": "main"}}]}}"#);
+            let read = move |rel: &str| Some(if rel == "suite.json" { json.clone().into_bytes() } else { b"<p>x</p>".to_vec() });
+            (frame(&read, "", Some("a")).unwrap(), frame(&read, "", None).unwrap())
+        };
+        for html in <[String; 2]>::from(page(r#""glass""#)) {
+            assert!(html.contains("color-scheme:light dark") && html.contains("background:transparent"), "{html}");
+        }
+        for surface in [r#""solid""#, r#""frosted""#, "null"] {
+            for html in <[String; 2]>::from(page(surface)) {
+                assert!(!html.contains("background:transparent"), "{surface}: {html}");
+            }
+        }
+    }
+
     #[test]
     fn page_csp_names_only_the_package_and_the_sdk() {
         let p = page_csp("127.0.0.1:8000", "text-tools");
@@ -125,6 +144,8 @@ struct Suite {
     #[serde(default)]
     scripts: Vec<String>,
     header: Option<String>,
+    /// "glass" makes every frame see-through, over the kernel's light (ADR-2610100900).
+    surface: Option<serde_json::Value>,
     apps: Vec<SuiteApp>,
 }
 
@@ -272,9 +293,17 @@ pub fn frame(read: Read, shim: &str, app: Option<&str>) -> Result<String, String
             (body, scripts)
         }
     };
+    // A glass suite's frame lets the kernel's light through: no background, and the kernel's colour
+    // scheme, or the browser puts an opaque backdrop behind the frame. A pane's outer shadow would be
+    // cut off at the frame's edge, so it has none (ADR-2610100900).
+    let glass = if s.surface.as_ref().and_then(|v| v.as_str()) == Some("glass") {
+        "<style>:root{color-scheme:light dark} html,body{background:transparent!important} :root{--w-glass-shadow:0 0 #0000}</style>\n"
+    } else {
+        ""
+    };
     Ok(format!(
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
-         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n{head}\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n{head}{glass}\
          <style>html,body{{overflow-x:hidden}} body{{display:flow-root}}</style>\n</head>\n<body>\n{body}\n\
          {scripts}<script>Kernel.start();</script>\n</body>\n</html>\n"
     ))

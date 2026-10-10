@@ -8,13 +8,15 @@
 <link rel="stylesheet" href="ui/button.css">
 <link rel="stylesheet" href="ui/field.css">
 <link rel="stylesheet" href="ui/card.css">
+<link rel="stylesheet" href="ui/type.css">
+<link rel="stylesheet" href="ui/surface.css">
 <style>
   :root { color-scheme: light dark; --page: #f7f7f8; }
   @media (prefers-color-scheme: dark) { :root { --page: #111113; } }
   * { box-sizing: border-box; }
   body { margin: 0; padding: var(--w-space-5) clamp(16px, 3vw, 32px); font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
   h1 { margin: 0; font-size: 1.6rem; letter-spacing: -.02em; }
-  .top { margin-bottom: var(--w-space-4); } .top p { margin: 4px 0 0; color: var(--w-muted); }
+  .top { margin-bottom: var(--w-space-5); } .top p { margin: 10px 0 0; }
   h2 { margin: 0 0 var(--w-space-3); font: 600 var(--w-text-lg)/1.3 var(--w-font); }
   /* Each data-panel is a part the viewer may move or hide with Arrange (ui/arrange.js). */
   .layout { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.4fr); gap: var(--w-space-4); align-items: start; }
@@ -24,13 +26,14 @@
   .panel { padding: var(--w-space-4) var(--w-space-5); }
   output { display: block; white-space: pre-wrap; word-break: break-word; }
 </style>
+<body class="w-wallpaper">
 <header class="top">
-  <h1>{{name}}</h1>
-  <p>Type below. WebAssembly counts the words and shouts the text back.</p>
+  <h1 class="w-display">{{name}}</h1>
+  <p class="w-lede">Type below. WebAssembly counts the words and shouts the text back.</p>
 </header>
 <main class="layout" data-arrange-grid>
   <div class="col" data-arrange-column="side">
-    <section class="w-card panel" data-panel="input" data-panel-label="Your text">
+    <section class="w-card w-glass panel" data-panel="input" data-panel-label="Your text">
       <div class="w-field">
         <label class="w-label" for="text">Your text</label>
         <textarea class="w-input" id="text">hello from Wardian</textarea>
@@ -38,7 +41,7 @@
     </section>
   </div>
   <div class="col" data-arrange-column="main">
-    <section class="w-card panel" data-panel="result" data-panel-label="Result">
+    <section class="w-card w-glass panel" data-panel="result" data-panel-label="Result">
       <h2>Result</h2>
       <output id="out" aria-live="polite"></output>
     </section>

@@ -105,8 +105,8 @@ pub const GUIDE: &str = r#"Classes and helpers of the Wardian component library.
 /// The component library files each kind starts with, in `ui/`. They come from the library itself
 /// (the embedded assets), so a new package always gets the current components; the copies under templates/
 /// keep the templates checkable on their own, and a test keeps them identical.
-pub const UI_PAGE: &[&str] = &["theme.css", "button.css", "field.css", "card.css", "arrange.js"];
-pub const UI_SUITE: &[&str] = &["theme.css", "button.css", "field.css", "card.css"];
+pub const UI_PAGE: &[&str] = &["theme.css", "button.css", "field.css", "card.css", "type.css", "surface.css", "arrange.js"];
+pub const UI_SUITE: &[&str] = &["theme.css", "button.css", "field.css", "card.css", "type.css", "surface.css"];
 
 pub const KINDS: &[(&str, &str)] = &[
     ("module", "WebAssembly functions of numbers; Wardian builds the interface"),

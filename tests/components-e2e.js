@@ -97,6 +97,26 @@ const lowestContrast = ({ paneSel, textSel }) => {
   ok(r.kinds.join(' | ') === '3 items | Fields: label, minutes | Text, 3 characters | 1 row, 1 column: a', `other kinds of data are described too (${r.kinds.join(' | ')})`);
   ok(r.gallery.trim() === r.hues[0], `the gallery's receipt has the colour receipt.js gives its id (${r.gallery} and ${r.hues[0]})`);
 
+  // ADR-2610100900: a glass suite shows one light behind see-through frames; a solid suite is as before.
+  const suiteLook = async name => {
+    const s = await browser.newPage({ viewport: { width: 1200, height: 900 }, colorScheme: 'dark' });
+    s.on('pageerror', e => errors.push(e.message));
+    await s.goto(B + '/run/' + name + '/');
+    await s.waitForTimeout(2500);
+    const kernel = await s.evaluate(() => ({ wall: document.body.classList.contains('w-wallpaper'), bg: document.body.style.background,
+      light: getComputedStyle(document.body, '::before').backgroundImage }));
+    const frame = s.frames().find(f => /\/frame\/[^/]+\/[^/]+$/.test(f.url()));
+    const inside = await frame.evaluate(() => ({ bg: getComputedStyle(document.body).backgroundColor, scheme: getComputedStyle(document.documentElement).colorScheme,
+      pane: document.querySelector('.w-glass') && getComputedStyle(document.querySelector('.w-glass')).boxShadow }));
+    await s.close();
+    return { kernel, inside };
+  };
+  const glassy = await suiteLook('focus-log'), solidS = await suiteLook('chan-viewer');
+  ok(glassy.kernel.wall && /radial-gradient/.test(glassy.kernel.light) && !glassy.kernel.bg, `a glass suite: the kernel paints the light and copies no frame colour (${glassy.kernel.bg || 'none'})`);
+  ok(glassy.inside.bg === 'rgba(0, 0, 0, 0)' && glassy.inside.scheme === 'light dark', `a glass suite: each frame is see-through, in the kernel's colour scheme (${glassy.inside.bg}, ${glassy.inside.scheme})`);
+  ok(glassy.inside.pane && !/rgba\(0, 0, 0, 0\.[1-9]/.test(glassy.inside.pane.split('inset')[1] || ''), `a glass pane in a frame has no outer shadow for the frame to cut off (${glassy.inside.pane})`);
+  ok(!solidS.kernel.wall && solidS.inside.scheme !== 'light dark', `a solid suite has no light and its frames are as before (${solidS.inside.scheme})`);
+
   ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);

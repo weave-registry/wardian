@@ -21,11 +21,13 @@ body.w-wallpaper::before { position: fixed; }
 .w-glass, .w-card.w-glass, .w-tile.w-glass {
   background: color-mix(in srgb, var(--w-bg) var(--w-glass-opacity), transparent);
   border: 1px solid var(--w-glass-edge); border-radius: var(--w-radius-lg); color: var(--w-fg);
-  box-shadow: inset 0 1px 0 var(--w-glass-edge), var(--w-shadow);
+  box-shadow: inset 0 1px 0 var(--w-glass-edge), var(--w-glass-shadow, var(--w-shadow));
   -webkit-backdrop-filter: blur(var(--w-blur)) saturate(1.5); backdrop-filter: blur(var(--w-blur)) saturate(1.5);
   /* Light shows through, so quiet text is a step stronger here: 4.5:1 over the brightest glow. */
   --w-muted: color-mix(in srgb, var(--w-fg) 70%, var(--w-bg));
 }
+/* Parts inside glass are a lighter pane of the same glass, not a solid box. */
+.w-glass .w-receipt, .w-glass .w-tile { background: color-mix(in srgb, var(--w-bg) 55%, transparent); border-color: var(--w-glass-edge); }
 .w-button[data-variant="glass"] {
   background: color-mix(in srgb, var(--w-bg) var(--w-glass-opacity), transparent); color: var(--w-fg);
   border-color: var(--w-glass-edge); border-radius: 999px;

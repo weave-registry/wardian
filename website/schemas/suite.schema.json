@@ -54,6 +54,11 @@
       "pattern": "^[A-Za-z0-9_\\s(),.%\\-]+$",
       "default": "minmax(280px, 340px) minmax(0, 1fr)"
     },
+    "surface": {
+      "description": "\"glass\": Wardian paints a slow light behind all the suite's frames and makes each frame see-through; put the class w-glass on the panels (ADR-2610100900). Default \"solid\".",
+      "enum": ["solid", "glass"],
+      "default": "solid"
+    },
     "apps": {
       "type": "array",
       "minItems": 1,

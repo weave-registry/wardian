@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end test of the component library's glass, display type, tiles and receipt (tests/components-e2e.js),
 # on the gallery at /ui/: contrast on glass, the settings for less transparency and less motion, tiles in a
-# narrow box, and receipts that match.
+# narrow box, receipts that match, and a glass suite beside a solid one (ADR-2610100900).
 # Needs: Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
 set -euo pipefail
 export WARDIAN_NO_OPEN=1   # never open a browser tab from a test (ADR-2610080930)
@@ -14,6 +14,7 @@ TMP=$(mktemp -d)
 PID=
 trap '[ -n "$PID" ] && kill "$PID" 2>/dev/null; rm -rf "$TMP"' EXIT
 mkdir "$TMP/apps"
+cp -R apps/focus-log tests/fixtures/chan-viewer "$TMP/apps/"   # a glass suite and a solid one
 DATA_DIR="$TMP/data" ADDR="127.0.0.1:0" "$BIN" "$TMP/apps" >"$TMP/server.log" 2>&1 &
 PID=$!
 disown "$PID"

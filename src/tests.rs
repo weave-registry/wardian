@@ -78,6 +78,23 @@ fn splunk_table_parts_pass_check_without_a_split_warning() {
     assert!(!report.join("").contains("ADR-2610080900"), "{report:?}");
 }
 
+/// ADR-2610100900: `surface` is "solid" or "glass"; anything else is ignored, with a warning.
+#[test]
+fn glass_surface_is_known_to_check() {
+    let dir = tmp("glass-suite");
+    fs::create_dir_all(dir.join("apps/view")).unwrap();
+    fs::write(dir.join("apps/view/app.js"), "Kernel.register({ name: 'view', init() {} });").unwrap();
+    fs::write(dir.join("apps/view/view.html"), "<p>hi</p>").unwrap();
+    let suite = |surface: &str| format!(r#"{{"format": 2, "title": "Glass", "surface": {surface}, "apps": [{{"name": "view", "slot": "main"}}]}}"#);
+    for (surface, warned) in [(r#""glass""#, false), (r#""solid""#, false), (r#""frosted""#, true), ("true", true)] {
+        fs::write(dir.join("suite.json"), suite(surface)).unwrap();
+        let (ok, report) = checker().check_dir(&dir, "glass");
+        assert!(ok, "{surface}: {report}");
+        assert_eq!(report.contains("surface"), warned, "{surface}: {report}");
+    }
+    let _ = fs::remove_dir_all(dir);
+}
+
 #[test]
 fn channels_need_format_2() {
     let dir = tmp("channels");

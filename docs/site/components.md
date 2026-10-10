@@ -124,6 +124,24 @@ const sent = await ctx.channel('splunk.table').send(table, { name: 'Checkout lat
 box.replaceChildren(WardianUI.receipt({ ...sent, channel: 'splunk.table', data: table }, { direction: 'sent' }));
 ```
 
+### A glass suite
+
+A suite is several frames, and glass cannot see out of its frame. So a suite asks Wardian for the
+light instead: put `"surface": "glass"` in `suite.json`, and `w-glass` on each panel's `wrap`.
+
+```json
+{
+  "surface": "glass",
+  "styles": ["ui/theme.css", "ui/card.css", "ui/type.css", "ui/surface.css", "style.css"],
+  "apps": [{ "name": "today", "slot": "main", "wrap": "<section class=\"w-card w-glass panel\">" }]
+}
+```
+
+Wardian then paints one light behind every frame and makes each frame see-through. The light uses
+Wardian's colours, not your copy of `theme.css`. A page app needs none of this: it puts
+`w-wallpaper` on its own `<body>`. Focus log is a glass suite and Focus timer a glass page; new
+apps from `wardian new` start the same way.
+
 ## The progress bar
 
 `<wardian-progress>` is built into every suite frame and into `/sdk/wardian.js`, so it needs no

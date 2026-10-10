@@ -6,7 +6,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23183e32'/%3E%3Cpath d='M10 16 20 8l10 8v17H10Z' fill='none' stroke='%23dce8a5' stroke-width='1.4'/%3E%3Cpath d='M20 8v25M10 17h20M20 30c-9-1-8-10-8-10 8 0 8 10 8 10Zm0-4c8-1 8-9 8-9-8 0-8 9-8 9Z' fill='none' stroke='%23dce8a5' stroke-width='1.3'/%3E%3C/svg%3E" type="image/svg+xml">
 <style>
   /* The page around the frames keeps the browser's own background (Canvas): the frames report
-     theirs, and the body takes it, so a suite looks as its parts draw it. Wardian's own messages
+     theirs, and the body takes it, so a suite looks as its parts draw it. A glass suite instead
+     shows Wardian's light here, through see-through frames (ADR-2610100900). Wardian's own messages
      here (faults, a suite that cannot start, the permission bar from channels.js) use the
      website's greens and type, with the system font when DM Sans is not loaded. */
   :root { color-scheme: light dark; --k-ink: #183e32; --k-panel: #fbfbf6; --k-line: #d8ddd2; --k-bad: #b02a20; }
@@ -104,6 +105,13 @@
     return;
   }
   document.title = suite.title || suiteName;
+  // A glass suite (ADR-2610100900): one light behind every frame, painted here from Wardian's own
+  // theme and surface files. Its frames are see-through, so their colours are not copied below.
+  const glass = suite.surface === 'glass';
+  if (glass){
+    for (const f of ['theme.css', 'surface.css']) document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: '/ui/' + f}));
+    document.body.classList.add('w-wallpaper');
+  }
   const list = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : [];
   const contractOf = a => ({
     emits: Object.fromEntries(Object.entries(a.emits || {}).map(([k, v]) => [k, {retain: !!(v && v.retain)}])),
@@ -367,7 +375,7 @@
       el.style.height = (m.h | 0) + 'px';
       // Follow the latest color, not the first: a frame can report before its
       // dark-mode styles apply, and the theme can change while the page is open.
-      if (m.bg && m.bg !== 'rgba(0, 0, 0, 0)') document.body.style.background = m.bg;
+      if (!glass && m.bg && m.bg !== 'rgba(0, 0, 0, 0)') document.body.style.background = m.bg;
       return;
     }
     if (m.k === 'snapshot'){ snapshotAnswer(e.source, m); return; }

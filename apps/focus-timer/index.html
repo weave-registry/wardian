@@ -12,16 +12,19 @@
 <link rel="stylesheet" href="ui/switch.css">
 <link rel="stylesheet" href="ui/toast.css">
 <link rel="stylesheet" href="ui/receipt.css">
+<link rel="stylesheet" href="ui/type.css">
+<link rel="stylesheet" href="ui/surface.css">
 <link rel="stylesheet" href="style.css">
 <!-- Wardian's channels for page apps. Outside Wardian this file is missing, and the timer still works. -->
 <script src="/sdk/wardian.js"></script>
+<body class="w-wallpaper">
 <header class="top">
-  <h1>Focus timer</h1>
-  <p>Work in focused blocks with short breaks between them. Each focus session you finish goes to the <b>Focus log</b>, if you allow it.</p>
+  <h1 class="w-display">Focus timer</h1>
+  <p class="w-lede">Work in focused blocks with short breaks between them. Each focus session you finish goes to the <b>Focus log</b>, if you allow it.</p>
 </header>
 <main class="layout" data-arrange-grid>
   <div class="col" data-arrange-column="main">
-    <section class="w-card panel timer" data-panel="timer" data-panel-label="Timer" id="timerCard">
+    <section class="w-card w-glass panel timer" data-panel="timer" data-panel-label="Timer" id="timerCard">
       <div class="phases" role="group" aria-label="Phase">
         <span class="phase" data-phase="work">Focus</span>
         <span class="phase" data-phase="short">Short break</span>
@@ -42,21 +45,21 @@
       </div>
       <p class="w-hint center" id="hint">Space starts and pauses.</p>
     </section>
-    <section class="w-card panel" data-panel="sent" data-panel-label="Sent to the log">
+    <section class="w-card w-glass panel" data-panel="sent" data-panel-label="Sent to the log">
       <div class="head"><h2>Sent to the log</h2><span class="sub" id="tally"></span></div>
       <p class="note" id="channelNote" role="status"></p>
       <ol class="sent" id="sent"><li class="empty">Nothing yet. Finish a focus session, or send a test session.</li></ol>
     </section>
   </div>
   <div class="col" data-arrange-column="side">
-    <section class="w-card panel" data-panel="session" data-panel-label="What you are working on">
+    <section class="w-card w-glass panel" data-panel="session" data-panel-label="What you are working on">
       <h2>What you are working on</h2>
       <div class="w-field"><label class="w-label" for="label">Label</label>
         <input class="w-input" id="label" maxlength="80" placeholder="For example: Write the report" autocomplete="off" list="recent"></div>
       <datalist id="recent"></datalist>
       <p class="w-hint">The Focus log adds up your time per label.</p>
     </section>
-    <section class="w-card panel" data-panel="settings" data-panel-label="Lengths and sound">
+    <section class="w-card w-glass panel" data-panel="settings" data-panel-label="Lengths and sound">
       <h2>Lengths and sound</h2>
       <div class="three">
         <div class="w-field"><label class="w-label" for="work">Focus (min)</label><input class="w-input" id="work" type="number" min="1" max="180" value="25" inputmode="numeric"></div>
@@ -71,7 +74,7 @@
       </div>
       <p class="w-hint">A change applies to the next phase. These settings last until you close the app: a sealed page cannot keep them.</p>
     </section>
-    <section class="w-card panel" data-panel="demo" data-panel-label="Try the connection">
+    <section class="w-card w-glass panel" data-panel="demo" data-panel-label="Try the connection">
       <h2>Try the connection</h2>
       <p class="w-hint">Sends a finished focus session that ends now, with your label and focus length, so you can see it reach the Focus log without waiting.</p>
       <button class="w-button" data-variant="secondary" id="test" type="button">Send a test session</button>

@@ -14,7 +14,7 @@ mod split;
 
 const KNOWN_CAPS: &[&str] = &["storage", "asset", "worker", "source", "claude:downloads", "claude:sample", "splunk", "db"];
 const APP_JSON_KEYS: &[&str] = &["$schema", "format", "title", "description", "page", "channels"];
-const SUITE_KEYS: &[&str] = &["$schema", "format", "title", "description", "styles", "scripts", "header", "columns", "apps"];
+const SUITE_KEYS: &[&str] = &["$schema", "format", "title", "description", "styles", "scripts", "header", "columns", "surface", "apps"];
 const ENTRY_KEYS: &[&str] = &["name", "slot", "wrap", "dir", "scripts", "emits", "listens", "provides", "needs", "caps", "channels"];
 
 /// What a check found. A package passes when it has no errors.
@@ -285,6 +285,13 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
         let ok = c.as_str().is_some_and(|c| c.chars().all(|ch| ch.is_ascii_alphanumeric() || " _(),.%-".contains(ch)));
         if !ok {
             r.warn("suite.json: columns uses characters the kernel ignores; the default layout is used");
+        }
+    }
+
+    // ADR-2610100900: the kernel paints glass only for "glass"; anything else shows solid.
+    if let Some(v) = s.get("surface") {
+        if !matches!(v.as_str(), Some("solid" | "glass")) {
+            r.warn("suite.json: surface is \"solid\" or \"glass\"; this value is ignored and the suite is solid");
         }
     }
 

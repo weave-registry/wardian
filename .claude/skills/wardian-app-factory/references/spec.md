@@ -203,6 +203,7 @@ where its panel sits, or on being visible.
 | `scripts` | list of paths | Scripts inlined into every suite app's frame, before the app's code. |
 | `header` | path | HTML shown across the top, in its own frame. |
 | `columns` | string | CSS `grid-template-columns` for the two columns. Default `minmax(280px, 340px) minmax(0, 1fr)`. |
+| `surface` | string | `"solid"` (the default) or `"glass"`. For `"glass"` the host paints one light behind all the frames, and each frame has a transparent background and the colour scheme `light dark`. Put the class `w-glass` on the panels. A host that does not know the field shows the suite solid (ADR-2610100900). |
 | `apps` | list | The suite apps, below. At least one. |
 
 Each entry in `apps`:
