@@ -64,7 +64,7 @@ pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&st
 }
 
 /// For each example Wardian put in the working folder, the fingerprint of its files as Wardian put
-/// them there: one "<name> <sha-256>" per line (ADR-2610101000).
+/// them there: one "<name> <fingerprint>" per line (ADR-2610101000).
 const EXAMPLES_INSTALLED: &str = ".examples-installed";
 
 /// The files of an example that count, as `build.rs` builds them in: not hidden, not build output.
@@ -92,17 +92,24 @@ fn on_disk(fs: &dyn FileSystem, dir: &Path) -> Result<Vec<(String, Vec<u8>)>, St
         .collect()
 }
 
-/// A SHA-256 over every file's path and bytes, in path order.
+/// A 64-bit FNV-1a hash over every file's path and bytes, in path order. It only has to notice a
+/// change, and it gives the same answer in every build, so a record outlives the Wardian that wrote it;
+/// it needs no crate, so the core still builds for the browser (ADR-2610091300).
 fn fingerprint(mut files: Vec<(String, Vec<u8>)>) -> String {
     files.sort();
-    let mut h = ring::digest::Context::new(&ring::digest::SHA256);
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut eat = |bytes: &[u8]| {
+        for b in bytes {
+            h = (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
     for (rel, bytes) in &files {
-        h.update(rel.as_bytes());
-        h.update(&[0]);
-        h.update(&(bytes.len() as u64).to_le_bytes());
-        h.update(bytes);
+        eat(rel.as_bytes());
+        eat(&[0]);
+        eat(&(bytes.len() as u64).to_le_bytes());
+        eat(bytes);
     }
-    h.finish().as_ref().iter().map(|b| format!("{b:02x}")).collect()
+    format!("{h:016x}")
 }
 
 fn read_installed(fs: &dyn FileSystem, working: &Path) -> std::collections::BTreeMap<String, String> {

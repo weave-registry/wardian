@@ -15,7 +15,9 @@ no change Wardian makes to its examples reaches anyone who installed it before.
 ## Decision
 
 1. **Wardian records what it put there.** `.examples-installed` in the working folder holds, for each
-   example, a SHA-256 over its files' paths and bytes as Wardian wrote them. Hidden files and build
+   example, a 64-bit FNV-1a hash over its files' paths and bytes as Wardian wrote them. It only has to
+   notice a change; it is the same in every build, and it needs no crate, so the core still builds for
+   the browser (ADR-2610091300). Hidden files and build
    output (`target/`, `node_modules/`, `Cargo.lock`) are left out, as `build.rs` leaves them out.
 2. **Each start, an untouched example is updated.** When an example's files still match the record
    and this Wardian ships it differently, Wardian keeps the folder in the app's history, writes the new
