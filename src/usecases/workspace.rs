@@ -53,6 +53,7 @@ pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&st
                 }
             }
         }
+        note_installed(fs, working, name, fingerprint(shipped(fs, source, built_in, name)?))?;
         added.push(name.clone());
     }
     let mut list: Vec<String> = seen.into_iter().chain(examples).collect();
@@ -60,6 +61,101 @@ pub fn add_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&st
     list.dedup();
     fs.write(&working.join(EXAMPLES_SEEN), format!("{}\n", list.join("\n")).as_bytes())?;
     Ok(added)
+}
+
+/// For each example Wardian put in the working folder, the fingerprint of its files as Wardian put
+/// them there: one "<name> <sha-256>" per line (ADR-2610101000).
+const EXAMPLES_INSTALLED: &str = ".examples-installed";
+
+/// The files of an example that count, as `build.rs` builds them in: not hidden, not build output.
+fn example_file(rel: &str) -> bool {
+    !rel.split('/').any(|seg| seg.starts_with('.') || seg == "target" || seg == "node_modules") && rel.rsplit('/').next() != Some("Cargo.lock")
+}
+
+/// The files of example `name` this Wardian ships, by their path inside the example.
+fn shipped(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&str, &[u8])], name: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+    match source.filter(|s| fs.is_dir(s)) {
+        Some(src) => on_disk(fs, &src.join(name)),
+        None => Ok(built_in
+            .iter()
+            .filter_map(|(p, b)| p.strip_prefix(name).and_then(|r| r.strip_prefix('/')).map(|r| (r.to_string(), b.to_vec())))
+            .filter(|(r, _)| example_file(r))
+            .collect()),
+    }
+}
+
+fn on_disk(fs: &dyn FileSystem, dir: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
+    fs.walk(dir)
+        .into_iter()
+        .filter(|(r, _)| example_file(r))
+        .map(|(r, _)| fs.read(&dir.join(&r)).map(|b| (r.clone(), b)).ok_or_else(|| format!("cannot read {}", dir.join(&r).display())))
+        .collect()
+}
+
+/// A SHA-256 over every file's path and bytes, in path order.
+fn fingerprint(mut files: Vec<(String, Vec<u8>)>) -> String {
+    files.sort();
+    let mut h = ring::digest::Context::new(&ring::digest::SHA256);
+    for (rel, bytes) in &files {
+        h.update(rel.as_bytes());
+        h.update(&[0]);
+        h.update(&(bytes.len() as u64).to_le_bytes());
+        h.update(bytes);
+    }
+    h.finish().as_ref().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn read_installed(fs: &dyn FileSystem, working: &Path) -> std::collections::BTreeMap<String, String> {
+    let text = fs.read(&working.join(EXAMPLES_INSTALLED)).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    text.lines().filter_map(|l| l.split_once(' ')).map(|(n, h)| (n.to_string(), h.to_string())).collect()
+}
+
+fn note_installed(fs: &dyn FileSystem, working: &Path, name: &str, print: String) -> Result<(), String> {
+    let mut all = read_installed(fs, working);
+    all.insert(name.to_string(), print);
+    let text: String = all.iter().map(|(n, h)| format!("{n} {h}\n")).collect();
+    fs.write(&working.join(EXAMPLES_INSTALLED), text.as_bytes())
+}
+
+/// The examples in the working folder that the user never changed and that this Wardian ships
+/// differently, so they should be replaced (ADR-2610101000). An example is unchanged when its files
+/// match the fingerprint of what Wardian put there; one from before the fingerprints, when it has no
+/// history (`edited` says whether it has).
+pub fn stale_examples(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&str, &[u8])], working: &Path, edited: &dyn Fn(&str) -> bool) -> Vec<String> {
+    let installed = read_installed(fs, working);
+    let mut stale = Vec::new();
+    for name in example_names(fs, source, built_in) {
+        let dir = working.join(&name);
+        let (Ok(new), Ok(now)) = (shipped(fs, source, built_in, &name), on_disk(fs, &dir)) else { continue };
+        if !fs.is_dir(&dir) || now.is_empty() {
+            continue;
+        }
+        let (new, now) = (fingerprint(new), fingerprint(now));
+        let untouched = match installed.get(&name) {
+            Some(was) => *was == now,
+            None => !edited(&name),
+        };
+        if new != now && untouched {
+            stale.push(name);
+        }
+    }
+    stale
+}
+
+/// Replaces example `name` in the working folder with the one this Wardian ships: its files are
+/// written, files the example no longer has are removed, and hidden files and build output stay.
+pub fn replace_example(fs: &dyn FileSystem, source: Option<&Path>, built_in: &[(&str, &[u8])], working: &Path, name: &str) -> Result<(), String> {
+    let files = shipped(fs, source, built_in, name)?;
+    let dir = working.join(name);
+    for (rel, _) in on_disk(fs, &dir)? {
+        if !files.iter().any(|(r, _)| *r == rel) {
+            fs.remove_file(&dir.join(&rel));
+        }
+    }
+    for (rel, bytes) in &files {
+        fs.write(&dir.join(rel), bytes).map_err(|e| format!("writing {}: {e}", dir.join(rel).display()))?;
+    }
+    note_installed(fs, working, name, fingerprint(files))
 }
 
 /// The names of the example apps: the apps in `source` on disk when there is one, otherwise the

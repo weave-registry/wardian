@@ -85,6 +85,11 @@ impl History {
         }
     }
 
+    /// Whether the app has any version in its history: it was changed, or restored, through Wardian.
+    pub fn has_versions(&self, app: &str) -> bool {
+        safe_segment(app) && !self.log(app).is_empty()
+    }
+
     /// Records the app folder as it is now, after a save. A failure is reported, not fatal: the
     /// save itself already happened.
     pub fn record(&self, app: &str, by: &str, why: &str) -> Option<u64> {

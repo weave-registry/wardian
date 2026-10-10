@@ -354,8 +354,8 @@ fn serve(cfg: Settings, no_open: bool) {
     let bound = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| cfg.addr.clone());
     stops.started(&format!("serving {} on {bound}", cfg.local_root.display()));
     // The working folder (ADR-2610071122): gets every example app it has never had (found by
-    // ADR-2610080915's rule); the example apps themselves are never changed. A folder named on the command line is
-    // served as it is.
+    // ADR-2610080915's rule), and below, examples the user never changed are updated. A folder named
+    // on the command line is served as it is.
     let (mut added, mut git_note) = (None, None);
     if cfg.chosen_folder {
         if usecases::workspace::inside_git(&*fs, &cfg.local_root) {
@@ -376,6 +376,22 @@ fn serve(cfg: Settings, no_open: bool) {
         }
     }
     let history = Arc::new(History::new(Arc::clone(&fs), &cfg.data_dir, &cfg.local_root, Arc::clone(&clock)));
+    // Examples the user never changed are brought up to date with this version's. The old copy is
+    // kept in the app's history first, so it can come back (ADR-2610101000).
+    if !cfg.chosen_folder {
+        let source = cfg.example_apps.as_deref();
+        let edited = |name: &str| history.has_versions(name);
+        for name in usecases::workspace::stale_examples(&*fs, source, assets.example_apps(), &cfg.local_root, &edited) {
+            history.before_change(&name);
+            match usecases::workspace::replace_example(&*fs, source, assets.example_apps(), &cfg.local_root, &name) {
+                Ok(()) => {
+                    history.record(&name, "wardian", &format!("the example as Wardian {} ships it", env!("CARGO_PKG_VERSION")));
+                    detail(&format!("apps: updated the example {name} to this version's; History has the one before"));
+                }
+                Err(e) => eprintln!("apps: could not update the example {name}: {e}"),
+            }
+        }
+    }
     let checks = Arc::new(KeyChecks::new(Arc::clone(&fs), &cfg.data_dir, Arc::clone(&clock)));
     let hub = Arc::new(Hub::new(
         HubPorts {

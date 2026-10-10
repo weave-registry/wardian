@@ -112,7 +112,8 @@ user data folder: `~/Library/Application Support/Wardian` on macOS, `~/.local/sh
 (ADR-2610080915). Every Wardian has the example apps built in, however it was installed or started.
 On each start it adds every example app the working folder has not had before: from `./apps` in a
 checkout, else the copy installed beside the program, else the built-in copies. An example you remove
-stays removed, and an app already there is never replaced (ADR-2610081600). It leaves out build
+stays removed. An example you never changed is updated to the new version's, with the one before kept
+in its History; one you changed is kept (ADR-2610081600, ADR-2610101000). It leaves out build
 output (`target/`, `node_modules/`, `Cargo.lock`).
 
 After that, apps you make or change inside Wardian change only the working folder, never the

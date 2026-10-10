@@ -2933,6 +2933,47 @@ fn examples_built_in_fill_any_working_folder_once() {
     let _ = fs::remove_dir_all(base);
 }
 
+/// ADR-2610101000: an example the user never changed is updated to the one this Wardian ships; one
+/// the user changed is kept. A folder from before the fingerprints counts as unchanged when the app
+/// has no history.
+#[test]
+fn examples_untouched_are_updated_changed_are_kept() {
+    use crate::usecases::workspace::{add_examples, replace_example, stale_examples};
+    let base = tmp("examples-update");
+    let working = base.join("apps");
+    let v = |text: &'static str| -> Vec<(&'static str, &'static [u8])> {
+        vec![("hello/app.json", br#"{"format":1,"page":"index.html"}"#), ("hello/index.html", text.as_bytes())]
+    };
+    let never = |_: &str| false;
+    let (v1, v2, v3) = (v("one"), v("two"), v("three"));
+    assert_eq!(add_examples(&LocalDisk, None, &v1, &working).unwrap(), ["hello"]);
+    assert!(stale_examples(&LocalDisk, None, &v1, &working, &never).is_empty(), "the same example is not stale");
+
+    // A file the user added is a change too; hidden files and build output are not.
+    fs::write(working.join("hello/mine.css"), "x").unwrap();
+    assert!(stale_examples(&LocalDisk, None, &v2, &working, &never).is_empty(), "an added file is a change");
+    fs::remove_file(working.join("hello/mine.css")).unwrap();
+    fs::create_dir_all(working.join("hello/target")).unwrap();
+    fs::write(working.join("hello/target/out.wasm"), "build").unwrap();
+    fs::write(working.join("hello/.gitignore"), "/target").unwrap();
+    // A new version of an untouched example: stale, and replaced.
+    assert_eq!(stale_examples(&LocalDisk, None, &v2, &working, &never), ["hello"]);
+    replace_example(&LocalDisk, None, &v2, &working, "hello").unwrap();
+    assert_eq!(fs::read_to_string(working.join("hello/index.html")).unwrap(), "two");
+    assert!(stale_examples(&LocalDisk, None, &v2, &working, &never).is_empty());
+
+    // Changed by the user: kept, whatever this Wardian ships.
+    fs::write(working.join("hello/index.html"), "mine").unwrap();
+    assert!(stale_examples(&LocalDisk, None, &v3, &working, &never).is_empty());
+    assert_eq!(fs::read_to_string(working.join("hello/index.html")).unwrap(), "mine");
+
+    // From an older Wardian, with no fingerprint: updated only when the app has no history.
+    fs::remove_file(working.join(".examples-installed")).unwrap();
+    assert!(stale_examples(&LocalDisk, None, &v3, &working, &|_: &str| true).is_empty(), "an app with history was changed: kept");
+    assert_eq!(stale_examples(&LocalDisk, None, &v3, &working, &never), ["hello"]);
+    let _ = fs::remove_dir_all(base);
+}
+
 fn is_app_dir(dir: &Path) -> bool {
     crate::domain::package::APP_MARKERS.iter().any(|m| dir.join(m).is_file())
 }

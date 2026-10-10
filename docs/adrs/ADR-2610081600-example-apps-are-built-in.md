@@ -25,7 +25,8 @@ release binary must stay under 12 MB (ADR-2610081041).
 3. **Added once each, on every start.** `.examples-seen` in the working folder lists the examples
    it has been offered. Each start adds every example that is not there, not in the trash and not
    on that list, then lists them all. An example new in this version reaches an old folder; one
-   the user removed stays removed; an app already there is never replaced.
+   the user removed stays removed. An example already there is updated only when the user never
+   changed it (ADR-2610101000).
 4. A folder named on the command line is served as it is, as before.
 
 ## Consequences

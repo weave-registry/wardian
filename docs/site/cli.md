@@ -44,7 +44,8 @@ Starts the web server on `ADDR` (default `127.0.0.1:8000`) and serves the apps.
 - With no folder, Wardian serves its **working folder**, `DATA_DIR/apps`. On every start it adds
   every example app it has not had before: from `./apps` in a checkout, from the copy
   installed beside the program, or else from the copies built into Wardian itself. An example you
-  remove stays removed; an app already there is never replaced (ADR-2610081600).
+  remove stays removed. An example you never changed is updated to the new version's, and the one
+  before is kept in its History; one you changed is kept (ADR-2610081600, ADR-2610101000).
   It leaves out `target/`, `node_modules/`, `.git` and `Cargo.lock`, and never changes `./apps`.
 - With a folder, Wardian serves that folder as it is. If the folder is inside a git work tree,
   Wardian prints a note: changes you make in the app show up in git.
