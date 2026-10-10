@@ -1593,11 +1593,13 @@ fn secrets_never_leave_in_answers_exports_or_logs() {
 /// to the next free port, and the usual port is named as busy.
 #[test]
 fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
+    let _turn = port_search();
     let held = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = held.local_addr().unwrap().port();
     match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
         crate::Address::Ready(listener, busy, other) => {
-            assert_eq!(other, None, "a plain listener is not named as a Wardian");
+            // Another test's server may be a Wardian on a later port; the held port is never named.
+            assert!(!other.as_deref().unwrap_or("").contains(&format!("port {port}.")), "a plain listener is not named as a Wardian: {other:?}");
             let got = listener.local_addr().unwrap().port();
             assert!(got > port && got <= port.saturating_add(5), "took {got}, held {port}");
             assert_eq!(busy, Some(port));
@@ -1616,19 +1618,50 @@ fn start_takes_the_next_port_when_a_plain_listener_holds_it() {
     drop(held);
 }
 
-/// A fake Wardian on a free port that answers `/api/status` with `body` a few times.
-fn fake_wardian(body: &'static str) -> u16 {
+/// The tests that look for a free port take turns, so none sees another's listener on the port
+/// after its own and takes it for the one it made.
+static PORT_SEARCH: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn port_search() -> std::sync::MutexGuard<'static, ()> {
+    PORT_SEARCH.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A fake Wardian on a free port that answers `/api/status` with `body` until it is dropped. Then
+/// it stops listening, so no later test finds it on that port.
+struct FakeWardian {
+    port: u16,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for FakeWardian {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        // A connection wakes the thread from accept, and it returns, closing the listener.
+        let _ = std::net::TcpStream::connect(("127.0.0.1", self.port));
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+fn fake_wardian(body: &'static str) -> FakeWardian {
     use std::io::{Read, Write};
     let fake = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = fake.local_addr().unwrap().port();
-    std::thread::spawn(move || {
-        for mut stream in fake.incoming().flatten().take(4) {
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stopped = Arc::clone(&stop);
+    let thread = std::thread::spawn(move || {
+        for mut stream in fake.incoming().flatten() {
+            if stopped.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
             let mut buf = [0u8; 2048];
             let _ = stream.read(&mut buf);
             let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         }
     });
-    port
+    FakeWardian { port, stop, thread: Some(thread) }
 }
 
 /// ADR-2610080930: with ADDR unset, this same Wardian (version and apps folder) answering on the
@@ -1636,7 +1669,9 @@ fn fake_wardian(body: &'static str) -> u16 {
 #[test]
 fn start_finds_the_same_wardian_already_running() {
     let body: &'static str = Box::leak(format!(r#"{{"source":"local","version":"{}","local_root":"apps","apps":5,"first_run":false,"admin":true}}"#, env!("CARGO_PKG_VERSION")).into_boxed_str());
-    let port = fake_wardian(body);
+    let _turn = port_search();
+    let fake = fake_wardian(body);
+    let port = fake.port;
     match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
         crate::Address::Running(at) => assert_eq!(at, format!("127.0.0.1:{port}")),
         crate::Address::Ready(l, _, _) => panic!("took {:?} although this Wardian runs on {port}", l.local_addr()),
@@ -1648,11 +1683,13 @@ fn start_finds_the_same_wardian_already_running() {
 /// next free port and says which Wardian holds the usual one.
 #[test]
 fn start_passes_over_another_wardian_and_names_it() {
+    let _turn = port_search();
     for (body, says) in [
         (r#"{"source":"local","local_root":"data/apps","apps":0,"first_run":false}"#, "an older Wardian serving data/apps holds port"),
         (r#"{"source":"local","version":"0.0.1","local_root":"apps","apps":5,"first_run":false}"#, "Wardian 0.0.1 serving apps holds port"),
     ] {
-        let port = fake_wardian(body);
+        let fake = fake_wardian(body);
+        let port = fake.port;
         match crate::take_address(&format!("127.0.0.1:{port}"), false, port.saturating_add(5), "apps") {
             crate::Address::Ready(listener, busy, other) => {
                 assert!(listener.local_addr().unwrap().port() > port);

@@ -29,20 +29,20 @@
   .top { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .brand { display: flex; gap: 10px; align-items: center; color: inherit; text-decoration: none; font-weight: 600; }
   .brand img { width: 28px; height: 28px; }
-  h1 { margin: 24px 0 8px; font-size: clamp(26px, 4vw, 36px); letter-spacing: -.02em; line-height: 1.15; }
-  .lead { margin: 0 0 12px; color: var(--w-muted); max-width: 68ch; font-size: 15px; }
+  h1.w-display { margin: 28px 0 14px; }
+  .lead { margin: 0 0 12px; max-width: 68ch; }
   code, pre { font-family: var(--w-font-mono); font-size: 12.5px; }
-  :not(pre) > code { background: var(--w-muted-bg); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+  :not(pre) > code { background: color-mix(in srgb, var(--w-fg) 8%, transparent); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
   nav.toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 20px 0 36px; }
   nav.toc a { color: var(--w-muted); text-decoration: none; padding: 3px 10px; border: 1px solid var(--w-border); border-radius: 999px; font-size: 13px; }
   nav.toc a:hover { color: var(--w-fg); }
   section.comp { margin: 0 0 44px; scroll-margin-top: 16px; }
   section.comp > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; }
-  section.comp > header h2 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
   section.comp header p { margin: 2px 0 0; color: var(--w-muted); width: 100%; }
   .cmd { display: inline-flex; align-items: center; gap: 8px; }
-  .cmd code { background: var(--w-muted-bg); padding: 5px 10px; border-radius: 6px; }
-  .frame { border: 1px solid var(--w-border); border-radius: 12px; overflow: hidden; }
+  .cmd code { background: color-mix(in srgb, var(--w-fg) 8%, transparent); padding: 5px 10px; border-radius: 6px; }
+  /* Each demo sits in a glass pane over the page's light, as the panels of an app do. */
+  .frame { overflow: hidden; }
   .demo { padding: 28px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; min-height: 120px;
     background-image: radial-gradient(var(--w-border) 1px, transparent 1px); background-size: 16px 16px; }
   .demo.col { display: block; }
@@ -53,22 +53,22 @@
   .pair figure { margin: 0; min-width: 0; }
   .demo .w-card { max-width: 380px; width: 100%; }
   .demo .w-field { max-width: 360px; }
-  details.code { border-top: 1px solid var(--w-border); }
+  details.code { border-top: 1px solid var(--w-glass-edge, var(--w-border)); }
   details.code summary { cursor: pointer; padding: 10px 16px; color: var(--w-muted); font-size: 13px; }
   details.code pre { margin: 0; padding: 0 16px 16px; overflow: auto; white-space: pre; }
   .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 20px; width: 100%; }
   .page > footer { color: var(--w-muted); font-size: 13px; border-top: 1px solid var(--w-border); padding-top: 20px; }
 </style>
 </head>
-<body>
+<body class="w-wallpaper">
 <div class="page">
   <div class="top">
     <a class="brand" href="/"><img src="/logo.svg" alt="">Wardian</a>
     <label class="w-switch-row"><input type="checkbox" role="switch" class="w-switch" id="dark"> Dark</label>
   </div>
-  <h1>Components</h1>
-  <p class="lead">Ready-made parts for page apps and suites. Like shadcn, you copy them into your package and they become your code: the package stays complete on its own, and you may change any file. One theme file sets the colours, corners and spacing for all of them.</p>
-  <p class="lead"><code>wardian add button tabs toast apps/my-suite</code> copies the files into <code>apps/my-suite/ui/</code>. For a suite it also lists them in <code>suite.json</code>; for a page app it prints the lines to add to your page. <code>wardian add --list</code> shows every component.</p>
+  <h1 class="w-display">Components</h1>
+  <p class="w-lede lead">Ready-made parts for page apps and suites. Like shadcn, you copy them into your package and they become your code: the package stays complete on its own, and you may change any file. One theme file sets the colours, corners and spacing for all of them.</p>
+  <p class="w-lede lead"><code>wardian add button tabs toast apps/my-suite</code> copies the files into <code>apps/my-suite/ui/</code>. For a suite it also lists them in <code>suite.json</code>; for a page app it prints the lines to add to your page. <code>wardian add --list</code> shows every component.</p>
   <nav class="toc" aria-label="Components" id="toc"></nav>
 
   <section class="comp" id="button" data-what="Five variants and three sizes. A real &lt;button&gt;, so keyboards and screen readers work.">
@@ -304,7 +304,7 @@
       const indent = Math.min(...lines.filter(l => l.trim()).map(l => l.match(/^ */)[0].length));
       const markup = lines.map(l => l.slice(indent)).join('\n').replace(/\s+onclick="[^"]*"/g, '').replace(/^<div class="grid2">|<\/div>$/g, '').trim();
       const head = document.createElement('header');
-      const h = Object.assign(document.createElement('h2'), {textContent: id[0].toUpperCase() + id.slice(1)});
+      const h = Object.assign(document.createElement('h2'), {className: 'w-heading', textContent: id[0].toUpperCase() + id.slice(1)});
       const cmd = document.createElement('span'); cmd.className = 'cmd';
       const c = Object.assign(document.createElement('code'), {textContent: 'wardian add ' + id + ' <package>'});
       const copy = Object.assign(document.createElement('button'), {className: 'w-button', textContent: 'Copy', type: 'button'});
@@ -314,7 +314,7 @@
       cmd.append(c, copy);
       const p = Object.assign(document.createElement('p'), {textContent: sec.dataset.what});
       head.append(h, cmd, p);
-      const frame = document.createElement('div'); frame.className = 'frame';
+      const frame = document.createElement('div'); frame.className = 'frame w-glass';
       const det = document.createElement('details'); det.className = 'code';
       det.append(Object.assign(document.createElement('summary'), {textContent: 'Markup'}), Object.assign(document.createElement('pre'), {textContent: esc(markup)}));
       demo.replaceWith(frame); frame.append(demo, det);
