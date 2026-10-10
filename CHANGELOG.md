@@ -12,7 +12,14 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
-## [0.4.13] - 2026-10-10
+## [0.4.14] - 2026-10-10
+
+### Fixed
+
+- The release of 0.4.13 did not build: its new code did not compile for Wardian's core in the
+  browser. 0.4.14 is 0.4.13 with that fixed, so its change below ships now.
+
+## [0.4.13] - 2026-10-10 (not released)
 
 ### Fixed
 
