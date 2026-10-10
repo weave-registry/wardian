@@ -13,9 +13,12 @@
    WardianArrange.init({...}) directly: the suite kernel for its frames, the app list for a module.
    A hidden panel is only out of sight: its code still runs.
 
-   Zoom: each panel has a faint button in its top right corner.
-   It grows the panel to fill the page, and again (or Esc, or a click beside it) shrinks it back.
-   Zoom is for now only: it is not kept in the layout. */
+   Each panel sits in a glass frame. Its top strip holds the zoom button, so the button never covers
+   the panel. Zoom grows the panel to fill the page; the button again, Esc or a click beside it
+   shrinks it back. Zoom is for now only: it is not kept in the layout.
+
+   Inside Wardian the page's own title is hidden, because Wardian shows the app's name above it.
+   Mark it: <header data-app-title>…</header>. Opened on its own or saved as a web page, it shows. */
 (() => {
   'use strict';
   if (window.WardianArrange) return;
@@ -30,7 +33,7 @@
     opacity: .55; backdrop-filter: blur(6px); }
   .w-arrange-btn:hover, .w-arrange-btn:focus-visible { opacity: 1; }
   .w-arrange-btn.inline { position: static; opacity: 1; backdrop-filter: none; }
-  .w-arrange-on .w-arrange-btn { display: none; }
+  .w-arrange-on .w-arrange-btn, .w-zoom-on .w-arrange-btn { display: none; }
   .w-arrange-bar { position: sticky; top: 0; z-index: 2147483001; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
     padding: 10px clamp(16px, 3vw, 40px); background: #1f3a35; color: #eef6f3; font: 13px system-ui, sans-serif; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
   .w-arrange-bar[hidden] { display: none; }
@@ -58,20 +61,26 @@
     .w-arrange-cover button { background: #1a1f25; color: #e8ecef; border-color: #6cbfad; }
     .w-arrange-cover.over-before { box-shadow: inset 0 4px 0 #6cbfad; } .w-arrange-cover.over-after { box-shadow: inset 0 -4px 0 #6cbfad; } }
   @media (prefers-reduced-motion: no-preference) { .w-arrange-cover { transition: box-shadow .1s; } }
-  /* Zoom: the corner button, the zoomed panel, and the veil over the rest of the page. */
-  .w-zoom-btn { position: absolute; top: 6px; right: 6px; z-index: 2147481000; display: grid; place-items: center;
-    width: 28px; height: 28px; padding: 0; cursor: pointer; border-radius: 8px; color: CanvasText;
-    border: 1px solid rgba(127,127,127,.35); background: color-mix(in srgb, Canvas 70%, transparent);
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: .45; transition: opacity .15s; }
-  .w-zoom-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-  /* Always in sight, faint: a suite's panel is a sealed frame, so the page never learns that the
-     pointer is over it, and a button shown only on hover would never show there. */
-  .w-zoom-btn:hover, .w-zoom-btn:focus-visible, [data-arrange-panel]:hover > .w-zoom-btn, .w-zoomed > .w-zoom-btn { opacity: 1; }
+  .w-embedded [data-app-title] { display: none !important; }
+  /* The frame: a glass bezel round each panel, with a strip at the top for its controls. */
+  .w-frame { position: relative; box-sizing: border-box; min-width: 0; padding: 24px 5px 5px;
+    border-radius: calc(var(--w-radius-lg, 14px) + 5px); border: 1px solid var(--w-glass-edge, rgba(127,127,127,.28));
+    background: color-mix(in srgb, var(--w-bg, Canvas) 28%, transparent);
+    box-shadow: inset 0 1px 0 var(--w-glass-edge, rgba(255,255,255,.1));
+    -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); }
+  .w-frame:has(> [data-panel][hidden]) { display: none; }
+  /* Zoom: the button in the strip, the zoomed panel, and the veil over the rest of the page. */
+  .w-zoom-btn { position: absolute; top: 2px; right: 6px; z-index: 2147481000; display: grid; place-items: center;
+    width: 20px; height: 20px; padding: 0; cursor: pointer; border: 0; border-radius: 6px; color: inherit;
+    background: transparent; opacity: .55; transition: opacity .15s, background .15s; }
+  .w-zoom-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .w-zoom-btn:hover, .w-zoom-btn:focus-visible { opacity: 1; background: color-mix(in srgb, CanvasText 10%, transparent); }
   .w-arrange-on .w-zoom-btn, [data-arrange-hidden] > .w-zoom-btn { display: none; }
   .w-zoomed { position: fixed !important; z-index: 2147480000; margin: 0 !important; box-sizing: border-box;
     max-width: none !important; max-height: none !important; overflow: auto; }
-  .w-zoom-frame.w-zoomed { display: flex; flex-direction: column; overflow: hidden; }
-  .w-zoom-frame.w-zoomed > iframe { flex: 1 1 auto; height: auto !important; min-height: 0; }
+  .w-frame.w-zoomed { display: flex; flex-direction: column; overflow: hidden; }
+  .w-frame.w-zoomed > iframe { flex: 1 1 auto; height: auto !important; min-height: 0; }
+  .w-frame.w-zoomed > [data-panel] { flex: 1 1 auto; min-height: 0; overflow: auto; }
   .w-zoom-veil { position: fixed; inset: 0; z-index: 2147479999; opacity: 0;
     background: color-mix(in srgb, Canvas 45%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
   .w-zoom-veil.on { opacity: 1; }
@@ -94,7 +103,8 @@
    *   reload()                            reload the page, coming back in Arrange mode
    *   startOpen: boolean                  open in Arrange mode (after reload())
    *   buttonIn, barIn: elements           put the button and the bar there instead of on the page corner and top
-   *   zoom: boolean                       a zoom button on each panel (default true)
+   *   zoom: boolean                       a glass frame with a zoom button round each panel (default true);
+   *                                       a panel that is not a box round one frame is put in a new box
    *   onZoom(id, on)                      told when a panel grows or shrinks back
    * }
    * Resolves to {open, close, layout, zoom(id), destroy}, or null when there are no panels. zoom(null) shrinks back.
@@ -102,8 +112,20 @@
   async function init(opts){
     if (!document.getElementById('w-arrange-css')) document.head.append(mk('style', {id: 'w-arrange-css', textContent: CSS}));
     const cols = opts.columns.filter(c => c && c.el);
-    const panels = new Map(opts.panels.map(p => [p.id, p]));
-    if (!panels.size) return null;
+    if (!opts.panels.length) return null;
+    // The frame. A suite's panel is already a box round the app's frame, so it is the frame; any
+    // other panel moves into a new box, which keeps the panel's margin, and the box is the panel.
+    const framed = opts.zoom !== false;
+    const panelList = opts.panels.map(p => {
+      if (!framed) return p;
+      const ownBox = p.el.children.length === 1 && p.el.firstElementChild.tagName === 'IFRAME';
+      if (ownBox){ p.el.classList.add('w-frame'); return p; }
+      const box = mk('div', {className: 'w-frame'}), cs = getComputedStyle(p.el);
+      if (p.el.isConnected){ box.style.margin = cs.margin; p.el.style.margin = '0'; p.el.before(box); }
+      box.append(p.el);
+      return Object.assign({}, p, {el: box});
+    });
+    const panels = new Map(panelList.map(p => [p.id, p]));
     const colIds = cols.map(c => c.id);
     const grid = cols.length === 2 ? opts.grid : null;
     const place = opts.place || ((box, node) => { if (box.moveBefore && node.isConnected) box.moveBefore(node, null); else box.append(node); return true; });
@@ -276,6 +298,7 @@
       el.classList.add('w-zooming'); veil.classList.add('on'); Object.assign(el.style, whole());
       settled(el, () => el.classList.remove('w-zooming'));
       zoomed = {id: n, el, spot, veil, was, lifted, scrolled};
+      document.documentElement.classList.add('w-zoom-on');
       showZoom(n, true); told(n, true);
     }
     function zoomOut(now){
@@ -284,6 +307,7 @@
       zoomed = null;
       showZoom(id, false); told(id, false);
       const done = () => {
+        document.documentElement.classList.remove('w-zoom-on');
         el.classList.remove('w-zoomed', 'w-zooming'); Object.assign(el.style, was); spot.remove(); veil.remove();
         for (const [a, z] of lifted) a.style.zIndex = z;
         restore(scrolled);
@@ -297,9 +321,6 @@
     if (opts.zoom !== false){
       addEventListener('resize', onResize);
       for (const [n, p] of panels){
-        if (['static', ''].includes(getComputedStyle(p.el).position)) p.el.style.position = 'relative';
-        // A suite's panel is a box around the app's frame: zoomed, the frame fills the box.
-        if (p.el.children.length === 1 && p.el.firstElementChild.tagName === 'IFRAME') p.el.classList.add('w-zoom-frame');
         const b = mk('button', {type: 'button', className: 'w-zoom-btn'});
         b.addEventListener('click', e => { e.stopPropagation(); if (zoomed && zoomed.id === n) zoomOut(); else zoomIn(n); });
         zoomBtns.set(n, b); showZoom(n, false);
@@ -344,6 +365,7 @@
       refresh();
     });
     const embedded = parent !== window;
+    document.documentElement.classList.toggle('w-embedded', embedded);
     const open = on => {
       if (on) zoomOut(true);
       document.documentElement.classList.toggle('w-arrange-on', on); bar.hidden = !on;

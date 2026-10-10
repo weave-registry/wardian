@@ -40,6 +40,12 @@
   .aside[hidden] { display: none; }
   .w-arrange-one .aside { position: static; max-height: none; overflow: visible; margin-bottom: 34px; }
   .w-arrange-on .panel { margin-bottom: 10px; }
+  /* Each panel is a glass frame (arrange.js); the frames keep the gap that the parts' own margins
+     kept before, and a part drops its outer margin inside its frame (shim.js). */
+  .panel.w-frame { margin-bottom: 18px; }
+  /* Inside Wardian's page, its own header names the app, so the suite's header is not shown here.
+     Opened on its own, or saved as a web page, the suite keeps it. */
+  .w-embedded .hdr { display: none; }
 </style>
 <div class="suite" id="suite"></div>
 <div id="faults" hidden></div>
@@ -261,7 +267,7 @@
     hello(app){
       const f = frames.get(app); if (!f) return;
       started.add(app);
-      send(app, {k: 'boot', contract: f.contract, store: f.contract.caps.includes('storage') ? loadStore(app) : {}});
+      send(app, {k: 'boot', contract: f.contract, store: f.contract.caps.includes('storage') ? loadStore(app) : {}, framed: f.el.parentElement?.classList.contains('w-frame')});
       note('boot', app, 'ok');
     },
     emit(app, m){

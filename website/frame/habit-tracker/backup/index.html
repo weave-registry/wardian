@@ -466,7 +466,7 @@ const Stats = Object.freeze({
 const WardianSnapshot = (() => {
   'use strict';
   // Never in a copy: code, Arrange's own controls, and panels the viewer hid with Arrange.
-  const DROP = 'script, noscript, template, style, link, meta, iframe, .w-arrange-bar, .w-arrange-btn, .w-arrange-cover, [data-arrange-hidden]';
+  const DROP = 'script, noscript, template, style, link, meta, iframe, .w-arrange-bar, .w-arrange-btn, .w-arrange-cover, .w-zoom-btn, .w-zoom-veil, [data-arrange-hidden]';
   // What an SVG needs to look the same once it is an image and the page's CSS no longer reaches it.
   const SVG_CSS = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap',
     'stroke-linejoin', 'opacity', 'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline', 'visibility', 'display', 'color'];
@@ -552,7 +552,7 @@ const WardianSnapshot = (() => {
   async function styles(){
     const out = [];
     for (const s of document.querySelectorAll('style, link[rel~=stylesheet]')){
-      if (s.localName === 'style'){ if (s.id !== 'w-arrange-css') out.push(s.textContent); continue; }
+      if (s.localName === 'style'){ if (!['w-arrange-css', 'w-frame-css', 'w-zoom-css'].includes(s.id)) out.push(s.textContent); continue; }
       if (/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(s.href)) continue;
       try { out.push([...s.sheet.cssRules].map(r => r.cssText).join('\n')); continue; } catch { /* another origin: fetch it */ }
       try { const r = await fetch(s.href); if (r.ok) out.push(await r.text()); } catch { /* no network here */ }
@@ -728,6 +728,8 @@ const Kernel = (() => {
     if (m.k === 'boot' && !booted){
       booted = true;
       contract = m.contract; saved = m.store || {};
+      // In a glass frame the frame keeps the gap to the next panel, so the app's box drops its margin.
+      if (m.framed) document.head.append(Object.assign(document.createElement('style'), {id: 'w-frame-css', textContent: '[data-app]{margin:0!important}'}));
       if (!def) return fault('no app registered in this frame');
       if (shape(def) !== shape(contract)) return fault(def.name + ': the contract in app.js differs from suite.json, so the app was not started');
       appCtx = makeCtx();
@@ -756,8 +758,12 @@ const Kernel = (() => {
     } else if (m.k === 'zoom'){
       // The kernel zoomed this frame's panel: the app's box fills the frame until it shrinks back.
       if (!document.getElementById('w-zoom-css')) document.head.append(Object.assign(document.createElement('style'), {id: 'w-zoom-css',
-        textContent: 'html.w-zoomed-frame body{min-height:100vh;display:flex;flex-direction:column}html.w-zoomed-frame [data-app]{flex:1 0 auto;margin-bottom:0!important}'}));
+        textContent: 'html.w-zoomed-frame body{min-height:100vh}html.w-zoomed-frame body,html.w-zoomed-frame .w-zoom-path{display:flex;flex-direction:column}'
+          + 'html.w-zoomed-frame .w-zoom-path,html.w-zoomed-frame [data-app]{flex:1 0 auto;margin-bottom:0!important}'}));
       document.documentElement.classList.toggle('w-zoomed-frame', !!m.on);
+      // The box may sit inside others (a <main>, say): each of them grows too, down to the box.
+      const box = document.querySelector('[data-app]');
+      for (let a = box && box.parentElement; a && a !== document.body; a = a.parentElement) a.classList.toggle('w-zoom-path', !!m.on);
     } else if (m.k === 'reply'){
       const p = pending.get(m.id); if (!p) return;
       pending.delete(m.id);

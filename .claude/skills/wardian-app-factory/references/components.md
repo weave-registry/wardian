@@ -196,14 +196,29 @@ it, through `postMessage`. Outside Wardian, the layout lasts until the page clos
 **A hidden panel still runs.** An app must never depend on where a panel sits, or on being visible.
 Results must never wait on a panel the viewer may hide.
 
-### Zoom
+### The frame and zoom
 
-Each panel of a suite or a page app has a faint button in its top right corner. Press it, and the
-panel grows to fill the app; the rest of the page goes dim behind it. Press it again, press Esc, or
-click beside the panel, and it shrinks back to its place. One panel is zoomed at a time, and the
-zoom is not kept in the layout. Viewers who ask for less motion see it change size at once.
+Each panel of a suite or a page app sits in a glass frame. The frame's top strip holds the zoom
+button, so the button never covers the panel. Press it, and the panel grows to fill the app; the
+rest of the page goes dim behind it. Press it again, press Esc, or click beside the panel, and it
+shrinks back to its place. One panel is zoomed at a time, and the zoom is not kept in the layout.
+Viewers who ask for less motion see it change size at once.
 
 A zoomed suite part is told so, and its box (the element with `data-app`) fills the frame. A page
-app's panel is the zoomed box itself. Either way the app gets a bigger window, so draw from the
-size you have, and redraw when it changes. Module apps have no zoom: their cards sit on Wardian's
-own page.
+app's panel fills the frame itself. Either way the app gets a bigger window, so draw from the size
+you have, and redraw when it changes. Module apps have no frame and no zoom: their cards sit on
+Wardian's own page.
+
+### The title inside Wardian
+
+Wardian shows the app's name and description above the app, so inside Wardian the app's own title
+is hidden. A suite's header is hidden there for you. A page app marks its title:
+
+```html
+<header class="top" data-app-title>
+  <h1 class="w-display">Text tools</h1>
+  <p class="w-lede">Type, paste or open a text file.</p>
+</header>
+```
+
+Opened on its own, in a new tab, or saved as a web page, the app shows its title.

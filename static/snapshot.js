@@ -7,7 +7,7 @@
 const WardianSnapshot = (() => {
   'use strict';
   // Never in a copy: code, Arrange's own controls, and panels the viewer hid with Arrange.
-  const DROP = 'script, noscript, template, style, link, meta, iframe, .w-arrange-bar, .w-arrange-btn, .w-arrange-cover, [data-arrange-hidden]';
+  const DROP = 'script, noscript, template, style, link, meta, iframe, .w-arrange-bar, .w-arrange-btn, .w-arrange-cover, .w-zoom-btn, .w-zoom-veil, [data-arrange-hidden]';
   // What an SVG needs to look the same once it is an image and the page's CSS no longer reaches it.
   const SVG_CSS = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap',
     'stroke-linejoin', 'opacity', 'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline', 'visibility', 'display', 'color'];
@@ -93,7 +93,7 @@ const WardianSnapshot = (() => {
   async function styles(){
     const out = [];
     for (const s of document.querySelectorAll('style, link[rel~=stylesheet]')){
-      if (s.localName === 'style'){ if (s.id !== 'w-arrange-css') out.push(s.textContent); continue; }
+      if (s.localName === 'style'){ if (!['w-arrange-css', 'w-frame-css', 'w-zoom-css'].includes(s.id)) out.push(s.textContent); continue; }
       if (/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(s.href)) continue;
       try { out.push([...s.sheet.cssRules].map(r => r.cssText).join('\n')); continue; } catch { /* another origin: fetch it */ }
       try { const r = await fetch(s.href); if (r.ok) out.push(await r.text()); } catch { /* no network here */ }

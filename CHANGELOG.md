@@ -12,6 +12,20 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- Each panel sits in a glass frame, and its zoom button is in the frame's top strip, so it no
+  longer covers the panel.
+- Inside Wardian an app's own title is hidden, because Wardian's header above it names the app.
+  Opened on its own or saved as a web page, the app shows it. A page app marks its title with
+  `data-app-title`.
+
+### Fixed
+
+- A page saved as a web page no longer carries the zoom buttons.
+- A zoomed suite part whose box sits inside another element, as in CSV explorer, now fills the
+  zoomed panel.
+
 ## [0.4.17] - 2026-10-10
 
 ### Added
