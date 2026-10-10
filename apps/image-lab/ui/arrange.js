@@ -212,7 +212,7 @@
     const ICON_IN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"/></svg>';
     const ICON_OUT = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5l4-4M6.5 9.5l-4 4"/></svg>';
     const zoomBtns = new Map();
-    let zoomed = null;   // {id, el, spot, veil, was, lifted}
+    let zoomed = null;   // {id, el, spot, veil, was, lifted, scrolled}
     const px = r => ({top: r.top + 'px', left: r.left + 'px', width: r.width + 'px', height: r.height + 'px'});
     const whole = () => px({top: GAP, left: GAP, width: innerWidth - 2 * GAP, height: innerHeight - 2 * GAP});
     // fn runs when the size has finished changing, or at once when the viewer asks for less motion.
@@ -238,6 +238,16 @@
       }
       return out;
     }
+    // How far each box that scrolls around el is scrolled. Lifting the panel out changes what is in
+    // those boxes, and the browser then scrolls them to keep the reader's place; these put it back.
+    function scrolls(el){
+      const out = [];
+      for (let a = el.parentElement; a; a = a.parentElement) if (a.scrollHeight > a.clientHeight && /auto|scroll/.test(getComputedStyle(a).overflowY)) out.push([a, a.scrollTop]);
+      const page = document.scrollingElement;
+      if (page && !out.some(([a]) => a === page)) out.push([page, page.scrollTop]);
+      return out;
+    }
+    const restore = list => { for (const [a, top] of list) a.scrollTop = top; };
     const told = (id, on) => { try { if (opts.onZoom) opts.onZoom(id, on); } catch { /* the zoom still happens */ } };
     function showZoom(n, on){
       const b = zoomBtns.get(n); if (!b) return;
@@ -248,7 +258,7 @@
     }
     function zoomIn(n){
       if (zoomed) zoomOut(true);
-      const el = panels.get(n).el, r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      const el = panels.get(n).el, r = el.getBoundingClientRect(), cs = getComputedStyle(el), scrolled = scrolls(el);
       // A placeholder keeps the panel's place, so the page under the zoomed panel does not move.
       const spot = mk('div');
       spot.style.cssText = `height:${r.height}px;margin:${cs.margin};flex:none;grid-column:${cs.gridColumn};grid-row:${cs.gridRow}`;
@@ -261,22 +271,25 @@
       if (lifted.length) el.before(veil); else document.body.append(veil);
       const was = Object.fromEntries(SIDES.map(k => [k, el.style[k]]));
       el.classList.add('w-zoomed'); Object.assign(el.style, px(r));
+      restore(scrolled);
       void el.offsetWidth;   // start from where the panel was
       el.classList.add('w-zooming'); veil.classList.add('on'); Object.assign(el.style, whole());
       settled(el, () => el.classList.remove('w-zooming'));
-      zoomed = {id: n, el, spot, veil, was, lifted};
+      zoomed = {id: n, el, spot, veil, was, lifted, scrolled};
       showZoom(n, true); told(n, true);
     }
     function zoomOut(now){
       if (!zoomed) return;
-      const {id, el, spot, veil, was, lifted} = zoomed;
+      const {id, el, spot, veil, was, lifted, scrolled} = zoomed;
       zoomed = null;
       showZoom(id, false); told(id, false);
       const done = () => {
         el.classList.remove('w-zoomed', 'w-zooming'); Object.assign(el.style, was); spot.remove(); veil.remove();
         for (const [a, z] of lifted) a.style.zIndex = z;
+        restore(scrolled);
       };
       if (now || still()){ done(); return; }
+      restore(scrolled);
       el.classList.add('w-zooming'); veil.classList.remove('on'); Object.assign(el.style, px(spot.getBoundingClientRect()));
       settled(el, done);
     }
