@@ -434,6 +434,8 @@
     canMoveLive: !!Element.prototype.moveBefore,
     reload: () => { try { sessionStorage.setItem('wardian-arranging', suiteName); } catch {} location.reload(); },
     startOpen: again,
+    // A zoomed frame is told, so its app can fill the larger box (shim.js).
+    onZoom: (app, on) => { const f = frames.get(app); if (f && f.el.contentWindow) f.el.contentWindow.postMessage({k: 'zoom', on}, '*'); },
   });
   if (!arranged){ for (const p of panels) (p.home === 'aside' ? aside : main).append(p.el); }
   if (!aside.children.length) aside.hidden = true;

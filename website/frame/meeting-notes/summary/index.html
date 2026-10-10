@@ -592,6 +592,11 @@ const Kernel = (() => {
         const r = await WardianSnapshot.answer(root, custom, !!m.css);
         post({k: 'snapshot', id: m.id, html: r.html, css: r.css});
       })().catch(e => post({k: 'snapshot', id: m.id, error: String(e && e.message || e)}));
+    } else if (m.k === 'zoom'){
+      // The kernel zoomed this frame's panel: the app's box fills the frame until it shrinks back.
+      if (!document.getElementById('w-zoom-css')) document.head.append(Object.assign(document.createElement('style'), {id: 'w-zoom-css',
+        textContent: 'html.w-zoomed-frame body{min-height:100vh;display:flex;flex-direction:column}html.w-zoomed-frame [data-app]{flex:1 0 auto;margin-bottom:0!important}'}));
+      document.documentElement.classList.toggle('w-zoomed-frame', !!m.on);
     } else if (m.k === 'reply'){
       const p = pending.get(m.id); if (!p) return;
       pending.delete(m.id);

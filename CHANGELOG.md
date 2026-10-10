@@ -12,6 +12,12 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- Zoom: each panel of a suite or a page app has a button in its top right corner that grows the
+  panel to fill the app, with an animation, and shrinks it back (the button again, Esc, or a click
+  beside it).
+
 ## [0.4.16] - 2026-10-10
 
 ### Changed

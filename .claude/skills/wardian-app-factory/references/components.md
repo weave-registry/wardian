@@ -195,3 +195,15 @@ it, through `postMessage`. Outside Wardian, the layout lasts until the page clos
 
 **A hidden panel still runs.** An app must never depend on where a panel sits, or on being visible.
 Results must never wait on a panel the viewer may hide.
+
+### Zoom
+
+Each panel of a suite or a page app has a faint button in its top right corner. Press it, and the
+panel grows to fill the app; the rest of the page goes dim behind it. Press it again, press Esc, or
+click beside the panel, and it shrinks back to its place. One panel is zoomed at a time, and the
+zoom is not kept in the layout. Viewers who ask for less motion see it change size at once.
+
+A zoomed suite part is told so, and its box (the element with `data-app`) fills the frame. A page
+app's panel is the zoomed box itself. Either way the app gets a bigger window, so draw from the
+size you have, and redraw when it changes. Module apps have no zoom: their cards sit on Wardian's
+own page.

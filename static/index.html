@@ -1831,7 +1831,8 @@ function functionTable(name, instance, size, missing) {
     queueMicrotask(async () => {
       moduleArrange?.destroy();
       moduleArrange = await WardianArrange.init({
-        columns: [{ id: 'main', el: list, label: 'Main' }], panels: cards, buttonIn: tools, barIn: $('runner'),
+        // No zoom: these cards are on Wardian's own page, and zoomed they would cover the app list.
+        columns: [{ id: 'main', el: list, label: 'Main' }], panels: cards, buttonIn: tools, barIn: $('runner'), zoom: false,
         load: () => WardianState.layout.load(name),
         save: (l) => WardianState.layout.save(name, l),
       });

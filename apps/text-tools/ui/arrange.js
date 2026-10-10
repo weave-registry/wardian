@@ -11,7 +11,11 @@
    With no data-arrange-column, the parent of the panels is the one column. Wardian keeps the layout
    for the page (outside Wardian it lasts until the page closes). Wardian's own pages call
    WardianArrange.init({...}) directly: the suite kernel for its frames, the app list for a module.
-   A hidden panel is only out of sight: its code still runs. */
+   A hidden panel is only out of sight: its code still runs.
+
+   Zoom: each panel has a faint button in its top right corner.
+   It grows the panel to fill the page, and again (or Esc, or a click beside it) shrinks it back.
+   Zoom is for now only: it is not kept in the layout. */
 (() => {
   'use strict';
   if (window.WardianArrange) return;
@@ -53,7 +57,28 @@
     .w-arrange-cover .name { background: #6cbfad; color: #0f1f1c; }
     .w-arrange-cover button { background: #1a1f25; color: #e8ecef; border-color: #6cbfad; }
     .w-arrange-cover.over-before { box-shadow: inset 0 4px 0 #6cbfad; } .w-arrange-cover.over-after { box-shadow: inset 0 -4px 0 #6cbfad; } }
-  @media (prefers-reduced-motion: no-preference) { .w-arrange-cover { transition: box-shadow .1s; } }`;
+  @media (prefers-reduced-motion: no-preference) { .w-arrange-cover { transition: box-shadow .1s; } }
+  /* Zoom: the corner button, the zoomed panel, and the veil over the rest of the page. */
+  .w-zoom-btn { position: absolute; top: 6px; right: 6px; z-index: 2147481000; display: grid; place-items: center;
+    width: 28px; height: 28px; padding: 0; cursor: pointer; border-radius: 8px; color: CanvasText;
+    border: 1px solid rgba(127,127,127,.35); background: color-mix(in srgb, Canvas 70%, transparent);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: .45; transition: opacity .15s; }
+  .w-zoom-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  /* Always in sight, faint: a suite's panel is a sealed frame, so the page never learns that the
+     pointer is over it, and a button shown only on hover would never show there. */
+  .w-zoom-btn:hover, .w-zoom-btn:focus-visible, [data-arrange-panel]:hover > .w-zoom-btn, .w-zoomed > .w-zoom-btn { opacity: 1; }
+  .w-arrange-on .w-zoom-btn, [data-arrange-hidden] > .w-zoom-btn { display: none; }
+  .w-zoomed { position: fixed !important; z-index: 2147480000; margin: 0 !important; box-sizing: border-box;
+    max-width: none !important; max-height: none !important; overflow: auto; }
+  .w-zoom-frame.w-zoomed { display: flex; flex-direction: column; overflow: hidden; }
+  .w-zoom-frame.w-zoomed > iframe { flex: 1 1 auto; height: auto !important; min-height: 0; }
+  .w-zoom-veil { position: fixed; inset: 0; z-index: 2147479999; opacity: 0;
+    background: color-mix(in srgb, Canvas 45%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  .w-zoom-veil.on { opacity: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    .w-zoom-veil { transition: opacity .28s; }
+    .w-zooming { transition: top .28s cubic-bezier(.2,.8,.2,1), left .28s cubic-bezier(.2,.8,.2,1),
+      width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1); } }`;
 
   const mk = (tag, props) => Object.assign(document.createElement(tag), props || {});
   const pretty = n => String(n).replace(/[-_.]+/g, ' ').replace(/^./, c => c.toUpperCase());
@@ -69,8 +94,10 @@
    *   reload()                            reload the page, coming back in Arrange mode
    *   startOpen: boolean                  open in Arrange mode (after reload())
    *   buttonIn, barIn: elements           put the button and the bar there instead of on the page corner and top
+   *   zoom: boolean                       a zoom button on each panel (default true)
+   *   onZoom(id, on)                      told when a panel grows or shrinks back
    * }
-   * Resolves to {open, close, layout, destroy}, or null when there are no panels.
+   * Resolves to {open, close, layout, zoom(id), destroy}, or null when there are no panels. zoom(null) shrinks back.
    */
   async function init(opts){
     if (!document.getElementById('w-arrange-css')) document.head.append(mk('style', {id: 'w-arrange-css', textContent: CSS}));
@@ -179,6 +206,94 @@
         }
       }
     }
+    // ---------- zoom: one panel at a time grows to fill the page, and shrinks back ----------
+    const GAP = 12, SIDES = ['top', 'left', 'width', 'height'];
+    const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const ICON_IN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"/></svg>';
+    const ICON_OUT = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5l4-4M6.5 9.5l-4 4"/></svg>';
+    const zoomBtns = new Map();
+    let zoomed = null;   // {id, el, spot, veil, was, lifted}
+    const px = r => ({top: r.top + 'px', left: r.left + 'px', width: r.width + 'px', height: r.height + 'px'});
+    const whole = () => px({top: GAP, left: GAP, width: innerWidth - 2 * GAP, height: innerHeight - 2 * GAP});
+    // fn runs when the size has finished changing, or at once when the viewer asks for less motion.
+    function settled(el, fn){
+      if (still()){ fn(); return; }
+      let done = false;
+      const end = () => { if (done) return; done = true; el.removeEventListener('transitionend', onEnd); fn(); };
+      const onEnd = e => { if (e.target === el && e.propertyName === 'height') end(); };
+      el.addEventListener('transitionend', onEnd);
+      setTimeout(end, 450);
+    }
+    // The boxes around el that stack their contents on their own (a sticky column, say). A zoomed
+    // panel's z-index counts only inside them, so they are lifted while it is zoomed.
+    function layers(el){
+      const out = [];
+      for (let a = el.parentElement; a && a !== document.body && a !== document.documentElement; a = a.parentElement){
+        const cs = getComputedStyle(a), up = a.parentElement && getComputedStyle(a.parentElement);
+        const item = up && /flex|grid/.test(up.display);
+        if (['fixed', 'sticky'].includes(cs.position) || (cs.zIndex !== 'auto' && (cs.position !== 'static' || item))
+          || +cs.opacity < 1 || cs.transform !== 'none' || cs.filter !== 'none' || (cs.backdropFilter || 'none') !== 'none'
+          || cs.isolation === 'isolate' || cs.mixBlendMode !== 'normal' || /paint|layout|strict|content/.test(cs.contain)
+          || /transform|opacity|filter/.test(cs.willChange)) out.push(a);
+      }
+      return out;
+    }
+    const told = (id, on) => { try { if (opts.onZoom) opts.onZoom(id, on); } catch { /* the zoom still happens */ } };
+    function showZoom(n, on){
+      const b = zoomBtns.get(n); if (!b) return;
+      b.innerHTML = on ? ICON_OUT : ICON_IN;
+      b.title = on ? 'Shrink back (Esc)' : 'Zoom in';
+      b.setAttribute('aria-label', (on ? 'Shrink back: ' : 'Zoom in: ') + label(n));
+      b.setAttribute('aria-pressed', String(on));
+    }
+    function zoomIn(n){
+      if (zoomed) zoomOut(true);
+      const el = panels.get(n).el, r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      // A placeholder keeps the panel's place, so the page under the zoomed panel does not move.
+      const spot = mk('div');
+      spot.style.cssText = `height:${r.height}px;margin:${cs.margin};flex:none;grid-column:${cs.gridColumn};grid-row:${cs.gridRow}`;
+      el.before(spot);
+      const veil = mk('div', {className: 'w-zoom-veil'});
+      veil.addEventListener('click', () => zoomOut());
+      // The veil sits just under the panel, in the same stack, and that stack is lifted over the page.
+      const lifted = layers(el).map(a => [a, a.style.zIndex]);
+      for (const [a] of lifted) a.style.zIndex = '2147480000';
+      if (lifted.length) el.before(veil); else document.body.append(veil);
+      const was = Object.fromEntries(SIDES.map(k => [k, el.style[k]]));
+      el.classList.add('w-zoomed'); Object.assign(el.style, px(r));
+      void el.offsetWidth;   // start from where the panel was
+      el.classList.add('w-zooming'); veil.classList.add('on'); Object.assign(el.style, whole());
+      settled(el, () => el.classList.remove('w-zooming'));
+      zoomed = {id: n, el, spot, veil, was, lifted};
+      showZoom(n, true); told(n, true);
+    }
+    function zoomOut(now){
+      if (!zoomed) return;
+      const {id, el, spot, veil, was, lifted} = zoomed;
+      zoomed = null;
+      showZoom(id, false); told(id, false);
+      const done = () => {
+        el.classList.remove('w-zoomed', 'w-zooming'); Object.assign(el.style, was); spot.remove(); veil.remove();
+        for (const [a, z] of lifted) a.style.zIndex = z;
+      };
+      if (now || still()){ done(); return; }
+      el.classList.add('w-zooming'); veil.classList.remove('on'); Object.assign(el.style, px(spot.getBoundingClientRect()));
+      settled(el, done);
+    }
+    const onResize = () => { if (zoomed && !zoomed.el.classList.contains('w-zooming')) Object.assign(zoomed.el.style, whole()); };
+    if (opts.zoom !== false){
+      addEventListener('resize', onResize);
+      for (const [n, p] of panels){
+        if (['static', ''].includes(getComputedStyle(p.el).position)) p.el.style.position = 'relative';
+        // A suite's panel is a box around the app's frame: zoomed, the frame fills the box.
+        if (p.el.children.length === 1 && p.el.firstElementChild.tagName === 'IFRAME') p.el.classList.add('w-zoom-frame');
+        const b = mk('button', {type: 'button', className: 'w-zoom-btn'});
+        b.addEventListener('click', e => { e.stopPropagation(); if (zoomed && zoomed.id === n) zoomOut(); else zoomIn(n); });
+        zoomBtns.set(n, b); showZoom(n, false);
+        p.el.append(b);
+      }
+    }
+
     // A cover over each panel: frames swallow mouse events, so dragging happens on the cover.
     for (const [n, p] of panels){
       const c = mk('div', {className: 'w-arrange-cover', draggable: true});
@@ -217,13 +332,14 @@
     });
     const embedded = parent !== window;
     const open = on => {
+      if (on) zoomOut(true);
       document.documentElement.classList.toggle('w-arrange-on', on); bar.hidden = !on;
       if (on){ refresh(); (modeSel || doneBtn).focus(); } else if (!btn.hidden) btn.focus();
       if (embedded) parent.postMessage({wardian: 'arrange', k: 'state', open: on}, '*');
     };
     btn.addEventListener('click', () => open(true));
     doneBtn.addEventListener('click', () => open(false));
-    const onKey = e => { if (e.key === 'Escape' && !bar.hidden) open(false); };
+    const onKey = e => { if (e.key !== 'Escape') return; if (zoomed) zoomOut(); else if (!bar.hidden) open(false); };
     addEventListener('keydown', onKey);
     // Inside Wardian's app list, the app's frame is taller than the window, so a button in the
     // frame's corner can sit below the screen. The app list shows Arrange in its own toolbar
@@ -237,13 +353,17 @@
     if (embedded){ addEventListener('message', onHost); parent.postMessage({wardian: 'arrange', k: 'ready'}, '*'); }
     if (opts.startOpen) open(true);
     function destroy(){
+      zoomOut(true);
+      removeEventListener('resize', onResize);
+      for (const b of zoomBtns.values()) b.remove();
       removeEventListener('keydown', onKey);
       removeEventListener('message', onHost);
       document.documentElement.classList.remove('w-arrange-on');
       bar.remove(); btn.remove();
       for (const p of panels.values()){ p.el.querySelector(':scope > .w-arrange-cover')?.remove(); }
     }
-    return {open: () => open(true), close: () => open(false), layout: () => layout, destroy};
+    return {open: () => open(true), close: () => open(false), layout: () => layout,
+      zoom: n => { if (panels.has(n)) zoomIn(n); else zoomOut(); }, destroy};
   }
 
   // ---------- page apps: find the marked panels, keep the layout with Wardian ----------
