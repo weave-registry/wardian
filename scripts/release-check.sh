@@ -32,8 +32,10 @@ else
   checks=$(sed -n 's/^checks=(\(.*\))$/\1/p' tests/live/run.sh | grep -o '"[^"]*"' | tr -d '"')
   while IFS= read -r c; do
     [ -n "$c" ] || continue
-    printf '%s\n' "$section" | grep -Eq "(PASS|SKIP|FAIL) $c" && ok "the release notes say how live check \"$c\" went" \
-      || bad "the release notes have no PASS/SKIP/FAIL line for live check \"$c\""
+    # run.sh prints each check by its own name: "bedrock.sh api-key" is "bedrock-api-key".
+    name=$(printf '%s' "$c" | sed 's/\.sh//; s/ /-/g')
+    printf '%s\n' "$section" | grep -Eq "(PASS|SKIP|FAIL) $name:" && ok "the release notes say how live check \"$name\" went" \
+      || bad "the release notes have no PASS/SKIP/FAIL line for live check \"$name\""
   done <<< "$checks"
 fi
 
