@@ -12,6 +12,20 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.12] - 2026-10-10
+
+### Added
+
+- A suite may ask for glass: with `"surface": "glass"` in `suite.json`, Wardian paints one light
+  behind all the suite's frames and each frame is see-through (ADR-2610100900).
+
+### Changed
+
+- Focus log is a glass suite and Focus timer a glass page, with a light serif for titles, figures
+  and the clock.
+- New apps from `wardian new page` and `wardian new suite` start with glass panels and the serif.
+- A receipt's name wraps instead of being cut off, and inside glass a receipt is a lighter pane.
+
 ## [0.4.11] - 2026-10-09
 
 ### Changed
