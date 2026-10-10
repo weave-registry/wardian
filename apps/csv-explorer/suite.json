@@ -10,6 +10,8 @@
     "ui/card.css",
     "ui/table.css",
     "ui/badge.css",
+    "ui/type.css",
+    "ui/surface.css",
     "style.css"
   ],
   "scripts": [
@@ -18,11 +20,12 @@
     "shared/filter.js"
   ],
   "header": "header.html",
+  "surface": "glass",
   "apps": [
     {
       "name": "importer",
       "slot": "aside",
-      "wrap": "<aside class=\"w-card panel\">",
+      "wrap": "<aside class=\"w-card w-glass panel\">",
       "emits": {
         "dataset:ready": {
           "retain": true
@@ -36,7 +39,7 @@
     {
       "name": "table",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "emits": {
         "view:changed": {
           "retain": true
@@ -52,7 +55,7 @@
     {
       "name": "stats",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "dataset:ready",
         "view:changed"
@@ -64,7 +67,7 @@
     {
       "name": "chart",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "scripts": [
         "apps/chart/draw.js"
       ],
@@ -79,7 +82,7 @@
     {
       "name": "export",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "dataset:ready",
         "view:changed"

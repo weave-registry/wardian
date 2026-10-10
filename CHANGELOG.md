@@ -12,6 +12,11 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- Every example app with a page or a suite has the new look: glass panels over one light, and
+  the display serif for its title. An example you never changed is updated at the next start.
+
 ## [0.4.14] - 2026-10-10
 
 ### Fixed

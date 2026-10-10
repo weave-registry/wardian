@@ -11,6 +11,8 @@
     "ui/table.css",
     "ui/tooltip.css",
     "ui/receipt.css",
+    "ui/type.css",
+    "ui/surface.css",
     "core/style.css"
   ],
   "scripts": [
@@ -20,6 +22,7 @@
     "core/lib.js"
   ],
   "header": "core/header.html",
+  "surface": "glass",
   "apps": [
     {
       "name": "engine",
@@ -80,7 +83,7 @@
     {
       "name": "chart",
       "slot": "main",
-      "wrap": "<section class=\"w-card lab-card\" id=\"chartSec\" aria-labelledby=\"chartTitle\">",
+      "wrap": "<section class=\"w-card w-glass lab-card\" id=\"chartSec\" aria-labelledby=\"chartTitle\">",
       "listens": [
         "analysis:ready",
         "whatif:changed",
@@ -94,7 +97,7 @@
     {
       "name": "meaning",
       "slot": "main",
-      "wrap": "<section class=\"w-card lab-card\" id=\"meanSec\" aria-labelledby=\"meanTitle\">",
+      "wrap": "<section class=\"w-card w-glass lab-card\" id=\"meanSec\" aria-labelledby=\"meanTitle\">",
       "emits": {
         "target:changed": {
           "retain": true
@@ -111,7 +114,7 @@
     {
       "name": "whatif",
       "slot": "main",
-      "wrap": "<section class=\"w-card lab-card\" id=\"whatifSec\" aria-labelledby=\"wiTitle\">",
+      "wrap": "<section class=\"w-card w-glass lab-card\" id=\"whatifSec\" aria-labelledby=\"wiTitle\">",
       "emits": {
         "whatif:changed": {
           "retain": true
@@ -128,7 +131,7 @@
     {
       "name": "readouts",
       "slot": "main",
-      "wrap": "<section class=\"w-card lab-card\" id=\"fitSec\" aria-labelledby=\"fitTitle\">",
+      "wrap": "<section class=\"w-card w-glass lab-card\" id=\"fitSec\" aria-labelledby=\"fitTitle\">",
       "listens": [
         "analysis:ready"
       ]
@@ -136,7 +139,7 @@
     {
       "name": "checks",
       "slot": "main",
-      "wrap": "<section class=\"w-card lab-card\" id=\"checksSec\" aria-labelledby=\"chkTitle\">",
+      "wrap": "<section class=\"w-card w-glass lab-card\" id=\"checksSec\" aria-labelledby=\"chkTitle\">",
       "emits": {
         "checks:ready": {
           "retain": true
@@ -149,7 +152,7 @@
     {
       "name": "diagnosis",
       "slot": "main",
-      "wrap": "<section class=\"w-card lab-card\" id=\"aiSec\" aria-labelledby=\"aiTitle\" hidden>",
+      "wrap": "<section class=\"w-card w-glass lab-card\" id=\"aiSec\" aria-labelledby=\"aiTitle\" hidden>",
       "emits": {
         "capability:ai": {
           "retain": true
@@ -173,7 +176,7 @@
     {
       "name": "export",
       "slot": "main",
-      "wrap": "<section class=\"w-card lab-card\" id=\"exportSec\" aria-labelledby=\"expTitle\">",
+      "wrap": "<section class=\"w-card w-glass lab-card\" id=\"exportSec\" aria-labelledby=\"expTitle\">",
       "listens": [
         "analysis:ready",
         "whatif:changed",

@@ -107,6 +107,71 @@ select.w-input { appearance: none; padding-right: 32px; cursor: pointer;
 
 </style>
 <style>
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..500;1,6..72,300..500&display=swap");
+/* <h1 class="w-display">…</h1> <h2 class="w-heading">…</h2> <p class="w-lede">…</p>
+   <p class="w-figure">10,970<small>req/s</small></p>
+   A light serif with optical sizes (Newsreader) for display text, beside the theme's sans for the
+   rest. The font comes from Google Fonts; offline, or outside Wardian with no network, the theme's
+   --w-font-display falls back to Georgia and the page still reads well. */
+.w-display { margin: 0; font: 300 clamp(2.25rem, 1.4rem + 3.2vw, 4.5rem)/1.02 var(--w-font-display);
+  letter-spacing: -.025em; font-optical-sizing: auto; text-wrap: balance; }
+.w-heading { margin: 0; font: 400 clamp(1.375rem, 1.1rem + 1vw, 1.875rem)/1.15 var(--w-font-display);
+  letter-spacing: -.012em; font-optical-sizing: auto; text-wrap: balance; }
+.w-lede { margin: 0; max-width: 60ch; font: 400 var(--w-text-lg)/1.6 var(--w-font); color: var(--w-muted); text-wrap: pretty; }
+.w-figure { margin: 0; font: 300 clamp(2.5rem, 2rem + 2vw, 3.5rem)/1 var(--w-font-display);
+  font-variant-numeric: lining-nums tabular-nums; letter-spacing: -.02em; }
+.w-figure small { margin-left: .4em; font: 500 var(--w-text-sm)/1.2 var(--w-font); letter-spacing: 0; color: var(--w-muted); }
+
+</style>
+<style>
+/* <body class="w-wallpaper"> … <section class="w-glass">…</section> … </body>
+   Glass: a pane that blurs and tints what is behind it, over a slow greenhouse light (the wallpaper).
+   Put .w-wallpaper on <body> for the whole page, or on any box. Add .w-glass to a pane, a card
+   (class="w-card w-glass") or a tile (class="w-tile w-glass"). data-variant="glass" on a .w-button.
+   Glass blurs only what is in the same page: inside a Wardian frame, put the wallpaper in your page.
+   Viewers who ask for less transparency or less motion get solid panes and still light. */
+.w-wallpaper { position: relative; isolation: isolate; background-color: var(--w-bg); }
+.w-wallpaper:not(body) { overflow: clip; }
+body.w-wallpaper { min-height: 100vh; min-height: 100dvh; }
+.w-wallpaper::before {
+  content: ""; position: absolute; inset: -20%; z-index: -1; pointer-events: none; will-change: transform;
+  background:
+    radial-gradient(40% 45% at 30% 35%, var(--w-glow-1), transparent 70%),
+    radial-gradient(35% 40% at 72% 30%, var(--w-glow-2), transparent 70%),
+    radial-gradient(45% 40% at 55% 75%, var(--w-glow-3), transparent 70%);
+  animation: w-drift 70s ease-in-out infinite alternate;
+}
+body.w-wallpaper::before { position: fixed; }
+@keyframes w-drift { to { transform: translate3d(3%, -2%, 0) rotate(6deg) scale(1.06); } }
+
+.w-glass, .w-card.w-glass, .w-tile.w-glass {
+  background: color-mix(in srgb, var(--w-bg) var(--w-glass-opacity), transparent);
+  border: 1px solid var(--w-glass-edge); border-radius: var(--w-radius-lg); color: var(--w-fg);
+  box-shadow: inset 0 1px 0 var(--w-glass-edge), var(--w-glass-shadow, var(--w-shadow));
+  -webkit-backdrop-filter: blur(var(--w-blur)) saturate(1.5); backdrop-filter: blur(var(--w-blur)) saturate(1.5);
+  /* Light shows through, so quiet text is a step stronger here: 4.5:1 over the brightest glow. */
+  --w-muted: color-mix(in srgb, var(--w-fg) 70%, var(--w-bg));
+}
+/* Parts inside glass are a lighter pane of the same glass, not a solid box. */
+.w-glass .w-receipt, .w-glass .w-tile { background: color-mix(in srgb, var(--w-bg) 55%, transparent); border-color: var(--w-glass-edge); }
+.w-button[data-variant="glass"] {
+  background: color-mix(in srgb, var(--w-bg) var(--w-glass-opacity), transparent); color: var(--w-fg);
+  border-color: var(--w-glass-edge); border-radius: 999px;
+  -webkit-backdrop-filter: blur(12px) saturate(1.5); backdrop-filter: blur(12px) saturate(1.5);
+}
+.w-button[data-variant="glass"]:hover { background: var(--w-bg); opacity: 1; }
+.w-button[data-shape="pill"] { border-radius: 999px; }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .w-glass, .w-card.w-glass, .w-tile.w-glass, .w-button[data-variant="glass"] { background: var(--w-bg); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .w-glass, .w-card.w-glass, .w-tile.w-glass, .w-button[data-variant="glass"] { background: var(--w-bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) { .w-wallpaper::before { animation: none; } }
+
+</style>
+<style>
 /* Loan planner: the Wardian component library (ui/) draws the controls and cards; this file lays
    them out and colours the chart from the same tokens. */
 :root { color-scheme: light dark; --page: #f7f7f8;
@@ -118,7 +183,7 @@ select.w-input { appearance: none; padding-right: 32px; cursor: pointer;
 body { margin: 0; font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
 h1 { margin: 0; font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.02em; }
 h2 { margin: 0; font: 600 var(--w-text-lg)/1.3 var(--w-font); }
-.top { margin-bottom: var(--w-space-5); } .top p { color: var(--w-muted); margin: 6px 0 0; max-width: 60ch; }
+.top { margin-bottom: var(--w-space-5); } .top p { margin: 10px 0 0; max-width: 60ch; }
 .panel { padding: var(--w-space-4) var(--w-space-5); }
 main .panel { margin-bottom: var(--w-space-4); }
 .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin-bottom: var(--w-space-3); }
@@ -129,8 +194,10 @@ form { margin-top: var(--w-space-3); }
 .note { color: var(--w-destructive); font-size: var(--w-text-sm); min-height: 1em; margin: var(--w-space-2) 0 0; }
 .note:empty { margin: 0; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--w-space-3); }
-.tile { border: 1px solid var(--w-border); border-radius: var(--w-radius); padding: 10px 12px; background: var(--w-bg); }
-.tile .value { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; margin: 2px 0; }
+/* On glass a tile is a lighter pane of the same glass; its figure is in the display serif. */
+.tile { border: 1px solid var(--w-glass-edge, var(--w-border)); border-radius: calc(var(--w-radius) * 1.5); padding: 10px 12px;
+  background: color-mix(in srgb, var(--w-bg) 55%, transparent); }
+.tile .value { font: 300 32px/1.1 var(--w-font-display); font-variant-numeric: lining-nums tabular-nums; letter-spacing: -.02em; margin: 4px 0 2px; }
 .saved { margin: var(--w-space-3) 0 0; color: var(--accent); font-weight: 550; }
 #chart svg { display: block; width: 100%; height: auto; }
 #chart:focus-visible { outline: 2px solid var(--w-ring); outline-offset: 2px; border-radius: var(--w-radius); }
@@ -145,10 +212,11 @@ form { margin-top: var(--w-space-3); }
 .sw.base { border-top: 1.6px dashed var(--base); }
 
 </style>
+<style>:root{color-scheme:light dark} html,body{background:transparent!important} :root{--w-glass-shadow:0 0 #0000}</style>
 <style>html,body{overflow-x:hidden} body{display:flow-root}</style>
 </head>
 <body>
-<aside data-app="inputs" class="w-card panel">
+<aside data-app="inputs" class="w-card w-glass panel">
 <h2>Your loan</h2>
 <form id="form" novalidate>
   <div class="w-field"><label class="w-label" for="amount">Amount borrowed</label><input class="w-input" id="amount" type="number" min="1" step="1000" inputmode="decimal"></div>

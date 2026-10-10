@@ -6,7 +6,7 @@
 body { margin: 0; font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
 h1 { margin: 0; font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.02em; }
 h2 { margin: 0 0 var(--w-space-3); font: 600 var(--w-text-lg)/1.3 var(--w-font); }
-.top { margin-bottom: var(--w-space-5); } .top p { color: var(--w-muted); margin: 6px 0 0; max-width: 64ch; }
+.top { margin-bottom: var(--w-space-5); } .top p { margin: 10px 0 0; max-width: 64ch; }
 .panel { padding: var(--w-space-4) var(--w-space-5); margin-bottom: var(--w-space-4); }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 var(--w-space-3); }
 textarea.w-input { font-family: var(--w-font-mono); font-size: var(--w-text-sm); }
@@ -18,6 +18,12 @@ textarea.w-input { font-family: var(--w-font-mono); font-size: var(--w-text-sm);
 .facts code { font: 12px var(--w-font-mono); white-space: pre-wrap; }
 .facts[hidden] { display: none; }
 .w-table-wrap { max-height: 70vh; }
+/* On glass the table sits on a lighter pane of the same glass, so rows read as they do on a solid card;
+   the sticky header is near-solid and blurs the rows that scroll under it. */
+.w-glass .w-table-wrap { background: color-mix(in srgb, var(--w-bg) 55%, transparent); border-color: var(--w-glass-edge, var(--w-border)); }
+.w-glass .w-table th { background: color-mix(in srgb, var(--w-bg) 88%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.w-glass .w-table tbody tr:hover { background: color-mix(in srgb, var(--w-fg) 7%, transparent); }
 .w-table th { cursor: pointer; user-select: none; white-space: nowrap; }
 .w-table th:hover { color: var(--w-fg); }
 .w-table td { white-space: nowrap; }

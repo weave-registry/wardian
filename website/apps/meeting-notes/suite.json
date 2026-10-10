@@ -9,17 +9,20 @@
     "ui/field.css",
     "ui/card.css",
     "ui/badge.css",
+    "ui/type.css",
+    "ui/surface.css",
     "style.css"
   ],
   "scripts": [
     "shared/text.js"
   ],
   "header": "header.html",
+  "surface": "glass",
   "apps": [
     {
       "name": "notes",
       "slot": "aside",
-      "wrap": "<aside class=\"w-card panel\">",
+      "wrap": "<aside class=\"w-card w-glass panel\">",
       "scripts": [
         "apps/notes/sample.js"
       ],
@@ -35,7 +38,7 @@
     {
       "name": "ai",
       "slot": "aside",
-      "wrap": "<aside class=\"w-card panel\">",
+      "wrap": "<aside class=\"w-card w-glass panel\">",
       "scripts": [
         "apps/ai/local.js",
         "apps/ai/claude.js"
@@ -56,7 +59,7 @@
     {
       "name": "summary",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "notes:extracted"
       ]
@@ -64,7 +67,7 @@
     {
       "name": "actions",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "notes:extracted"
       ],
@@ -80,7 +83,7 @@
     {
       "name": "export",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "notes:extracted",
         "actions:changed"

@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(s.profiles.keys("work", "/gone/aws").unwrap().id, "ASIACLI");
         assert_eq!(*s.fake.runs.lock().unwrap(), ["/x/aws configure export-credentials --profile work --format process"]);
         // Without Expiration the keys do not expire.
-        *s.clock.0.lock().unwrap() = u64::MAX / 2;
+        *s.clock.0.lock().unwrap() = u64::MAX / 2000;
         s.profiles.keys("work", "").unwrap();
         assert_eq!(s.fake.runs.lock().unwrap().len(), 1);
         assert!(s.profiles.keys("nope", "").unwrap_err().starts_with("there is no AWS profile \"nope\" in "));

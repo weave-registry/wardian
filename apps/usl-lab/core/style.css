@@ -25,7 +25,7 @@ p{margin:0}
 /* layout */
 .app{max-width:1280px;margin:0 auto;padding:28px clamp(16px,3vw,40px) 72px;display:grid;grid-template-columns:minmax(280px,340px) minmax(0,1fr);gap:0 28px}
 .top{grid-column:1/-1;margin-bottom:22px;max-width:72ch}
-.top p{color:var(--w-muted);margin-top:8px;font-size:var(--w-text-lg)}
+.top p{margin-top:10px}
 .inputs{display:grid;gap:16px;align-content:start}
 .lab-card{padding:20px 22px;margin:0}
 .lab-card h2{margin-bottom:6px}
@@ -47,14 +47,14 @@ p{margin:0}
 .sec-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 18px;margin-bottom:10px}
 .sec-sub{color:var(--w-muted);font-size:var(--w-text-sm)}
 .readout{min-height:24px;font-size:var(--w-text);margin:2px 0 6px;font-variant-numeric:tabular-nums}
-.empty{border:1px dashed var(--w-border);border-radius:var(--w-radius);padding:48px 24px;text-align:center;color:var(--w-muted);background:var(--w-muted-bg)}
+.empty{border:1px dashed var(--w-border);border-radius:var(--w-radius);padding:48px 24px;text-align:center;color:var(--w-muted);background:color-mix(in srgb,var(--w-fg) 7%,transparent)}
 
-/* chart */
+/* chart: on glass the plot is a lighter pane; --plot stays solid for the halos around marks */
 #chart{width:100%;touch-action:pan-y}
 #chart svg{display:block;max-width:100%;height:auto}
 .legend{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:10px;font-size:var(--w-text-sm);color:var(--w-muted)}
 .legend span{display:inline-flex;align-items:center;gap:7px}
-.plotbg{fill:var(--plot)}
+.plotbg{fill:color-mix(in srgb,var(--w-bg) 55%,transparent)}
 .gridl{stroke:var(--grid);stroke-width:1}
 .axis{stroke:var(--w-border);stroke-width:1}
 .ax{fill:var(--w-muted);font:12px var(--w-font);font-variant-numeric:tabular-nums}
@@ -76,7 +76,7 @@ p{margin:0}
 .xhd{fill:var(--fit);stroke:var(--plot);stroke-width:2}
 
 /* where the data came from */
-.about{border:1px solid var(--w-border);border-radius:var(--w-radius);padding:10px 14px;margin:6px 0 10px;font-size:var(--w-text-sm);background:var(--w-muted-bg)}
+.about{border:1px solid var(--w-glass-edge,var(--w-border));border-radius:var(--w-radius);padding:10px 14px;margin:6px 0 10px;font-size:var(--w-text-sm);background:color-mix(in srgb,var(--w-bg) 55%,transparent)}
 .about-title{margin:0 0 6px}
 .about-when{color:var(--w-muted);font-weight:400}
 .about dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0}
@@ -103,7 +103,7 @@ input[type=range]{width:100%;accent-color:var(--whatif);margin:4px 0}
 .row:last-child{border-bottom:0}
 .row .k{grid-area:k;font-weight:600}
 .row .k small{display:block;font-weight:400;color:var(--w-muted);font-size:var(--w-text-sm)}
-.row .v{grid-area:v;font:700 22px/1.1 var(--w-font);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.row .v{grid-area:v;font:300 28px/1.1 var(--w-font-display);font-variant-numeric:lining-nums tabular-nums;letter-spacing:-.02em}
 .row .v i{font:400 13px var(--w-font);font-style:normal;color:var(--w-muted);margin-left:4px}
 .row .r{grid-area:r;color:var(--w-muted);font-size:var(--w-text);align-self:end;font-variant-numeric:tabular-nums}
 .row .m{grid-area:m;color:var(--w-muted);font-size:var(--w-text-sm);margin-top:4px;max-width:70ch}
@@ -122,7 +122,7 @@ input[type=range]{width:100%;accent-color:var(--whatif);margin:4px 0}
 .mean-out p{margin:8px 0}
 .mean-out ul{margin:6px 0;padding-left:22px}
 .mean-out li{margin:4px 0}
-.target{margin-top:20px;padding:14px 16px;border:1px solid var(--w-border);border-radius:var(--w-radius);background:var(--w-muted-bg)}
+.target{margin-top:20px;padding:14px 16px;border:1px solid var(--w-glass-edge,var(--w-border));border-radius:var(--w-radius);background:color-mix(in srgb,var(--w-bg) 55%,transparent)}
 .target h3{margin:0 0 4px}
 .target-row{display:flex;flex-wrap:wrap;gap:8px;max-width:520px}
 .target-row input{flex:1 1 140px;width:auto;font-variant-numeric:tabular-nums}
@@ -133,7 +133,7 @@ input[type=range]{width:100%;accent-color:var(--whatif);margin:4px 0}
 .glossary dt{font-weight:600}
 .glossary dd{margin:0;color:var(--w-muted)}
 .glossary p{margin:8px 0;color:var(--w-muted)}
-.glossary code,.ai-out code{font:13px var(--w-font-mono);background:var(--w-muted-bg);border:1px solid var(--w-border);border-radius:4px;padding:0 4px}
+.glossary code,.ai-out code{font:13px var(--w-font-mono);background:color-mix(in srgb,var(--w-fg) 7%,transparent);border:1px solid var(--w-border);border-radius:4px;padding:0 4px}
 .glossary code{white-space:nowrap}
 @media (max-width:620px){.glossary dl{grid-template-columns:1fr}.glossary dd{margin-bottom:6px}}
 

@@ -10,6 +10,8 @@
     "ui/card.css",
     "ui/table.css",
     "ui/badge.css",
+    "ui/type.css",
+    "ui/surface.css",
     "style.css"
   ],
   "scripts": [
@@ -18,6 +20,7 @@
     "shared/simbar.js"
   ],
   "header": "header.html",
+  "surface": "glass",
   "columns": "minmax(440px, 520px) minmax(0, 1fr)",
   "apps": [
     {
@@ -48,7 +51,7 @@
     {
       "name": "tasks",
       "slot": "aside",
-      "wrap": "<aside class=\"w-card panel\" aria-labelledby=\"tasksTitle\">",
+      "wrap": "<aside class=\"w-card w-glass panel\" aria-labelledby=\"tasksTitle\">",
       "emits": {
         "project:changed": {
           "retain": true
@@ -68,7 +71,7 @@
     {
       "name": "forecast",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "sim:result",
         "sim:progress"
@@ -80,7 +83,7 @@
     {
       "name": "histogram",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "sim:result"
       ]
@@ -88,7 +91,7 @@
     {
       "name": "critical",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "sim:result"
       ]
@@ -96,7 +99,7 @@
     {
       "name": "export",
       "slot": "main",
-      "wrap": "<section class=\"w-card panel\">",
+      "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "sim:result"
       ],

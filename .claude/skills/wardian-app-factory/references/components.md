@@ -142,8 +142,8 @@ light instead: put `"surface": "glass"` in `suite.json`, and `w-glass` on each p
 
 Wardian then paints one light behind every frame and makes each frame see-through. The light uses
 Wardian's colours, not your copy of `theme.css`. A page app needs none of this: it puts
-`w-wallpaper` on its own `<body>`. Focus log is a glass suite and Focus timer a glass page; new
-apps from `wardian new` start the same way.
+`w-wallpaper` on its own `<body>`. Every example app with a page or a suite uses glass and the
+display serif for its title; new apps from `wardian new` start the same way.
 
 ## The progress bar
 
