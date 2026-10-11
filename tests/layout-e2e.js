@@ -192,6 +192,46 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   await page.mouse.click(700, 600); await sleep(500);
   ok(await hdrTop() > 20, 'off again: the header stays');
 
+  console.log('== Full window: the open app fills the window (ADR-2610111760)');
+  for (const [w, h] of [[1440, 900], [390, 844]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+    const fw = await ctx.newPage();
+    fw.on('pageerror', e => errors.push(`full ${w}px: ${e.message}`));
+    const open = async (name) => { await fw.goto(B + '/'); await sleep(800); await fw.locator('#apps li button', { hasText: name }).first().click(); await sleep(1200); };
+    const box = () => fw.evaluate(() => { const r = document.querySelector('#runner iframe.appframe').getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); });
+    const near = (b) => Math.abs(b[0]) <= 2 && Math.abs(b[1]) <= 2 && Math.abs(b[2] - w) <= 2 && Math.abs(b[3] - h) <= 2;
+    for (const name of [/loan/i, /life/i]) {
+      await open(name);
+      ok(await fw.locator('#appFooter').isHidden(), `${w}px ${name}: the version line takes no room while an app is open`);
+      await fw.evaluate(() => document.activeElement.blur());
+      await fw.keyboard.press('f'); await sleep(700);
+      const b = await box();
+      ok(await fw.evaluate(() => document.body.classList.contains('full-window')) && near(b)
+        && await fw.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 0, `${w}px ${name}: F fills the window with the app: ${b} of ${w}x${h}`);
+      await fw.keyboard.press('Escape'); await sleep(400);
+      ok(!(await fw.evaluate(() => document.body.classList.contains('full-window'))) && (await box())[3] < h - 50, `${w}px ${name}: Escape leaves`);
+    }
+    if (w === 1440) {
+      await fw.click('#fullBtn'); await sleep(700);
+      const hb = () => fw.evaluate(() => document.querySelector('body > header').getBoundingClientRect().bottom);
+      ok(await hb() <= 1 && await fw.getAttribute('#fullBtn', 'aria-pressed') === 'true', 'the button enters Full window and the header waits above');
+      await fw.mouse.move(700, 2); await sleep(500);
+      ok(await hb() > 30 && near(await box()), 'the top edge brings the header back, over the app, which keeps its size');
+      await fw.mouse.move(700, 600, { steps: 12 }); await sleep(1100);   // down across the header, as a hand moves
+      ok(await hb() <= 1, 'and it goes again when the pointer leaves');
+      await fw.focus('#settingsBtn'); await sleep(400);
+      ok(await hb() > 30, 'Tab into the header shows it');
+      await fw.reload(); await sleep(800);
+      await fw.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(1000);
+      ok(await fw.evaluate(() => document.body.classList.contains('full-window')) && near(await box()), 'the choice is kept in this browser: the next app opens in Full window');
+      await fw.focus('#fullBtn'); await fw.keyboard.press('Enter'); await sleep(400);
+      ok(!(await fw.evaluate(() => document.body.classList.contains('full-window'))), 'the button, from the keyboard, leaves it again');
+      await fw.goto(B + '/'); await sleep(700);
+      ok(await fw.locator('#fullBtn').isHidden() && await fw.locator('#appFooter').isVisible(), 'on the home screen there is no Full window button, and the version line shows');
+    }
+    await ctx.close();
+  }
+
   ok(errors.length === 0, 'no page errors ' + JSON.stringify(errors));
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);

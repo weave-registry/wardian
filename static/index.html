@@ -116,7 +116,7 @@
   /* The header is one line at every width (ADR-2610111760): nothing in it wraps. What does not fit
      goes into the Menu, least needed first (the script at the end says the order). */
   header {
-    display: flex; align-items: center; gap: 1rem; padding: .7rem 1.25rem; flex-wrap: nowrap; position: relative;
+    display: flex; align-items: center; gap: 1rem; padding: .55rem 1rem; flex-wrap: nowrap; position: relative;
     background: var(--bg); border-bottom: 1px solid var(--line);
   }
   header > *, header a, header button { white-space: nowrap; flex: none; }
@@ -202,6 +202,25 @@
   }
   @media (max-width: 700px) { #sideToggle { display: none; } }
   @media (prefers-reduced-motion: reduce) { main, #sideToggle svg { transition: none; } }
+  /* While an app is open, the version line under it takes no room (it shows on the home screen). */
+  body.app-open #appFooter { display: none; }
+  /* Full window (ADR-2610111760): the open app fills the window, edge to edge. The list and the app's
+     own head go, and the header waits above the window: it comes back over the app, not pushing it,
+     when the pointer reaches the top edge or the keyboard moves into it. Escape or the button leaves. */
+  #fullBtn[aria-pressed="true"] { background: var(--select); color: var(--select-ink); border-color: var(--select); }
+  body.full-window { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+  html body.full-window > header { position: fixed; inset: 0 0 auto 0; z-index: 40; margin-top: 0; transform: translateY(-100%); transition: transform .2s ease; box-shadow: var(--shadow); }
+  html body.full-window.full-peek > header, html body.full-window > header:focus-within { transform: none; }
+  body.full-window #hdrEdge { display: block; position: fixed; inset: 0 0 auto 0; height: 6px; z-index: 41; }
+  body.full-window main { flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr); }
+  body.full-window aside { display: none; }
+  body.full-window #content { padding: 0; overflow: auto; display: flex; flex-direction: column; }
+  body.full-window #content > .card:not(#runner) { display: none; }
+  body.full-window #runner { flex: 1; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; display: flex; flex-direction: column; background: var(--bg); }
+  body.full-window #runner > .apphead, body.full-window #runner > .savebar, body.full-window #runner > p, body.full-window #runner > details { display: none; }
+  body.full-window #runner > iframe.appframe { flex: 1; min-height: 0; height: auto !important; margin: 0; border: 0; border-radius: 0; }
+  body.full-window #runner > .fn-cards, body.full-window #runner > div:not(:empty) { padding: .5rem; }
+  @media (prefers-reduced-motion: reduce) { html body.full-window > header { transition: none; } }
   #appFooter { font-size: .75rem; padding: .9rem 1rem 1.1rem; text-align: center; border-top: 1px solid var(--line); }
   #appFooter a { color: inherit; }
   #apps { list-style: none; margin: 0; padding: 0; }
@@ -262,7 +281,7 @@
   .menu button .tick { width: 1rem; flex: none; color: var(--olive); }
   .menu button.danger-item { color: var(--bad); }
   .menu .menu-sep { height: 1px; background: var(--line); margin: .3rem .2rem; }
-  #content { padding: 1rem 1.25rem; min-width: 0; }
+  #content { padding: .6rem .75rem; min-width: 0; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
   /* Headings in the website's serif. */
   .card h2 { margin: 0 0 .75rem; font: 400 1.5rem/1.15 var(--serif); letter-spacing: -.02em; }
@@ -368,7 +387,7 @@
   table.usage td.over { color: var(--bad); font-weight: 600; }
   table.usage input { width: 8rem; }
   .suiteframe { height: 85vh !important; }
-  .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 1rem; }   /* what apps draw on, unchanged */
+  .appframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: .25rem 0 .5rem; }   /* what apps draw on, unchanged */
   details summary { cursor: pointer; font-weight: 600; margin-bottom: .5rem; }
 
   /* Background jobs (ADR-2610072118): the badge next to Make an app, and its list. */
@@ -478,6 +497,7 @@
   <button id="aiBtn" class="primary" title="Describe an app and Claude builds it">Make an app</button>
   <button id="refreshBtn" title="Re-read the app list now">Refresh</button>
   <button id="settingsBtn">Settings</button>
+  <button id="fullBtn" class="hidden" aria-pressed="false" title="Give the app the whole window (F). Escape or this button leaves; point at the top edge for this bar.">Full window</button>
   <button id="hdrPin" aria-pressed="false" title="Hide this bar while you work in an app. Scroll up or point at the top edge to bring it back.">Auto-hide</button>
   <span class="hdr-menu-wrap">
     <button id="hdrMenuBtn" aria-expanded="false" aria-controls="hdrMenu" hidden><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>Menu</button>
@@ -3232,8 +3252,8 @@ function leaveSetup() {
 // Menu, least needed first; Make an app goes last. The Menu lists them in a reading order instead.
 (() => {
   const hdr = document.querySelector('body > header'), btn = $('hdrMenuBtn'), panel = $('hdrMenu');
-  const ORDER = ['badge', 'uiLink', 'docsLink', 'hdrPin', 'refreshBtn', 'storeLink', 'settingsBtn', 'aiBtn'].map($);
-  const READING = ['badge', 'aiBtn', 'storeLink', 'settingsBtn', 'refreshBtn', 'hdrPin', 'docsLink', 'uiLink'].map($);
+  const ORDER = ['badge', 'uiLink', 'docsLink', 'hdrPin', 'refreshBtn', 'fullBtn', 'storeLink', 'settingsBtn', 'aiBtn'].map($);
+  const READING = ['badge', 'aiBtn', 'storeLink', 'fullBtn', 'settingsBtn', 'refreshBtn', 'hdrPin', 'docsLink', 'uiLink'].map($);
   const homes = new Map(ORDER.map((n) => { const mark = document.createComment(n.id); n.before(mark); return [n, mark]; }));
   const over = () => hdr.scrollWidth > hdr.clientWidth + 1;
   const items = () => [...panel.querySelectorAll('a, button')].filter((n) => n.offsetParent !== null);
@@ -3254,7 +3274,7 @@ function leaveSetup() {
   let queued = 0;
   const soon = () => { cancelAnimationFrame(queued); queued = requestAnimationFrame(fit); };
   const ro = new ResizeObserver(soon);
-  for (const n of [hdr, $('badge'), $('aiBtn'), $('jobsBtn')]) ro.observe(n);
+  for (const n of [hdr, $('badge'), $('aiBtn'), $('jobsBtn'), $('fullBtn')]) ro.observe(n);
   // The badge's words change as the source does; a change of size alone may not show it.
   new MutationObserver(soon).observe($('badge'), { childList: true, subtree: true, characterData: true });
   document.fonts?.ready.then(soon);
@@ -3301,6 +3321,52 @@ function leaveSetup() {
   try { folded = localStorage.getItem('appListFolded') === '1'; } catch { /* blocked: open */ }
   set(folded, false);
   t.addEventListener('click', () => set(!document.body.classList.contains('side-folded'), true));
+})();
+
+// ---------- full window (ADR-2610111760; a choice kept in this browser) ----------
+// While an app is open: the app fills the window. It stays on for the next app until left, with
+// Escape, the button, or F (never while typing, and not from inside the app's frame, which keeps
+// its own keys).
+(() => {
+  const btn = $('fullBtn'), hdr = document.querySelector('body > header'), body = document.body;
+  let wanted = false, peek = 0;
+  try { wanted = localStorage.getItem('fullWindow') === '1'; } catch { /* blocked: off */ }
+  const appShown = () => !!$('runner').querySelector('.apphead');
+  const apply = () => {
+    const shown = appShown();
+    body.classList.toggle('app-open', shown);
+    btn.classList.toggle('hidden', !shown);
+    body.classList.toggle('full-window', shown && wanted);
+    if (!(shown && wanted)) body.classList.remove('full-peek');
+    btn.setAttribute('aria-pressed', String(shown && wanted));
+    btn.textContent = shown && wanted ? 'Leave full window' : 'Full window';
+  };
+  const set = (yes) => {
+    wanted = yes;
+    try { localStorage.setItem('fullWindow', yes ? '1' : '0'); } catch { /* not kept */ }
+    apply();
+  };
+  // A click lets go of the button, or the header, holding the focus, would stay; a key press keeps it.
+  btn.addEventListener('click', (e) => { set(!wanted); if (e.detail) btn.blur(); });
+  new MutationObserver(apply).observe($('runner'), { childList: true });
+  document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target, typing = t.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], dialog');
+    if (e.key === 'Escape' && body.classList.contains('full-window') && !document.querySelector('dialog[open]')) { set(false); return; }
+    if ((e.key === 'f' || e.key === 'F') && !typing && appShown()) { e.preventDefault(); set(!wanted); }
+  });
+  // Back for a look: the pointer at the top edge, until it leaves the header again.
+  $('hdrEdge').addEventListener('pointerenter', () => { if (body.classList.contains('full-window')) { clearTimeout(peek); peek = 0; body.classList.add('full-peek'); } });
+  hdr.addEventListener('pointerenter', () => { clearTimeout(peek); peek = 0; });
+  hdr.addEventListener('pointerleave', () => { clearTimeout(peek); peek = setTimeout(() => { peek = 0; body.classList.remove('full-peek'); }, 600); });
+  // The header slides in under a pointer that has not moved, so it may never hear it enter or leave:
+  // a pointer well below it lets it go too.
+  document.addEventListener('pointermove', (e) => {
+    if (!body.classList.contains('full-peek') || peek) return;
+    if (e.clientY > hdr.offsetHeight + 24) peek = setTimeout(() => { peek = 0; body.classList.remove('full-peek'); }, 600);
+  }, { passive: true });
+  hdr.addEventListener('pointermove', () => { clearTimeout(peek); peek = 0; });
+  apply();
 })();
 
 // ---------- start ----------

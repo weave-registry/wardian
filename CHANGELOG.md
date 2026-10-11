@@ -17,11 +17,16 @@ Wardian 1.0") is done or written down there as left out.
 - The app list folds to a slim rail with the chevron at its top, giving the app the width; the
   choice is kept in the browser.
 - A Menu button holds what the header has no room for, so the header is always one line.
+- Full window: while an app is open, the Full window button (or F) gives it the whole window, edge
+  to edge. The header comes back over the app at the top edge or with Tab; Escape leaves. The choice
+  is kept in the browser.
 
 ### Changed
 
 - App store is an outlined "App store ↗" button in the header, on the home card, on the first-run
   page and in the empty app list, instead of small plain text.
+- Less room goes to the frame around an app: tighter padding, and the version line under the app
+  only shows on the home screen.
 
 ### Fixed
 
