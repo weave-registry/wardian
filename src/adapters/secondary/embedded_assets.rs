@@ -183,7 +183,6 @@ const PAGE: TemplateFiles = &[
 const SUITE: TemplateFiles = &[
     file!("suite.json", "suite/suite.json"),
     file!("style.css", "suite/style.css"),
-    file!("header.html", "suite/header.html"),
     file!("apps/text/app.js", "suite/apps/text/app.js"),
     file!("apps/input/app.js", "suite/apps/input/app.js"),
     file!("apps/input/view.html", "suite/apps/input/view.html"),
@@ -201,7 +200,6 @@ const SUITE: TemplateFiles = &[
 const EXAMPLES: &[(&str, &str)] = &[
     ("suite.json", include_str!("../../../templates/suite/suite.json")),
     ("style.css", include_str!("../../../templates/suite/style.css")),
-    ("header.html", include_str!("../../../templates/suite/header.html")),
     ("apps/input/app.js", include_str!("../../../templates/suite/apps/input/app.js")),
     ("apps/input/view.html", include_str!("../../../templates/suite/apps/input/view.html")),
     ("apps/output/app.js", include_str!("../../../templates/suite/apps/output/app.js")),

@@ -17,7 +17,7 @@ WebAssembly and returns the result.
 | `suite.json` | The apps, their contracts and where each one sits. The kernel enforces this file. |
 | `apps/<name>/app.js` | Each app's code: `Kernel.register({ ...contract, init(ctx) })`. |
 | `apps/<name>/view.html` | Each app's markup, for apps with a slot. |
-| `style.css`, `header.html` | Shared look, inlined into every frame. |
+| `style.css` | Shared look, inlined into every frame. Wardian shows the suite's `title` above it, so the suite does not repeat its own name. |
 | `ui/` | The Wardian component library (theme, button, field, card), listed in `suite.json` "styles". Your copy: change it freely. `wardian add <component> .` adds more. |
 | `text.wasm` | The module the text app loads with `ctx.asset`. Built from `src/lib.rs`. |
 | `build.sh` | Rebuilds `text.wasm`. |

@@ -151,10 +151,11 @@ Full markup in `references/components.md` (Design an app); the short form:
   each card `w-card w-glass` and each tile `w-tile w-glass`; a suite sets `"surface": "glass"` and
   gives each part's `wrap` `w-card w-glass`. Secondary buttons on glass: `data-variant="glass"
   data-shape="pill"`. Never hand-set colours, borders or backgrounds on panels.
-- **Hierarchy.** Each view opens with a `w-display` title and one `w-lede` sentence saying what the
-  app does for the user (a page app wraps them in `<header data-app-title>`, which Wardian hides
-  since it shows the name itself). One display heading and one main action per view; at most three
-  type sizes. Key numbers are `w-figure`, always with their unit.
+- **No title of its own.** Wardian's header already shows the app's name, from `app.json` or
+  `suite.json` `title`. The app never repeats its name or description: no `w-display` title, no
+  lede, no suite `"header"`. It opens straight on its content; headings name its parts (`w-heading`,
+  `w-tile-title`). One main action per view; at most three type sizes. Key numbers are `w-figure`,
+  always with their unit.
 - **Layout.** Several figures make a bento grid (`w-bento`, `w-tile` with `data-span` 3–12), the
   most important tile first and widest. A tool puts its inputs in one card (a suite's aside) and its
   results beside them, updating as the user types. Spacing from `--w-space-1…6` only; give panels

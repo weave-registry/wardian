@@ -3708,9 +3708,13 @@ mod workshop {
             assert!(crate::domain::components::GUIDE.contains(&format!("\n- {name}")), "no usage note for {name}");
         }
         let intro = workshop::system(&Embedded)[0]["text"].as_str().unwrap().to_string();
-        for must in ["w-wallpaper", "\"surface\": \"glass\"", "w-display", "w-lede", "data-app-title", "bento", "sample data", "360px"] {
+        for must in ["w-wallpaper", "\"surface\": \"glass\"", "bento", "sample data", "360px", "Never repeat the app's own name"] {
             assert!(intro.contains(must), "the prompt does not teach {must}");
         }
+        assert!(!intro.contains("data-app-title"), "the prompt must not ask for a title header: Wardian shows the name");
+        let reference = workshop::system(&Embedded)[1]["text"].as_str().unwrap().to_string();
+        let example = reference.split("<example-suite>").nth(1).expect("the example suite");
+        assert!(!example.contains("w-display") && !example.contains("\"header\""), "the example suite must not open with its own name");
     }
 
     #[test]

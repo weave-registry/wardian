@@ -24,8 +24,10 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Changed
 
-- Make an app and the hosted builder design every app the same way: glass panels, a display title
-  and a one-sentence lede, bento tiles for figures, the right component for each job, sample data
+- Apps no longer repeat their own name or description inside themselves: Wardian's header shows the
+  title from `app.json` or `suite.json`. Make an app, the skill and the docs say so, and the
+  templates and the example suite lose their title headers.
+- Make an app and the hosted builder design every app the same way: glass panels, bento tiles for figures, the right component for each job, sample data
   and helpful empty states. `add_components` explains every component, and the docs and the
   app-factory skill gain a "Design an app" section.
 - The component library follows the theme in native controls and scrollbars, has stronger focus

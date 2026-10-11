@@ -12,7 +12,6 @@
     "ui/surface.css",
     "style.css"
   ],
-  "header": "header.html",
   "surface": "glass",
   "apps": [
     {

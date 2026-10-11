@@ -96,7 +96,9 @@ tokens. Change the tokens, not each class:
 
 ## Glass, display type and tiles
 
-Four parts give a page depth and a voice. They change nothing until you use their classes.
+Four parts give a page depth and a voice. They change nothing until you use their classes. The
+display title and lede are for a page that stands alone, like this report; an app inside Wardian
+does not open with its own name (see Design an app).
 
 ```html
 <body class="w-wallpaper">
@@ -142,22 +144,18 @@ light instead: put `"surface": "glass"` in `suite.json`, and `w-glass` on each p
 
 Wardian then paints one light behind every frame and makes each frame see-through. The light uses
 Wardian's colours, not your copy of `theme.css`. A page app needs none of this: it puts
-`w-wallpaper` on its own `<body>`. Every example app with a page or a suite uses glass and the
-display serif for its title; new apps from `wardian new` start the same way.
+`w-wallpaper` on its own `<body>`. Every example app with a page or a suite uses glass; new apps
+from `wardian new` start the same way, with no title of their own.
 
 ## Design an app
 
 The components make the parts; these rules make the app. Wardian's Make an app and the hosted
 builder follow them, and so do the examples.
 
-**Glass, with a title and one sentence.** A page app:
+**Glass, and straight to the point.** A page app:
 
 ```html
 <body class="w-wallpaper">
-  <header data-app-title>
-    <h1 class="w-display">Habit tracker</h1>
-    <p class="w-lede">Tick off today's habits and watch the streaks grow.</p>
-  </header>
   <div data-arrange-grid>
     <div data-arrange-column="side">
       <section class="w-card w-glass" data-panel="add" data-panel-label="Add a habit">…</section>
@@ -175,9 +173,10 @@ builder follow them, and so do the examples.
 </body>
 ```
 
-- **Hierarchy.** One `w-display` heading and one main action per view, at most three type sizes. The
-  lede says what the app does for the user, not how it works. Inside Wardian the `data-app-title`
-  header is hidden, because Wardian shows the app's name above it.
+- **No title of its own.** Wardian's header shows the app's name, from `title` in `app.json` or
+  `suite.json`, so the app never repeats its name or description: no `w-display` title, no lede, no
+  suite `"header"`. It opens on its content. Headings name its parts (`w-heading` for a panel,
+  `w-tile-title` for a tile). One main action per view, at most three type sizes.
 - **Layout.** Figures go in a bento grid, the most important tile first and widest. A tool's inputs
   sit in one card, its results beside them, updating as the user types. Space comes from
   `--w-space-1` … `--w-space-6`; panels never touch. Nothing has a fixed width: every app reads at
@@ -275,8 +274,9 @@ Wardian's own page.
 
 ### The title inside Wardian
 
-Wardian shows the app's name and description above the app, so inside Wardian the app's own title
-is hidden. A suite's header is hidden there for you. A page app marks its title:
+Wardian shows the app's name and description above the app, so a new app has no title of its own.
+An older app that carries one keeps working: inside Wardian a suite's header is hidden for you, and
+a page app's title is hidden when it is marked:
 
 ```html
 <header class="top" data-app-title>
