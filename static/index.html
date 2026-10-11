@@ -414,6 +414,7 @@
   <a class="brand" href="/" aria-label="Wardian home"><img id="mark" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23183e32'/%3E%3Cpath d='M10 16 20 8l10 8v17H10Z' fill='none' stroke='%23dce8a5' stroke-width='1.4'/%3E%3Cpath d='M20 8v25M10 17h20M20 30c-9-1-8-10-8-10 8 0 8 10 8 10Zm0-4c8-1 8-9 8-9-8 0-8 9-8 9Z' fill='none' stroke='%23dce8a5' stroke-width='1.3'/%3E%3C/svg%3E" alt=""><b>Wardian</b><small id="tagline">Small apps, sealed. On your machine.</small></a>
   <span class="badge" id="badge"><span class="dot"></span><span>…</span></span>
   <span class="spacer"></span>
+  <a href="https://wardian.studio/store/" target="_blank" rel="noopener" class="docslink" id="storeLink" title="Apps people made, ready to install (opens wardian.studio)">App store</a>
   <a href="/docs" target="_blank" rel="noopener" class="docslink">Docs</a>
   <a href="/ui" target="_blank" rel="noopener" class="docslink">Components</a>
   <span class="jobs-wrap">
@@ -709,6 +710,7 @@
     <div class="card" id="importCard">
       <h2>Import a Wardian file</h2>
       <p class="muted" style="font-size:.85rem">Adds the apps in a <code>.wardian</code> file to <code class="localRootName"></code>. Anyone makes one with <strong>Download</strong> on an app. A <code>.zip</code> of app folders works too.</p>
+      <p class="muted" style="font-size:.85rem">Looking for apps? <a href="https://wardian.studio/store/" target="_blank" rel="noopener">Browse the app store</a>: Install there gives you a <code>.wardian</code> file to choose here.</p>
       <div class="row" style="margin-bottom:.5rem">
         <label for="zipFile">Choose a file</label>
         <input type="file" id="zipFile" accept=".wardian,.zip,.rustle,application/vnd.wardian+zip,application/zip">
@@ -728,6 +730,9 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+// The app store on the website (ADR-2610111740): apps people made, each a .wardian file to import.
+const STORE = 'https://wardian.studio/store/';
+
 const el = (tag, props = {}, ...kids) => {
   const n = Object.assign(document.createElement(tag), props);
   n.append(...kids);
@@ -926,7 +931,8 @@ function renderApps() {
   const empty = $('appsEmpty');
   const none = !apps.length || (f && !shown);
   empty.classList.toggle('hidden', !none);
-  empty.textContent = apps.length ? 'No app matches the filter.' : 'No apps found. Open Settings to choose a source.';
+  if (apps.length) empty.textContent = 'No app matches the filter.';
+  else empty.replaceChildren('No apps yet. ', el('a', { href: STORE, target: '_blank', rel: 'noopener', textContent: 'Find apps in the store' }), ', or open Settings to choose a source.');
   $('newFolder').disabled = folders.folders.length >= MAX_FOLDERS;
   if (had) focusKey(had);
 }
@@ -3047,6 +3053,7 @@ function showHome() {
   const acts = el('div', { className: 'row' });
   if (status.admin) acts.append(el('button', { className: 'primary', textContent: 'Make an app', onclick: () => $('aiBtn').click() }));
   if (status.admin) acts.append(el('button', { textContent: 'Import a Wardian file', onclick: () => openSettings('import') }));
+  acts.append(el('a', { href: STORE, target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Find apps in the store →' }));
   acts.append(el('a', { href: '/docs/guide', target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Build one yourself →' }));
   $('runner').replaceChildren(el('div', { className: 'home' },
     el('img', { src: $('mark').src, alt: '' }),   // the website's mark, as in the header

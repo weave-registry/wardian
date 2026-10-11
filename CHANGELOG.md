@@ -14,6 +14,8 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- An "App store" link in the header, and "Find apps in the store" on the home card, in the empty app
+  list and in Settings → Import, to wardian.studio's store of apps people made.
 - Auto-hide: a header button that lets the header slide away while you work in an app on a wide
   screen, giving the app its height. Scroll up, point at the top edge or Tab into it to bring it
   back. The choice is kept in the browser.

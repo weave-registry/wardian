@@ -119,6 +119,19 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   await page.locator('#apps li.app .app-open').filter({ hasNotText: /adder/i }).first().click(); await sleep(500);
   ok(await page.locator('.w-arrange-bar, .w-arrange-btn').count() === 0, 'opening another app removes the module\'s Arrange');
 
+  console.log('== the header links to the app store (ADR-2610111740)');
+  await page.goto(B + '/'); await sleep(800);
+  const store = await page.$eval('#storeLink', a => ({ href: a.href, target: a.target, rel: a.rel, text: a.textContent.trim(), shown: a.getBoundingClientRect().width > 0 }));
+  ok(store.href === 'https://wardian.studio/store/' && store.target === '_blank' && /noopener/.test(store.rel) && store.text === 'App store' && store.shown,
+    'App store opens wardian.studio/store/ in a new tab: ' + JSON.stringify(store));
+  ok(await page.locator('#runner a[href="https://wardian.studio/store/"]', { hasText: 'Find apps in the store' }).count() === 1, 'the home card offers the store too');
+  const phone = await (await browser.newContext({ viewport: { width: 390, height: 800 } })).newPage();
+  await phone.goto(B + '/'); await sleep(800);
+  const fit = await phone.evaluate(() => ({ shown: document.querySelector('#storeLink').getBoundingClientRect().width > 0,
+    wide: document.documentElement.scrollWidth - document.documentElement.clientWidth }));
+  ok(fit.shown && fit.wide <= 0, 'on a phone the link shows and the page does not scroll sideways: ' + JSON.stringify(fit));
+  await phone.context().close();
+
   console.log('== the header hides while you work, when asked to');
   const hdrTop = () => page.evaluate(() => document.querySelector('body > header').getBoundingClientRect().bottom);
   await page.goto(B + '/'); await sleep(800);
