@@ -1,6 +1,8 @@
 /* Wardian UI theme: the tokens every component reads. Change these to restyle them all.
-   Dark mode follows the viewer's system; set data-theme="light" or "dark" on <html> to force one. */
+   Dark mode follows the viewer's system; set data-theme="light" or "dark" on <html> to force one.
+   Native controls, scrollbars and checkboxes follow the theme too (color-scheme, accent-color). */
 :root {
+  color-scheme: light dark; accent-color: var(--w-primary);
   --w-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --w-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --w-font-display: "Newsreader", "Libre Caslon Display", Georgia, serif;   /* type.css loads Newsreader */
@@ -14,7 +16,7 @@
   --w-secondary: #f4f4f5; --w-secondary-fg: #18181b;
   --w-destructive: #dc2626; --w-destructive-fg: #ffffff;
   --w-success: #15803d;
-  --w-ring: #a1a1aa;
+  --w-ring: #71717a;   /* focus rings: 3:1 or more against the background, light and dark */
   --w-shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.08);
   --w-speed: .15s;
   /* Glass (surface.css): a pane that shows the light behind it, and the light it shows. */
@@ -27,22 +29,34 @@
   :root:not([data-theme="light"]) {
     --w-bg: #09090b; --w-fg: #fafafa; --w-muted: #a1a1aa; --w-muted-bg: #27272a; --w-border: #27272a;
     --w-primary: #fafafa; --w-primary-fg: #18181b; --w-secondary: #27272a; --w-secondary-fg: #fafafa;
-    --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #52525b;
+    --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #a1a1aa;
     --w-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
     --w-glass-edge: rgba(255,255,255,.12);
     --w-glow-1: rgba(148,173,81,.45); --w-glow-2: rgba(40,91,70,.95); --w-glow-3: rgba(220,232,165,.2);
   }
 }
+:root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --w-bg: #09090b; --w-fg: #fafafa; --w-muted: #a1a1aa; --w-muted-bg: #27272a; --w-border: #27272a;
   --w-primary: #fafafa; --w-primary-fg: #18181b; --w-secondary: #27272a; --w-secondary-fg: #fafafa;
-  --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #52525b;
+  --w-destructive: #ef4444; --w-destructive-fg: #ffffff; --w-success: #4ade80; --w-ring: #a1a1aa;
   --w-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
   --w-glass-edge: rgba(255,255,255,.12);
   --w-glow-1: rgba(148,173,81,.45); --w-glow-2: rgba(40,91,70,.95); --w-glow-3: rgba(220,232,165,.2);
 }
 @media (prefers-reduced-motion: reduce) { :root { --w-speed: 0s; } }
 /* Visually hidden, still read by screen readers. */
-.w-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.w-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 /* The built-in progress bar follows the theme too. */
 wardian-progress { --wardian-progress-color: var(--w-primary); --wardian-progress-track: var(--w-muted-bg); --wardian-progress-error: var(--w-destructive); }
+/* Forced colours (Windows contrast themes): the system's colours replace the tokens, so every part
+   keeps an edge and the focus and selection use the system's highlight. */
+@media (forced-colors: active) {
+  .w-button, .w-badge, .w-card, .w-tile, .w-glass, .w-receipt, .w-toast, .w-dialog, .w-switch { border: 1px solid CanvasText; }
+  .w-button:focus-visible, .w-input:focus-visible, .w-switch:focus-visible, .w-tabs [role="tab"]:focus-visible { outline-color: Highlight; }
+  .w-switch:checked, .w-switch:checked::after { background: Highlight; }
+  .w-tabs [role="tab"][aria-selected="true"] { outline: 2px solid Highlight; }
+  .w-wallpaper::before { display: none; }
+}

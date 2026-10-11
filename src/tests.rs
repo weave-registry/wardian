@@ -3703,6 +3703,17 @@ mod workshop {
     }
 
     #[test]
+    fn workshop_says_how_to_use_every_component_and_asks_for_glass() {
+        for (name, _, _) in crate::domain::components::COMPONENTS {
+            assert!(crate::domain::components::GUIDE.contains(&format!("\n- {name}")), "no usage note for {name}");
+        }
+        let intro = workshop::system(&Embedded)[0]["text"].as_str().unwrap().to_string();
+        for must in ["w-wallpaper", "\"surface\": \"glass\"", "w-display", "w-lede", "data-app-title", "bento", "sample data", "360px"] {
+            assert!(intro.contains(must), "the prompt does not teach {must}");
+        }
+    }
+
+    #[test]
     fn workshop_writes_appends_reads_lists_and_deletes_in_memory() {
         let mut f = Files::new();
         assert_eq!(run("list_files", json!({}), &mut f, None).text, "The package is empty.");

@@ -144,6 +144,31 @@ still needs an `app.wasm` at its top (spec §3.2); keep the template's empty one
 - For work that takes more than a second, use the standard `<wardian-progress>` element rather than
   drawing your own: `bar.start(label)`, `bar.update({value, max})`, `bar.done(text)`.
 - Support light and dark: the tokens in `ui/theme.css` switch with the viewer's system.
+
+### Design: every app looks like Wardian
+Full markup in `references/components.md` (Design an app); the short form:
+- **Glass.** Add `type` and `surface`. A page app puts `class="w-wallpaper"` on `<body>` and makes
+  each card `w-card w-glass` and each tile `w-tile w-glass`; a suite sets `"surface": "glass"` and
+  gives each part's `wrap` `w-card w-glass`. Secondary buttons on glass: `data-variant="glass"
+  data-shape="pill"`. Never hand-set colours, borders or backgrounds on panels.
+- **Hierarchy.** Each view opens with a `w-display` title and one `w-lede` sentence saying what the
+  app does for the user (a page app wraps them in `<header data-app-title>`, which Wardian hides
+  since it shows the name itself). One display heading and one main action per view; at most three
+  type sizes. Key numbers are `w-figure`, always with their unit.
+- **Layout.** Several figures make a bento grid (`w-bento`, `w-tile` with `data-span` 3–12), the
+  most important tile first and widest. A tool puts its inputs in one card (a suite's aside) and its
+  results beside them, updating as the user types. Spacing from `--w-space-1…6` only; give panels
+  room. No fixed widths: it must read at 360px.
+- **The right part for the job.** Tabs for other views of the same thing, a switch for on/off,
+  `WardianUI.confirm` before anything destructive, `WardianUI.toast` when something worked, a badge
+  for a state, a table (`num` on number cells) for records, `data-tooltip` plus `aria-label` on an
+  icon-only button.
+- **States.** The first screen shows the point of the app: realistic sample data, marked as such,
+  with a way to clear it. An empty state says what to do next beside the button that does it. Every
+  action answers: an instant result, a toast, or a message next to the field it is about.
+- **Words and access.** Sentence case, verbs on buttons ("Add habit"), units everywhere, numbers and
+  dates through `toLocaleString`. A label on every input, never colour alone, everything reachable
+  by keyboard; keep the library's focus rings. Let the library move; add no motion of your own.
 - Write a `README.md` for the package: what it is, which kind and why, a table of its files or
   parts (with each part's contract), how data moves, and its limits.
 

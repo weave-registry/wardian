@@ -142,6 +142,70 @@ Wardian's colours, not your copy of `theme.css`. A page app needs none of this: 
 `w-wallpaper` on its own `<body>`. Every example app with a page or a suite uses glass and the
 display serif for its title; new apps from `wardian new` start the same way.
 
+## Design an app
+
+The components make the parts; these rules make the app. Wardian's Make an app and the hosted
+builder follow them, and so do the examples.
+
+**Glass, with a title and one sentence.** A page app:
+
+```html
+<body class="w-wallpaper">
+  <header data-app-title>
+    <h1 class="w-display">Habit tracker</h1>
+    <p class="w-lede">Tick off today's habits and watch the streaks grow.</p>
+  </header>
+  <div data-arrange-grid>
+    <div data-arrange-column="side">
+      <section class="w-card w-glass" data-panel="add" data-panel-label="Add a habit">…</section>
+    </div>
+    <div data-arrange-column="main">
+      <div class="w-bento" data-panel="week" data-panel-label="This week">
+        <article class="w-tile w-glass" data-span="8">…</article>
+        <article class="w-tile w-glass" data-span="4">
+          <header><h3 class="w-tile-title">Longest streak</h3></header>
+          <div class="w-tile-body"><p class="w-figure">12<small>days</small></p></div>
+        </article>
+      </div>
+    </div>
+  </div>
+</body>
+```
+
+- **Hierarchy.** One `w-display` heading and one main action per view, at most three type sizes. The
+  lede says what the app does for the user, not how it works. Inside Wardian the `data-app-title`
+  header is hidden, because Wardian shows the app's name above it.
+- **Layout.** Figures go in a bento grid, the most important tile first and widest. A tool's inputs
+  sit in one card, its results beside them, updating as the user types. Space comes from
+  `--w-space-1` … `--w-space-6`; panels never touch. Nothing has a fixed width: every app reads at
+  360 px, and the bento grid follows its own width.
+- **The right part for the job.**
+
+  | Need | Use |
+  |---|---|
+  | other views of the same thing | `tabs` |
+  | an on/off setting | `switch`, not a checkbox |
+  | a destructive action | `WardianUI.confirm({ …, destructive: true })` |
+  | saying something worked | `WardianUI.toast('Saved', { variant: 'success' })` |
+  | a state or a category | `badge` |
+  | work over a second | `<wardian-progress>` |
+  | records | `table`, with `num` on number cells |
+  | an icon-only button | `data-tooltip` and an `aria-label` |
+
+- **States.** The first screen shows the point of the app: realistic sample data, said to be sample
+  data, with a way to clear it or bring in the user's own. An empty state says in one sentence what
+  to do next, beside the button that does it. Bad input gets a message next to its field
+  (`aria-invalid="true"` and a `w-hint`).
+- **Words.** Sentence case, short labels, verbs on buttons ("Add habit", not "Submit"), units
+  everywhere, numbers and dates through `toLocaleString`.
+- **Access.** A label on every input, never colour alone to mean something, everything reachable by
+  keyboard. The library's focus rings, contrast, forced-colours support and reduced-motion and
+  reduced-transparency handling stay as they are.
+- **Colour and motion.** Never set colours, borders or backgrounds on panels by hand: the tokens and
+  `w-glass` handle light, dark and less transparency. Let the library move; add nothing beyond
+  small transitions. Charts are SVG or canvas drawn from the tokens, with a title, labelled axes, a
+  legend for more than one series, and the numbers available as text.
+
 ## The progress bar
 
 `<wardian-progress>` is built into every suite frame and into `/sdk/wardian.js`, so it needs no

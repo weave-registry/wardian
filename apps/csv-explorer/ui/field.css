@@ -9,7 +9,7 @@
 .w-input::placeholder { color: var(--w-muted); }
 .w-input:focus-visible { outline: 2px solid var(--w-ring); outline-offset: 1px; }
 .w-input:disabled { opacity: .5; cursor: not-allowed; }
-.w-input[aria-invalid="true"] { border-color: var(--w-destructive); }
+.w-input[aria-invalid="true"], .w-input:user-invalid { border-color: var(--w-destructive); }   /* :user-invalid: after the user has touched it */
 .w-input[aria-invalid="true"] ~ .w-hint { color: var(--w-destructive); }
 textarea.w-input { min-height: 80px; resize: vertical; }
 select.w-input { appearance: none; padding-right: 32px; cursor: pointer;

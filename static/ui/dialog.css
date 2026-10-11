@@ -1,7 +1,8 @@
 /* <dialog class="w-dialog" aria-labelledby="t"><h2 class="w-dialog-title" id="t">…</h2><p class="w-dialog-description">…</p>
      <div class="w-dialog-footer">…</div></dialog>   Open with dialog.showModal(); a button with data-w-close closes it. */
 .w-dialog { width: min(440px, calc(100vw - 32px)); padding: var(--w-space-5); border: 1px solid var(--w-border);
-  border-radius: calc(var(--w-radius) * 1.5); background: var(--w-bg); color: var(--w-fg); box-shadow: var(--w-shadow); font-family: var(--w-font); }
+  border-radius: calc(var(--w-radius) * 1.5); background: var(--w-bg); color: var(--w-fg); box-shadow: var(--w-shadow); font-family: var(--w-font);
+  max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain; }   /* fits a short screen */
 .w-dialog::backdrop { background: rgba(0,0,0,.5); }
 .w-dialog[open] { animation: w-dialog-in var(--w-speed) ease-out; }
 @keyframes w-dialog-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
