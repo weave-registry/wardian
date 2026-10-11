@@ -12,8 +12,24 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- Auto-hide: a header button that lets the header slide away while you work in an app on a wide
+  screen, giving the app its height. Scroll up, point at the top edge or Tab into it to bring it
+  back. The choice is kept in the browser.
+- The workshop module can preview a package as a static site (`{"op":"preview"}`), using the same
+  pages the website's examples run on, for the hosted builder's preview and the store's Try it.
+
 ### Changed
 
+- Make an app and the hosted builder design every app the same way: glass panels, a display title
+  and a one-sentence lede, bento tiles for figures, the right component for each job, sample data
+  and helpful empty states. `add_components` explains every component, and the docs and the
+  app-factory skill gain a "Design an app" section.
+- The component library follows the theme in native controls and scrollbars, has stronger focus
+  rings, keeps its edges in forced-colours mode, marks fields the user got wrong, and fits dialogs
+  on short screens. No class or token changed name.
+- A suite's kernel page names its files from its own folder, so a copy runs under any path.
 - Each panel sits in a glass frame, and its zoom button is in the frame's top strip, so it no
   longer covers the panel.
 - Inside Wardian an app's own title is hidden, because Wardian's header above it names the app.
@@ -22,6 +38,7 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Fixed
 
+- Packaging an app that had been exported before no longer fails on its old manifest.
 - A page saved as a web page no longer carries the zoom buttons.
 - A zoomed suite part whose box sits inside another element, as in CSV explorer, now fills the
   zoomed panel.

@@ -390,7 +390,19 @@
     aside, #content { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
     #appFooter { padding: .45rem 1rem; }
   }
+  /* Auto-hide (a choice kept in this browser): on a wide screen the header slides away while you
+     work in an app, and the app gets its room. It comes back when you scroll up, point at the top
+     edge or Tab into it. A phone needs none of this: there the header scrolls away with the page. */
+  #hdrPin[aria-pressed="true"] { background: var(--select); color: var(--select-ink); border-color: var(--select); }
+  #hdrEdge { display: none; }
+  @media (min-width: 701px) {
+    body.hdr-auto > header { position: relative; z-index: 40; transition: margin-top .25s ease; }
+    body.hdr-auto.hdr-away > header:not(:focus-within) { margin-top: calc(-1 * var(--hdr-h, 3.25rem)); }
+    body.hdr-auto.hdr-away #hdrEdge { display: block; position: fixed; inset: 0 0 auto 0; height: 8px; z-index: 41; }
+  }
+  @media (prefers-reduced-motion: reduce) { body.hdr-auto > header { transition: none; } }
   @media (max-width: 700px) {
+    #hdrPin { display: none; }
     main { grid-template-columns: 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); }
     header { flex-wrap: wrap; padding: .6rem 1rem; }
@@ -415,7 +427,9 @@
   <button id="aiBtn" class="primary" title="Describe an app and Claude builds it">Make an app</button>
   <button id="refreshBtn" title="Re-read the app list now">Refresh</button>
   <button id="settingsBtn">Settings</button>
+  <button id="hdrPin" aria-pressed="false" title="Hide this bar while you work in an app. Scroll up or point at the top edge to bring it back.">Auto-hide</button>
 </header>
+<div id="hdrEdge" aria-hidden="true"></div>
 
 <main>
   <aside>
@@ -3104,6 +3118,39 @@ function leaveSetup() {
   $('runner').querySelector('h2')?.setAttribute('tabindex', '-1');
   $('runner').querySelector('h2')?.focus();
 }
+
+// ---------- the header hides while you work (a choice kept in this browser) ----------
+(() => {
+  const hdr = document.querySelector('body > header'), content = $('content'), pin = $('hdrPin');
+  let on = false, last = 0, peek = 0;
+  try { on = localStorage.getItem('headerAutoHide') === '1'; } catch { /* blocked: off */ }
+  new ResizeObserver(() => document.body.style.setProperty('--hdr-h', hdr.offsetHeight + 'px')).observe(hdr);
+  const away = (yes) => { clearTimeout(peek); document.body.classList.toggle('hdr-away', on && yes); };
+  const set = (yes) => {
+    on = yes;
+    document.body.classList.toggle('hdr-auto', yes);
+    pin.setAttribute('aria-pressed', String(yes));
+    if (!yes) away(false);
+    try { localStorage.setItem('headerAutoHide', yes ? '1' : '0'); } catch { /* not kept */ }
+  };
+  pin.addEventListener('click', () => set(!on));
+  // Working: scrolling down the app, clicking in it, or moving into the app's own frame.
+  content.addEventListener('scroll', () => {
+    const y = content.scrollTop;
+    if (y > last + 4 && y > 24) away(true); else if (y < last - 12 || y < 8) away(false);
+    last = y;
+  }, { passive: true });
+  content.addEventListener('pointerdown', () => away(true));
+  addEventListener('blur', () => setTimeout(() => {
+    const a = document.activeElement;
+    if (a && a.tagName === 'IFRAME' && content.contains(a)) away(true);
+  }));
+  // Back: the pointer at the top edge (until it leaves the header again), or Tab into it (CSS).
+  $('hdrEdge').addEventListener('pointerenter', () => away(false));
+  hdr.addEventListener('pointerleave', () => { if (on) peek = setTimeout(() => { if (!hdr.contains(document.activeElement)) away(true); }, 700); });
+  hdr.addEventListener('pointerenter', () => clearTimeout(peek));
+  set(on);
+})();
 
 // ---------- start ----------
 Promise.all([loadStatus(), loadApps()]).then(() => {

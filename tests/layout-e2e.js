@@ -119,6 +119,29 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   await page.locator('#apps li.app .app-open').filter({ hasNotText: /adder/i }).first().click(); await sleep(500);
   ok(await page.locator('.w-arrange-bar, .w-arrange-btn').count() === 0, 'opening another app removes the module\'s Arrange');
 
+  console.log('== the header hides while you work, when asked to');
+  const hdrTop = () => page.evaluate(() => document.querySelector('body > header').getBoundingClientRect().bottom);
+  await page.goto(B + '/'); await sleep(800);
+  ok(await page.getAttribute('#hdrPin', 'aria-pressed') === 'false' && await hdrTop() > 0, 'off at first: the header stays');
+  await page.click('#hdrPin');
+  ok(await page.getAttribute('#hdrPin', 'aria-pressed') === 'true', 'Auto-hide is pressed');
+  await page.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(800);
+  await page.mouse.click(700, 600); await sleep(500);
+  ok(await hdrTop() <= 1, 'working in the app hides the header (bottom at ' + await hdrTop() + ')');
+  const roomy = await page.evaluate(() => document.querySelector('main').getBoundingClientRect().height);
+  ok(roomy >= 1000 - 60, 'and the app gets the room: ' + roomy + 'px of 1000');
+  await page.mouse.move(700, 3); await sleep(500);
+  ok(await hdrTop() > 20, 'pointing at the top edge brings it back');
+  await page.mouse.move(700, 600); await sleep(1300);
+  ok(await hdrTop() <= 1, 'and it goes again when the pointer leaves it');
+  await page.focus('#settingsBtn'); await sleep(400);
+  ok(await hdrTop() > 20, 'Tab into the header shows it');
+  await page.reload(); await sleep(800);
+  ok(await page.getAttribute('#hdrPin', 'aria-pressed') === 'true', 'the choice is kept in this browser');
+  await page.click('#hdrPin');
+  await page.mouse.click(700, 600); await sleep(500);
+  ok(await hdrTop() > 20, 'off again: the header stays');
+
   ok(errors.length === 0, 'no page errors ' + JSON.stringify(errors));
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);
