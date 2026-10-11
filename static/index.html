@@ -113,10 +113,43 @@
   .err { color: var(--bad); }
   .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 
+  /* The header is one line at every width (ADR-2610111760): nothing in it wraps. What does not fit
+     goes into the Menu, least needed first (the script at the end says the order). */
   header {
-    display: flex; align-items: center; gap: 1rem; padding: .7rem 1.25rem;
+    display: flex; align-items: center; gap: 1rem; padding: .7rem 1.25rem; flex-wrap: nowrap; position: relative;
     background: var(--bg); border-bottom: 1px solid var(--line);
   }
+  header > *, header a, header button { white-space: nowrap; flex: none; }
+  header > .spacer { flex: 1 1 0; min-width: 0; }
+  header > #badge { flex: 0 1 auto; min-width: 7rem; }
+  .brand small.hdr-gone { display: none; }
+  /* The app store: a pill, so it reads as a place to go, not a word in the bar. */
+  .store-link {
+    display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap;
+    border: 1px solid var(--field); border-radius: 999px; padding: .3rem .8rem; background: var(--panel);
+    color: var(--text); text-decoration: none; font-size: .9rem; font-weight: 500;
+    transition: background-color .15s, border-color .15s;
+  }
+  .store-link:hover { background: var(--hover); border-color: var(--text); text-decoration: none; }
+  .store-link svg { width: 15px; height: 15px; flex: none; }
+  .store-link .out { color: var(--muted); font-size: .8rem; }
+  /* The Menu: what the header had no room for, in a panel under its button. */
+  .hdr-menu-wrap { position: relative; }
+  #hdrMenuBtn { display: inline-flex; align-items: center; gap: .35rem; }
+  #hdrMenuBtn svg { width: 16px; height: 16px; }
+  #hdrMenuBtn[hidden] { display: none; }
+  .hdr-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 45; min-width: 14rem; max-width: calc(100vw - 1.5rem);
+    display: flex; flex-direction: column; gap: .15rem; padding: .35rem; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+  .hdr-menu[hidden] { display: none; }
+  .hdr-menu > a, .hdr-menu > button, .hdr-menu > .store-link {
+    display: flex; align-items: center; gap: .45rem; width: 100%; text-align: left; justify-content: flex-start;
+    border: 0; border-radius: 5px; background: none; padding: .45rem .6rem; font-size: .92rem; color: var(--text);
+  }
+  .hdr-menu > a:hover, .hdr-menu > button:hover:not(:disabled), .hdr-menu > a:focus-visible, .hdr-menu > button:focus-visible { background: var(--hover); }
+  .hdr-menu > button.primary { background: var(--accent); color: var(--accent-ink); }
+  .hdr-menu > #badge { padding: .35rem .6rem .5rem; border-bottom: 1px solid var(--line); margin-bottom: .2rem; max-width: none; white-space: normal; }
+  .hdr-menu > #badge span:last-child { overflow-wrap: anywhere; }
   /* The website's wordmark: the mark, then "wardian" in lower case, set tight. */
   .brand { display: flex; align-items: center; gap: .6rem; text-decoration: none; color: var(--text); }
   .brand img { width: 28px; height: 28px; border-radius: 7px; box-shadow: 0 0 0 1px var(--line); }   /* an edge on the dark theme */
@@ -152,6 +185,23 @@
   main { display: grid; grid-template-columns: 15rem 1fr; min-height: calc(100vh - 3rem); }
   aside { border-right: 1px solid var(--line); padding: .75rem; background: var(--side); }
   aside input { width: 100%; margin-bottom: .5rem; }
+  /* The app list folds to a rail (ADR-2610111760), and the app gets its width. A choice kept in this
+     browser; a phone, where the list sits above the app, keeps it open. */
+  .side-top { display: flex; align-items: flex-start; gap: .35rem; }
+  .side-top input { flex: 1; min-width: 0; }
+  #sideToggle { flex: none; display: grid; place-items: center; width: 2.1rem; height: 2.1rem; padding: 0; color: var(--muted); background: none; border-color: transparent; }
+  #sideToggle:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+  #sideToggle svg { width: 16px; height: 16px; transition: transform .2s ease; }
+  @media (min-width: 701px) {
+    main { transition: grid-template-columns .2s ease; }
+    body.side-folded main { grid-template-columns: 3rem 1fr; }
+    body.side-folded aside { padding: .6rem .45rem; overflow: hidden; }
+    body.side-folded .side-top { justify-content: center; }
+    body.side-folded #filter, body.side-folded #sideBody { display: none; }
+    body.side-folded #sideToggle svg { transform: rotate(180deg); }
+  }
+  @media (max-width: 700px) { #sideToggle { display: none; } }
+  @media (prefers-reduced-motion: reduce) { main, #sideToggle svg { transition: none; } }
   #appFooter { font-size: .75rem; padding: .9rem 1rem 1.1rem; text-align: center; border-top: 1px solid var(--line); }
   #appFooter a { color: inherit; }
   #apps { list-style: none; margin: 0; padding: 0; }
@@ -264,7 +314,8 @@
   /* Keyboard users see where they are on every control. */
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }   /* the website's #788d35 */
   /* First-run setup (ADR-2610072033). */
-  .setup { display: grid; gap: 1rem; }
+  .setup { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+  .setup code { overflow-wrap: anywhere; }
   .setup h2:focus { outline: none; }
   .setup .w-card-title { margin: 0; }
   .setup .w-card-content { padding-top: var(--w-space-3); }
@@ -405,8 +456,7 @@
     #hdrPin { display: none; }
     main { grid-template-columns: 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); }
-    header { flex-wrap: wrap; padding: .6rem 1rem; }
-    .brand small { white-space: normal; }
+    header { padding: .6rem 1rem; gap: .6rem; }
   }
 </style>
 
@@ -414,9 +464,9 @@
   <a class="brand" href="/" aria-label="Wardian home"><img id="mark" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23183e32'/%3E%3Cpath d='M10 16 20 8l10 8v17H10Z' fill='none' stroke='%23dce8a5' stroke-width='1.4'/%3E%3Cpath d='M20 8v25M10 17h20M20 30c-9-1-8-10-8-10 8 0 8 10 8 10Zm0-4c8-1 8-9 8-9-8 0-8 9-8 9Z' fill='none' stroke='%23dce8a5' stroke-width='1.3'/%3E%3C/svg%3E" alt=""><b>Wardian</b><small id="tagline">Small apps, sealed. On your machine.</small></a>
   <span class="badge" id="badge"><span class="dot"></span><span>…</span></span>
   <span class="spacer"></span>
-  <a href="https://wardian.studio/store/" target="_blank" rel="noopener" class="docslink" id="storeLink" title="Apps people made, ready to install (opens wardian.studio)">App store</a>
-  <a href="/docs" target="_blank" rel="noopener" class="docslink">Docs</a>
-  <a href="/ui" target="_blank" rel="noopener" class="docslink">Components</a>
+  <a href="https://wardian.studio/store/" target="_blank" rel="noopener" class="store-link" id="storeLink" aria-label="App store: apps people made, on wardian.studio (opens in a new tab)" title="Apps people made, ready to install (opens wardian.studio in a new tab)"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2.5 5.5h11l-1 8h-9z"/><path d="M5.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5"/></svg>App store<span class="out" aria-hidden="true">↗</span></a>
+  <a href="/docs" target="_blank" rel="noopener" class="docslink" id="docsLink">Docs</a>
+  <a href="/ui" target="_blank" rel="noopener" class="docslink" id="uiLink">Components</a>
   <span class="jobs-wrap">
     <button id="jobsBtn" class="hidden" aria-expanded="false" aria-controls="jobsPanel">Jobs</button>
     <div id="jobsPanel" class="w-card jobs-panel hidden" role="region" aria-label="Background jobs">
@@ -429,17 +479,26 @@
   <button id="refreshBtn" title="Re-read the app list now">Refresh</button>
   <button id="settingsBtn">Settings</button>
   <button id="hdrPin" aria-pressed="false" title="Hide this bar while you work in an app. Scroll up or point at the top edge to bring it back.">Auto-hide</button>
+  <span class="hdr-menu-wrap">
+    <button id="hdrMenuBtn" aria-expanded="false" aria-controls="hdrMenu" hidden><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>Menu</button>
+    <div id="hdrMenu" class="hdr-menu" hidden></div>
+  </span>
 </header>
 <div id="hdrEdge" aria-hidden="true"></div>
 
 <main>
   <aside>
-    <input id="filter" placeholder="Filter apps" aria-label="Filter apps">
-    <div class="apps-tools"><button id="newFolder" title="Make a folder to file apps in"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>New folder</button></div>
-    <ul id="apps" aria-label="Apps"></ul>
-    <div id="dropLoose" data-drop="loose" aria-hidden="true">Drop here: no folder</div>
-    <p id="appsSay" class="w-sr" aria-live="polite"></p>
-    <p id="appsEmpty" class="muted hidden"></p>
+    <div class="side-top">
+      <input id="filter" placeholder="Filter apps" aria-label="Filter apps">
+      <button id="sideToggle" aria-expanded="true" aria-controls="sideBody" aria-label="Collapse the app list" title="Collapse the app list"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button>
+    </div>
+    <div id="sideBody">
+      <div class="apps-tools"><button id="newFolder" title="Make a folder to file apps in"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>New folder</button></div>
+      <ul id="apps" aria-label="Apps"></ul>
+      <div id="dropLoose" data-drop="loose" aria-hidden="true">Drop here: no folder</div>
+      <p id="appsSay" class="w-sr" aria-live="polite"></p>
+      <p id="appsEmpty" class="muted hidden"></p>
+    </div>
   </aside>
 
   <section id="content">
@@ -732,6 +791,14 @@
 const $ = (id) => document.getElementById(id);
 // The app store on the website (ADR-2610111740): apps people made, each a .wardian file to import.
 const STORE = 'https://wardian.studio/store/';
+/** A link to the app store, as the header's: a pill that says it opens a new tab. */
+function storeLink(text) {
+  const a = el('a', { href: STORE, target: '_blank', rel: 'noopener', className: 'store-link' });
+  a.setAttribute('aria-label', `${text} (opens wardian.studio in a new tab)`);
+  a.append($('storeLink').querySelector('svg').cloneNode(true));   // the header's own icon
+  a.append(text, el('span', { className: 'out', textContent: '↗', ariaHidden: 'true' }));
+  return a;
+}
 
 const el = (tag, props = {}, ...kids) => {
   const n = Object.assign(document.createElement(tag), props);
@@ -3053,7 +3120,7 @@ function showHome() {
   const acts = el('div', { className: 'row' });
   if (status.admin) acts.append(el('button', { className: 'primary', textContent: 'Make an app', onclick: () => $('aiBtn').click() }));
   if (status.admin) acts.append(el('button', { textContent: 'Import a Wardian file', onclick: () => openSettings('import') }));
-  acts.append(el('a', { href: STORE, target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Find apps in the store →' }));
+  acts.append(storeLink('Find apps in the store'));
   acts.append(el('a', { href: '/docs/guide', target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Build one yourself →' }));
   $('runner').replaceChildren(el('div', { className: 'home' },
     el('img', { src: $('mark').src, alt: '' }),   // the website's mark, as in the header
@@ -3096,8 +3163,9 @@ function showSetup() {
     step('setupApps', '1. Where apps come from',
       el('p', {}, 'Wardian serves the apps in ', el('code', { textContent: status.local_root || 'its apps folder' }),
         n ? `, which holds ${n} app${n > 1 ? 's' : ''} now.` : ', which is empty now.',
-        ' Add more by importing a .wardian file or a zip someone sent you, by asking Claude to make one, or serve a Google Drive folder instead.'),
+        ' Add more from the app store at wardian.studio, by importing a .wardian file or a zip someone sent you, by asking Claude to make one, or serve a Google Drive folder instead.'),
       el('div', { className: 'acts' },
+        storeLink('Find apps in the store'),
         el('button', { textContent: 'Import an app…', onclick: () => openSettings('import') }),
         el('button', { textContent: 'Use a Google Drive folder…', onclick: async () => { await openSettings('source'); showTab('drive'); } }))),
     step('setupAi', '2. Claude, if you want it',
@@ -3157,6 +3225,82 @@ function leaveSetup() {
   hdr.addEventListener('pointerleave', () => { if (on) peek = setTimeout(() => { if (!hdr.contains(document.activeElement)) away(true); }, 700); });
   hdr.addEventListener('pointerenter', () => clearTimeout(peek));
   set(on);
+})();
+
+// ---------- the header keeps to one line (ADR-2610111760) ----------
+// Nothing in the header wraps. When it has no room, the tagline goes first, then these go into the
+// Menu, least needed first; Make an app goes last. The Menu lists them in a reading order instead.
+(() => {
+  const hdr = document.querySelector('body > header'), btn = $('hdrMenuBtn'), panel = $('hdrMenu');
+  const ORDER = ['badge', 'uiLink', 'docsLink', 'hdrPin', 'refreshBtn', 'storeLink', 'settingsBtn', 'aiBtn'].map($);
+  const READING = ['badge', 'aiBtn', 'storeLink', 'settingsBtn', 'refreshBtn', 'hdrPin', 'docsLink', 'uiLink'].map($);
+  const homes = new Map(ORDER.map((n) => { const mark = document.createComment(n.id); n.before(mark); return [n, mark]; }));
+  const over = () => hdr.scrollWidth > hdr.clientWidth + 1;
+  const items = () => [...panel.querySelectorAll('a, button')].filter((n) => n.offsetParent !== null);
+  function fit() {
+    const had = document.activeElement;
+    for (const n of ORDER) homes.get(n).after(n);
+    $('tagline').classList.remove('hdr-gone');
+    btn.hidden = true;
+    if (over()) $('tagline').classList.add('hdr-gone');
+    if (over()) {
+      btn.hidden = false;
+      for (const n of ORDER) { if (!over()) break; panel.append(n); }
+      for (const n of READING) if (panel.contains(n)) panel.append(n);
+    }
+    if (!panel.children.length) { btn.hidden = true; close(false); }
+    if (had && had !== document.activeElement && had.isConnected) had.focus();
+  }
+  let queued = 0;
+  const soon = () => { cancelAnimationFrame(queued); queued = requestAnimationFrame(fit); };
+  const ro = new ResizeObserver(soon);
+  for (const n of [hdr, $('badge'), $('aiBtn'), $('jobsBtn')]) ro.observe(n);
+  // The badge's words change as the source does; a change of size alone may not show it.
+  new MutationObserver(soon).observe($('badge'), { childList: true, subtree: true, characterData: true });
+  document.fonts?.ready.then(soon);
+
+  function open() {
+    panel.hidden = false; btn.setAttribute('aria-expanded', 'true');
+    items()[0]?.focus();
+    document.addEventListener('pointerdown', outside, true);
+  }
+  function close(refocus = true) {
+    if (panel.hidden) return;
+    panel.hidden = true; btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', outside, true);
+    if (refocus) btn.focus();
+  }
+  const outside = (e) => { if (!panel.contains(e.target) && !btn.contains(e.target)) close(false); };
+  btn.addEventListener('click', () => (panel.hidden ? open() : close()));
+  btn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' && panel.hidden) { e.preventDefault(); open(); } });
+  panel.addEventListener('keydown', (e) => {
+    const all = items(), i = all.indexOf(document.activeElement);
+    const go = (j) => { e.preventDefault(); all[(j + all.length) % all.length]?.focus(); };
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'ArrowDown') go(i + 1);
+    else if (e.key === 'ArrowUp') go(i - 1);
+    else if (e.key === 'Tab' && ((e.shiftKey && i === 0) || (!e.shiftKey && i === all.length - 1))) close(false);
+  });
+  // Picking something closes the Menu; a dialog it opens takes the focus.
+  panel.addEventListener('click', (e) => { if (e.target.closest('a, button')) setTimeout(() => close(false)); });
+  fit();
+})();
+
+// ---------- the app list folds to a rail (ADR-2610111760; a choice kept in this browser) ----------
+(() => {
+  const t = $('sideToggle');
+  const set = (folded, keep) => {
+    document.body.classList.toggle('side-folded', folded);
+    t.setAttribute('aria-expanded', String(!folded));
+    const say = folded ? 'Expand the app list' : 'Collapse the app list';
+    t.setAttribute('aria-label', say);
+    t.title = say;
+    if (keep) try { localStorage.setItem('appListFolded', folded ? '1' : '0'); } catch { /* not kept */ }
+  };
+  let folded = false;
+  try { folded = localStorage.getItem('appListFolded') === '1'; } catch { /* blocked: open */ }
+  set(folded, false);
+  t.addEventListener('click', () => set(!document.body.classList.contains('side-folded'), true));
 })();
 
 // ---------- start ----------

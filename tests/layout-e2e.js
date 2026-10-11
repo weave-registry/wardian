@@ -122,15 +122,52 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   console.log('== the header links to the app store (ADR-2610111740)');
   await page.goto(B + '/'); await sleep(800);
   const store = await page.$eval('#storeLink', a => ({ href: a.href, target: a.target, rel: a.rel, text: a.textContent.trim(), shown: a.getBoundingClientRect().width > 0 }));
-  ok(store.href === 'https://wardian.studio/store/' && store.target === '_blank' && /noopener/.test(store.rel) && store.text === 'App store' && store.shown,
+  ok(store.href === 'https://wardian.studio/store/' && store.target === '_blank' && /noopener/.test(store.rel) && /^App store/.test(store.text) && store.shown,
     'App store opens wardian.studio/store/ in a new tab: ' + JSON.stringify(store));
   ok(await page.locator('#runner a[href="https://wardian.studio/store/"]', { hasText: 'Find apps in the store' }).count() === 1, 'the home card offers the store too');
-  const phone = await (await browser.newContext({ viewport: { width: 390, height: 800 } })).newPage();
-  await phone.goto(B + '/'); await sleep(800);
-  const fit = await phone.evaluate(() => ({ shown: document.querySelector('#storeLink').getBoundingClientRect().width > 0,
-    wide: document.documentElement.scrollWidth - document.documentElement.clientWidth }));
-  ok(fit.shown && fit.wide <= 0, 'on a phone the link shows and the page does not scroll sideways: ' + JSON.stringify(fit));
-  await phone.context().close();
+  ok(/opens .*in a new tab/.test(await page.getAttribute('#storeLink', 'aria-label')), 'its name says it opens a new tab');
+
+  console.log('== the header keeps to one line; what has no room goes into the Menu (ADR-2610111760)');
+  for (const [w, h] of [[1440, 900], [1280, 800], [1024, 800], [768, 900], [390, 844], [360, 740]]) {
+    const v = await (await browser.newContext({ viewport: { width: w, height: h } })).newPage();
+    v.on('pageerror', e => errors.push(`${w}px: ${e.message}`));
+    await v.goto(B + '/'); await sleep(900);
+    const r = await v.evaluate(() => {
+      const hdr = document.querySelector('body > header');
+      const ctl = [...hdr.querySelectorAll(':scope > a, :scope > button, .hdr-menu-wrap > button')].filter(n => n.offsetParent);
+      const store = document.querySelector('#storeLink');
+      return { tall: ctl.filter(n => n.getBoundingClientRect().height > 44).map(n => n.id || n.textContent.trim()),
+        over: hdr.scrollWidth - hdr.clientWidth, wide: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        store: !!store.offsetParent && !store.closest('.hdr-menu'), inMenu: !!store.closest('.hdr-menu') };
+    });
+    ok(r.tall.length === 0 && r.over <= 1 && r.wide <= 0, `${w}px: no header control wraps, the header fits, no sideways scroll ` + JSON.stringify(r));
+    if (w >= 1024) ok(r.store, `${w}px: App store shows in the header`);
+    else {
+      ok(r.store || r.inMenu, `${w}px: App store is in the header or the Menu (${r.store ? 'header' : 'Menu'})`);
+      await v.focus('#hdrMenuBtn'); await v.keyboard.press('Enter'); await sleep(200);
+      const open = await v.evaluate(() => ({ expanded: document.querySelector('#hdrMenuBtn').getAttribute('aria-expanded'),
+        store: !!document.querySelector('#storeLink').offsetParent, focus: document.activeElement.closest('#hdrMenu') !== null }));
+      ok(open.expanded === 'true' && open.store && open.focus, `${w}px: Enter opens the Menu, with the store in it and the focus inside ` + JSON.stringify(open));
+      await v.keyboard.press('Escape'); await sleep(150);
+      ok(await v.getAttribute('#hdrMenuBtn', 'aria-expanded') === 'false' && await v.evaluate(() => document.activeElement.id) === 'hdrMenuBtn',
+        `${w}px: Escape closes it and the focus is back on Menu`);
+    }
+    await v.context().close();
+  }
+
+  console.log('== the app list folds to a rail (ADR-2610111760)');
+  await page.goto(B + '/'); await sleep(800);
+  await page.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(800);
+  const contentW = () => page.evaluate(() => document.querySelector('#content').getBoundingClientRect().width);
+  const w0 = await contentW();
+  await page.click('#sideToggle'); await sleep(450);
+  const w1 = await contentW();
+  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'false' && await page.getAttribute('#sideToggle', 'aria-label') === 'Expand the app list'
+    && await page.locator('#apps').isHidden() && w1 > w0 + 150, `folding hides the list and gives the app the width: ${w0} → ${w1}px`);
+  await page.reload(); await sleep(800);
+  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'false' && await page.locator('#apps').isHidden(), 'it stays folded after a reload');
+  await page.click('#sideToggle'); await sleep(450);
+  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'true' && await page.locator('#apps').isVisible(), 'and opens again');
 
   console.log('== the header hides while you work, when asked to');
   const hdrTop = () => page.evaluate(() => document.querySelector('body > header').getBoundingClientRect().bottom);

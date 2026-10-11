@@ -12,6 +12,22 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- The app list folds to a slim rail with the chevron at its top, giving the app the width; the
+  choice is kept in the browser.
+- A Menu button holds what the header has no room for, so the header is always one line.
+
+### Changed
+
+- App store is an outlined "App store ↗" button in the header, on the home card, on the first-run
+  page and in the empty app list, instead of small plain text.
+
+### Fixed
+
+- Header buttons no longer break onto two lines ("App store", "Auto-hide").
+- The first-run page no longer scrolls sideways on a phone when the apps folder's path is long.
+
 ## [0.4.18] - 2026-10-11
 
 ### Added

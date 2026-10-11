@@ -27,6 +27,13 @@ and drew one card per function, with an input per number. That is a **module** a
 Wardian keeps your layout in its data folder. A restart, another browser or cleared site data does
 not lose it. The app itself never changes. **Reset** brings back the app's own layout.
 
+## Make room
+
+- The chevron at the top of the app list folds it to a slim rail, and the app gets the width. Press
+  it again to bring the list back. Wardian remembers the choice in this browser.
+- On a narrow window the less used header buttons move into **Menu**. **App store ↗** opens
+  wardian.studio's store of apps people made, in a new tab.
+
 ## 3. Save what you see
 
 Press **Save as web page**, then **Save**. Wardian writes one `.html` file of the app as you see it
