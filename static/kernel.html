@@ -49,9 +49,10 @@
 </style>
 <div class="suite" id="suite"></div>
 <div id="faults" hidden></div>
-<script src="/state.js"></script>
-<script src="/channels.js"></script>
-<script src="/ui/arrange.js" data-manual></script>
+<!-- Relative to /run/<suite>/, so a copy served under another root (a preview of the hosted builder) works too. -->
+<script src="../../state.js"></script>
+<script src="../../channels.js"></script>
+<script src="../../ui/arrange.js" data-manual></script>
 <script>
 /* Host kernel: runs the apps of one suite, each in its own sandboxed frame.
    - Contracts come from suite.json. An app's own code cannot widen them.
@@ -68,7 +69,10 @@
    Debug in the console: Kernel.apps(), Kernel.trace(), Kernel.faults(), Kernel.started(). */
 (async () => {
   'use strict';
-  const suiteName = decodeURIComponent(location.pathname.split('/')[2] || '');
+  // The page is at <root>run/<suite>/: Wardian's root is /, a copy elsewhere has its own. Files come
+  // from under that root; the server's /api/ stays where it is.
+  const ROOT = new URL('../../', location.href).pathname;
+  const suiteName = decodeURIComponent(location.pathname.slice(ROOT.length).split('/')[1] || '');
   const enc = encodeURIComponent;
   const frames = new Map();            // app -> {win, el, contract, provided:Set, slot}
   const byWin = new Map();             // frame window -> app ('' for the header)
@@ -99,7 +103,7 @@
   // ---------- load and check suite.json ----------
   let suite;
   try {
-    const r = await fetch(`/apps/${enc(suiteName)}/suite.json`, {cache: 'no-store'});
+    const r = await fetch(`${ROOT}apps/${enc(suiteName)}/suite.json`, {cache: 'no-store'});
     if (!r.ok) throw new Error(`suite.json: ${r.status}`);
     suite = await r.json();
     if (!Array.isArray(suite.apps)) throw new Error('suite.json needs an "apps" list');
@@ -115,7 +119,7 @@
   // theme and surface files. Its frames are see-through, so their colours are not copied below.
   const glass = suite.surface === 'glass';
   if (glass){
-    for (const f of ['theme.css', 'surface.css']) document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: '/ui/' + f}));
+    for (const f of ['theme.css', 'surface.css']) document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: ROOT + 'ui/' + f}));
     document.body.classList.add('w-wallpaper');
   }
   const list = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : [];
@@ -341,7 +345,7 @@
       if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*(\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$/.test(path)) return refuse(app, m.id, 'bad asset path: ' + path);
       note('asset', app, path);
       try {
-        const r = await fetch(`/apps/${enc(suiteName)}/${path}`, {cache: 'no-cache'});
+        const r = await fetch(`${ROOT}apps/${enc(suiteName)}/${path}`, {cache: 'no-cache'});
         if (!r.ok) throw new Error(`${path}: ${r.status}`);
         reply(app, m.id, true, await r.arrayBuffer());
       } catch (e) { reply(app, m.id, false, String(e && e.message || e)); }
@@ -404,7 +408,7 @@
     return el;
   }
   if (suite.header){
-    headerEl = frameEl(`/frame/${enc(suiteName)}/`, 'header');
+    headerEl = frameEl(`${ROOT}frame/${enc(suiteName)}/`, 'header');
     const box = Object.assign(document.createElement('div'), {className: 'hdr'});
     box.append(headerEl); grid.append(box);
   }
@@ -420,7 +424,7 @@
   const panels = [];
   for (const a of suite.apps){
     if (!a || typeof a.name !== 'string' || !/^[\w.-]+$/.test(a.name) || frames.has(a.name)){ fault('kernel', 'bad or duplicate app entry in suite.json'); continue; }
-    const el = frameEl(`/frame/${enc(suiteName)}/${enc(a.name)}`, a.name);
+    const el = frameEl(`${ROOT}frame/${enc(suiteName)}/${enc(a.name)}`, a.name);
     if (a.slot === 'aside' || a.slot === 'main'){
       const wrap = Object.assign(document.createElement('div'), {className: 'panel'});
       wrap.append(el);

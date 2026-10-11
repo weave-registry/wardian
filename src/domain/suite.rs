@@ -165,7 +165,7 @@ struct SuiteApp {
 }
 
 /// Reads a file of the suite through the reader the frame was given.
-type Read<'a> = &'a dyn Fn(&str) -> Option<Vec<u8>>;
+pub type Read<'a> = &'a dyn Fn(&str) -> Option<Vec<u8>>;
 
 fn text(read: Read, rel: &str) -> Result<String, String> {
     if !safe_rel(rel) {

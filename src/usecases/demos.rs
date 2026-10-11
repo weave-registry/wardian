@@ -273,18 +273,55 @@ pub fn site_files(assets: &dyn Assets) -> Vec<(String, Vec<u8>)> {
 /// for, built now as the server would build it on request (`/frame/<name>/` for the header,
 /// `/frame/<name>/<part>/` for each part).
 fn suite_files(assets: &dyn Assets, app: &str) -> Vec<(String, Vec<u8>)> {
-    let read = |rel: &str| files_of(assets, app).find(|(r, _)| *r == rel).map(|(_, b)| b.to_vec());
+    suite_pages(assets, app, &|rel: &str| files_of(assets, app).find(|(r, _)| *r == rel).map(|(_, b)| b.to_vec()))
+}
+
+fn suite_pages(assets: &dyn Assets, app: &str, read: suite::Read) -> Vec<(String, Vec<u8>)> {
     let mut out = vec![(format!("run/{app}/index.html"), assets.host_file("kernel.html").unwrap_or_default().as_bytes().to_vec())];
-    if let Ok(header) = suite::frame(&read, assets.frame_shim(), None) {
+    if let Ok(header) = suite::frame(read, assets.frame_shim(), None) {
         out.push((format!("frame/{app}/index.html"), header.into_bytes()));
     }
     let s: serde_json::Value = read("suite.json").and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     for part in s["apps"].as_array().into_iter().flatten().filter_map(|a| a["name"].as_str()) {
-        if let Ok(html) = suite::frame(&read, assets.frame_shim(), Some(part)) {
+        if let Ok(html) = suite::frame(read, assets.frame_shim(), Some(part)) {
             out.push((format!("frame/{app}/{part}/index.html"), html.into_bytes()));
         }
     }
     out
+}
+
+/// A file of a site: its path and bytes.
+pub type SiteFile = (String, Vec<u8>);
+
+/// A package as a static site that runs with no Wardian behind it: the hosted builder's preview.
+/// The files sit where Wardian serves them, under any root: the package at `apps/<name>/`, and for
+/// a suite the kernel page, its frames and the host files they need, as the website's examples
+/// have them. Returns the files and the page to open. A module app has no page of its own (its
+/// form needs its app.wasm), so it has no preview. Read by the hosted builder (wasm/workshop).
+#[allow(dead_code)]
+pub fn preview_site(assets: &dyn Assets, name: &str, files: &[SiteFile]) -> Result<(Vec<SiteFile>, String), String> {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err(format!("\"{name}\" is not a package name"));
+    }
+    let read = |rel: &str| files.iter().find(|(r, _)| r == rel).map(|(_, b)| b.clone());
+    let mut out: Vec<(String, Vec<u8>)> = files.iter().map(|(rel, b)| (format!("apps/{name}/{rel}"), b.clone())).collect();
+    if read("suite.json").is_some() {
+        out.extend(suite_pages(assets, name, &read));
+        for host in ["state.js", "channels.js"] {
+            out.push((host.to_string(), assets.host_file(host).unwrap_or_default().as_bytes().to_vec()));
+        }
+        // What the kernel page loads from Wardian's own library, not the package's copies.
+        for ui in ["arrange.js", "theme.css", "surface.css"] {
+            out.push((format!("ui/{ui}"), assets.ui_file(ui).unwrap_or_default().as_bytes().to_vec()));
+        }
+        return Ok((out, format!("run/{name}/")));
+    }
+    let app: serde_json::Value = read("app.json").and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    match app["page"].as_str() {
+        Some(page) if read(page).is_some() => Ok((out, format!("apps/{name}/{page}"))),
+        Some(page) => Err(format!("app.json names the page {page}, which is not in the package")),
+        None => Err("a module app has no page of its own to preview; open it in Wardian".into()),
+    }
 }
 
 #[cfg(test)]
@@ -356,6 +393,34 @@ mod tests {
         let mut z = zip::ZipArchive::new(Cursor::new(one)).unwrap();
         let names: Vec<String> = (0..z.len()).map(|i| z.by_index(i).unwrap().name().to_string()).collect();
         assert!(names.iter().all(|n| n.starts_with("life/")) && names.contains(&"life/app.json".to_string()), "{names:?}");
+    }
+
+    #[test]
+    fn demos_a_preview_is_a_site_that_works_under_any_root() {
+        let a = Embedded;
+        let pkg = |app: &str| files_of(&a, app).map(|(r, b)| (r.to_string(), b.to_vec())).collect::<Vec<_>>();
+        let (files, entry) = preview_site(&a, "loans", &pkg("loan-planner")).unwrap();
+        let has = |p: &str| files.iter().any(|(q, _)| q == p);
+        assert_eq!(entry, "run/loans/");
+        assert!(has("run/loans/index.html") && has("frame/loans/index.html") && has("apps/loans/suite.json"));
+        assert!(has("state.js") && has("channels.js") && has("ui/arrange.js") && has("ui/theme.css") && has("ui/surface.css"));
+        let s: serde_json::Value = serde_json::from_slice(&pkg("loan-planner").into_iter().find(|(r, _)| r == "suite.json").unwrap().1).unwrap();
+        for part in s["apps"].as_array().unwrap().iter().filter_map(|p| p["name"].as_str()) {
+            assert!(has(&format!("frame/loans/{part}/index.html")), "a frame for {part}");
+        }
+        let kernel = String::from_utf8(files.iter().find(|(p, _)| p == "run/loans/index.html").unwrap().1.clone()).unwrap();
+        for absolute in ["src=\"/", "`/apps/", "`/frame/", "'/ui/"] {
+            assert!(!kernel.contains(absolute), "the kernel page names its files from its own root, not /: {absolute}");
+        }
+
+        let page = manifest(&a, "life")["page"].as_str().unwrap().to_string();
+        let (files, entry) = preview_site(&a, "life", &pkg("life")).unwrap();
+        assert_eq!(entry, format!("apps/life/{page}"));
+        assert!(files.iter().all(|(p, _)| p.starts_with("apps/life/")), "a page app is its own files");
+
+        assert!(preview_site(&a, "adder", &pkg("adder")).unwrap_err().contains("module app"));
+        assert!(preview_site(&a, "a/b", &pkg("life")).is_err() && preview_site(&a, "", &pkg("life")).is_err());
+        assert!(preview_site(&a, "x", &[("app.json".into(), br#"{"page":"gone.html"}"#.to_vec())]).unwrap_err().contains("gone.html"));
     }
 
     #[test]

@@ -8,9 +8,11 @@
 //!
 //! Requests: {"op":"tools"} · {"op":"system"} ·
 //!   {"op":"run","name":…,"input":{…},"files":{"path":"text",…},"app":null|"name"} ·
-//!   {"op":"package","name":…,"files":{…}}
+//!   {"op":"package","name":…,"files":{…}} · {"op":"preview","name":…,"files":{…}}
 //! The reply to "run": {"text","isError","line"?,"files":{…},"saved"?:{"name","summary"}}. The
-//! reply to "package" is not JSON: it is the `.wardian` file's bytes.
+//! reply to "package" is not JSON: it is the `.wardian` file's bytes. The reply to "preview" is
+//! {"files":{"path":"text",…},"entry":"run/<name>/"|"apps/<name>/<page>"}, or {"error"}: the package
+//! as a static site that runs with no Wardian behind it, under any root (demos.rs).
 #![allow(dead_code)]
 
 #[path = "../../../src/domain"]
@@ -31,6 +33,7 @@ mod ports {
 }
 #[path = "../../../src/usecases"]
 mod usecases {
+    pub mod demos;
     pub mod workshop;
 }
 #[path = "../../../src/adapters/secondary"]
@@ -53,7 +56,8 @@ pub fn handle(request: &str) -> Vec<u8> {
         Some("system") => workshop::system(&Embedded),
         Some("run") => run(&req),
         Some("package") => return workshop::package(req["name"].as_str().unwrap_or("app"), &files_of(&req), env!("WARDIAN_VERSION")),
-        _ => json!({ "error": "op must be tools, system, run or package" }),
+        Some("preview") => preview(&req),
+        _ => json!({ "error": "op must be tools, system, run, package or preview" }),
     };
     reply.to_string().into_bytes()
 }
@@ -63,6 +67,17 @@ fn files_of(req: &Value) -> Files {
         .as_object()
         .map(|m| m.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").as_bytes().to_vec())).collect())
         .unwrap_or_default()
+}
+
+fn preview(req: &Value) -> Value {
+    let files: Vec<(String, Vec<u8>)> = files_of(req).into_iter().collect();
+    match usecases::demos::preview_site(&Embedded, req["name"].as_str().unwrap_or(""), &files) {
+        Ok((site, entry)) => {
+            let site: Map<String, Value> = site.into_iter().map(|(k, v)| (k, Value::String(String::from_utf8_lossy(&v).into_owned()))).collect();
+            json!({ "files": site, "entry": entry })
+        }
+        Err(e) => json!({ "error": e }),
+    }
 }
 
 fn run(req: &Value) -> Value {
