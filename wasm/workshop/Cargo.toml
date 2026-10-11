@@ -1,0 +1,25 @@
+[package]
+name = "wardian-workshop"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Make an app's tools, prompt and `wardian check` as one WebAssembly module, for the hosted builder (ADR-2610111500)."
+
+# Its own workspace, so it never joins Wardian's build.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+# Only what the included source needs, at Wardian's versions.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

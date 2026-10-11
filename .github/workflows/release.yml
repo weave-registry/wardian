@@ -4,7 +4,8 @@
 #
 #   curl -fsSL https://github.com/weave-registry/wardian/releases/latest/download/install.sh | sh
 #
-# installs the latest release. install.sh finds its tarball by reading SHA256SUMS. It builds nothing
+# installs the latest release. The release also holds wardian-workshop-<version>.wasm, Make an app's
+# tools for the hosted builder (ADR-2610111500), in the same SHA256SUMS. install.sh finds its tarball by reading SHA256SUMS. It builds nothing
 # until CI's fast checks and every browser suite pass on the tagged commit (ADR-2610082000).
 #
 # Intel Macs: GitHub retired the macos-13 runner image in December 2025; macos-15-intel is the
@@ -66,8 +67,32 @@ jobs:
           path: dist/wardian-*.tar.gz
           if-no-files-found: error
 
+  # Make an app's tools as WebAssembly, for the hosted builder (ADR-2610111500).
+  workshop:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build workshop.wasm
+        working-directory: wasm/workshop
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          mkdir -p ../../dist
+          cp target/wasm32-unknown-unknown/release/wardian_workshop.wasm "../../dist/wardian-workshop-${GITHUB_REF_NAME#v}.wasm"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wardian-workshop
+          path: dist/wardian-workshop-*.wasm
+          if-no-files-found: error
+
   publish:
-    needs: build
+    needs: [build, workshop]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -84,7 +109,8 @@ jobs:
         run: |
           ls wardian-*.tar.gz
           [ "$(ls wardian-*.tar.gz | wc -l)" -eq 4 ] || { echo "::error::expected four tarballs"; exit 1; }
-          sha256sum wardian-*.tar.gz > SHA256SUMS
+          ls wardian-workshop-*.wasm
+          sha256sum wardian-*.tar.gz wardian-workshop-*.wasm > SHA256SUMS
           cat SHA256SUMS
           cp ../scripts/install.sh .
 
@@ -92,5 +118,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/wardian-*.tar.gz dist/SHA256SUMS dist/install.sh \
+          gh release create "$GITHUB_REF_NAME" dist/wardian-*.tar.gz dist/wardian-workshop-*.wasm dist/SHA256SUMS dist/install.sh \
             --repo "$GITHUB_REPOSITORY" --title "Wardian ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag

@@ -5,7 +5,7 @@ use crate::ports::assets::{Assets, DocPage, TemplateFiles};
 
 macro_rules! ui {
     ($f:literal) => {
-        ($f, include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/static/ui/", $f)))
+        ($f, include_str!(concat!("../../../static/ui/", $f)))
     };
 }
 
@@ -52,7 +52,7 @@ const SUITE_SCHEMA: &str = include_str!("../../../schemas/suite.schema.json");
 /// One page of the docs site: group, name, title, and its Markdown file in the repository.
 macro_rules! doc {
     ($group:literal, $name:literal, $title:literal, $src:literal) => {
-        DocPage { group: $group, name: $name, title: $title, source: $src, md: include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $src)) }
+        DocPage { group: $group, name: $name, title: $title, source: $src, md: include_str!(concat!("../../../", $src)) }
     };
 }
 
@@ -138,7 +138,7 @@ const DOCS: &[DocPage] = &[
 /// One file of a shipped skill (skills/).
 macro_rules! skill {
     ($f:literal) => {
-        ($f, include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/skills/", $f)))
+        ($f, include_str!(concat!("../../../skills/", $f)))
     };
 }
 
@@ -153,7 +153,7 @@ const SKILLS: &[(&str, &str)] = &[
 /// The starter files of each package kind (templates/).
 macro_rules! file {
     ($out:literal, $src:literal) => {
-        ($out, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/", $src)) as &[u8])
+        ($out, include_bytes!(concat!("../../../templates/", $src)) as &[u8])
     };
 }
 

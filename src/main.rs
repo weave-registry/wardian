@@ -60,6 +60,7 @@ mod usecases {
     pub mod skills;
     pub mod splunk;
     pub mod studio;
+    pub mod workshop;
     pub mod usage;
     pub mod viewer_state;
     pub mod workspace;

@@ -3671,3 +3671,116 @@ impl crate::ports::service::Watch for NoWatch {
     }
     fn progress(&self, _: u64) {}
 }
+
+// ---------- the workshop: Make an app's tools on files in memory (ADR-2610111500) ----------
+
+mod workshop {
+    use super::Embedded;
+    use crate::usecases::workshop::{self, Files};
+    use serde_json::{json, Value};
+
+    fn run(name: &str, input: Value, files: &mut Files, app: Option<&str>) -> workshop::Outcome {
+        workshop::run(&Embedded, name, &input, files, app)
+    }
+
+    /// A page app as Claude writes one: no app.wasm, which Wardian adds.
+    fn page_app() -> Files {
+        let mut f = Files::new();
+        f.insert("app.json".into(), br#"{"format":1,"title":"Counter","description":"Counts clicks.","page":"index.html"}"#.to_vec());
+        f.insert("index.html".into(), b"<!doctype html><title>Counter</title><button id=b>0</button><script src=app.js></script>".to_vec());
+        f.insert("app.js".into(), b"// Counts clicks.\nb.onclick = () => b.textContent = +b.textContent + 1;".to_vec());
+        f
+    }
+
+    #[test]
+    fn workshop_offers_the_seven_tools_and_a_prompt_with_the_spec_and_an_example() {
+        let names: Vec<String> = workshop::tools().as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
+        assert_eq!(names, ["list_files", "read_file", "write_file", "delete_file", "add_components", "check", "finish"]);
+        let system = workshop::system(&Embedded).to_string();
+        assert!(system.contains("You build apps for Wardian"));
+        assert!(system.contains("<spec>") && system.contains("<example-suite>"));
+        assert_eq!(workshop::system(&Embedded)[1]["cache_control"], json!({ "type": "ephemeral" }));
+    }
+
+    #[test]
+    fn workshop_writes_appends_reads_lists_and_deletes_in_memory() {
+        let mut f = Files::new();
+        assert_eq!(run("list_files", json!({}), &mut f, None).text, "The package is empty.");
+        let w = run("write_file", json!({ "path": "./a.js", "content": "one" }), &mut f, None);
+        assert!(!w.is_error && w.shown.as_deref() == Some("wrote a.js (3 B)"), "{}", w.text);
+        run("write_file", json!({ "path": "a.js", "content": "+two", "append": true }), &mut f, None);
+        assert_eq!(run("read_file", json!({ "path": "a.js" }), &mut f, None).text, "one+two");
+        assert!(run("list_files", json!({}), &mut f, None).text.starts_with("a.js"));
+        assert!(!run("delete_file", json!({ "path": "a.js" }), &mut f, None).is_error);
+        assert!(run("read_file", json!({ "path": "a.js" }), &mut f, None).is_error);
+        assert!(run("delete_file", json!({ "path": "a.js" }), &mut f, None).is_error);
+    }
+
+    #[test]
+    fn workshop_refuses_unsafe_paths_wasm_and_oversized_packages() {
+        let mut f = Files::new();
+        for bad in ["../x.js", "/etc/passwd", "a//b", ".hidden/x"] {
+            assert!(run("write_file", json!({ "path": bad, "content": "x" }), &mut f, None).is_error, "{bad}");
+        }
+        assert!(run("write_file", json!({ "path": "app.wasm", "content": "x" }), &mut f, None).text.contains(".wasm"));
+        let big = "x".repeat(512 * 1024 + 1);
+        assert!(run("write_file", json!({ "path": "big.js", "content": big }), &mut f, None).text.contains("512 KB"));
+        // A refused write leaves an existing file as it was, not emptied.
+        let mut kept = Files::new();
+        kept.insert("a.js".into(), b"keep me".to_vec());
+        assert!(run("write_file", json!({ "path": "a.js", "content": big }), &mut kept, None).is_error);
+        assert!(run("write_file", json!({ "path": "a.js", "content": "x".repeat(512 * 1024), "append": true }), &mut kept, None).is_error);
+        assert_eq!(kept["a.js"], b"keep me");
+        for i in 0..300 {
+            f.insert(format!("f{i}.js"), Vec::new());
+        }
+        assert!(run("write_file", json!({ "path": "one-more.js", "content": "x" }), &mut f, None).text.contains("at most 300"));
+        assert!(f.keys().all(|k| k.starts_with('f')), "nothing refused was written");
+    }
+
+    #[test]
+    fn workshop_adds_components_to_a_page_and_wires_them_into_a_suite() {
+        let mut page = page_app();
+        let out = run("add_components", json!({ "components": ["button"] }), &mut page, None);
+        assert!(!out.is_error && page.contains_key("ui/button.css") && page.contains_key("ui/theme.css"));
+        assert!(out.text.contains("<link") && out.text.contains("ui/button.css"));
+        let mut suite = Files::new();
+        suite.insert("suite.json".into(), br#"{"format":1,"title":"S","apps":[]}"#.to_vec());
+        let out = run("add_components", json!({ "components": ["card"] }), &mut suite, None);
+        assert!(String::from_utf8_lossy(&suite["suite.json"]).contains("ui/card.css"), "{}", out.text);
+        assert!(run("add_components", json!({ "components": ["no-such"] }), &mut Files::new(), None).is_error);
+    }
+
+    #[test]
+    fn workshop_checks_files_in_memory_as_wardian_check_does_on_disk() {
+        let (ok, report) = workshop::check(&page_app(), "counter");
+        assert!(ok, "{report}");
+        let mut broken = page_app();
+        broken.remove("index.html");
+        let (ok, report) = workshop::check(&broken, "counter");
+        assert!(!ok && report.contains("index.html"), "{report}");
+        // The same verdict as `wardian check` on the same files written to disk, with the app.wasm
+        // Wardian adds.
+        let dir = super::tmp("workshop-check").join("counter");
+        for (rel, body) in page_app().iter().chain([(&"app.wasm".to_string(), &crate::domain::studio::EMPTY_WASM.to_vec())]) {
+            std::fs::create_dir_all(dir.join(rel).parent().unwrap()).unwrap();
+            std::fs::write(dir.join(rel), body).unwrap();
+        }
+        assert!(super::checker().check_dir(&dir, "counter").0);
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    #[test]
+    fn workshop_finish_saves_only_what_passes_and_names_a_new_app() {
+        let mut broken = page_app();
+        broken.remove("app.json");
+        let out = run("finish", json!({ "name": "Counter", "summary": "s" }), &mut broken, None);
+        assert!(out.is_error && out.saved.is_none() && out.text.starts_with("not saved"), "{}", out.text);
+        let out = run("finish", json!({ "name": "My Counter!", "summary": "A counter." }), &mut page_app(), None);
+        let saved = out.saved.expect("saved");
+        assert_eq!((saved.name.as_str(), saved.summary.as_str()), ("my-counter", "A counter."));
+        // A change to an existing app keeps its name.
+        let out = run("finish", json!({ "name": "other", "summary": "s" }), &mut page_app(), Some("counter"));
+        assert_eq!(out.saved.unwrap().name, "counter");
+    }
+}
