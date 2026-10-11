@@ -27,7 +27,7 @@ them on files held in memory.
    Node as it is. `build.rs` writes an empty example-app list for the assets adapter, which the
    workshop never reads; the adapter's other includes are now relative to its file.
 4. **It packages a download.** `package` makes the `.wardian` file Wardian imports, from
-   `domain::export::wardian_file`, which the website's example downloads use too; the manifest names
+   `workshop::wardian_file`, which the website's example downloads use too; the manifest names
    Wardian's version, which `build.rs` reads from Wardian's `Cargo.toml`.
 5. **Each release publishes `wardian-workshop-<version>.wasm`** in its SHA256SUMS. CI builds the
    crate on every push, so it cannot stop compiling unnoticed.
