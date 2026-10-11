@@ -22,11 +22,14 @@ them on files held in memory.
 2. **Wardian's own Make an app calls it.** `studio.rs` keeps only `finish`, which saves to disk as
    before, and passes every other tool to `workshop::run`.
 3. **`wasm/workshop` builds it as WebAssembly.** The crate includes Wardian's source by path (no
-   copy), with its own workspace and no dependency beyond serde and serde_json. Its interface is
+   copy), with its own workspace and no dependency beyond Wardian's own serde, serde_json and zip. Its interface is
    JSON bytes through `alloc`, `call` and `dealloc`, so it needs no binding generator and runs in
    Node as it is. `build.rs` writes an empty example-app list for the assets adapter, which the
    workshop never reads; the adapter's other includes are now relative to its file.
-4. **Each release publishes `wardian-workshop-<version>.wasm`** in its SHA256SUMS. CI builds the
+4. **It packages a download.** `package` makes the `.wardian` file Wardian imports, from
+   `domain::export::wardian_file`, which the website's example downloads use too; the manifest names
+   Wardian's version, which `build.rs` reads from Wardian's `Cargo.toml`.
+5. **Each release publishes `wardian-workshop-<version>.wasm`** in its SHA256SUMS. CI builds the
    crate on every push, so it cannot stop compiling unnoticed.
 
 ## Consequences

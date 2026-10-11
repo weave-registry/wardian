@@ -5,6 +5,7 @@
 
 use crate::domain::check::{check_package, format_report, Report};
 use crate::domain::components::{files_for, page_tags, wire_suite, GUIDE};
+use crate::domain::export::wardian_file;
 use crate::domain::package::safe_rel;
 use crate::domain::studio::{free_name, size_text, EMPTY_WASM};
 use crate::ports::assets::Assets;
@@ -227,3 +228,20 @@ pub fn run(assets: &dyn Assets, name: &str, input: &Value, files: &mut Files, ap
     said(text, is_error, shown)
 }
 
+
+/// The package as a `.wardian` file for download (SPEC.md 7.2), with the empty app.wasm a page app
+/// needs and its title from `app.json` or `suite.json`. `version` is the Wardian it was made with.
+/// The hosted builder's download (wasm/workshop); Wardian's own export also carries data.
+#[allow(dead_code)]
+pub fn package(name: &str, files: &Files, version: &str) -> Vec<u8> {
+    let mut all = files.clone();
+    if !all.contains_key("suite.json") && !all.contains_key("app.wasm") && all.contains_key("app.json") {
+        all.insert("app.wasm".into(), EMPTY_WASM.to_vec());
+    }
+    let title = ["suite.json", "app.json"]
+        .iter()
+        .find_map(|f| all.get(*f))
+        .and_then(|b| serde_json::from_slice::<Value>(b).ok())
+        .and_then(|v| v["title"].as_str().map(str::to_string));
+    wardian_file(name, title.as_deref(), all.iter().map(|(p, b)| (p.as_str(), b.as_slice())), version)
+}

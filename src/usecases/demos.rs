@@ -7,7 +7,6 @@
 use crate::domain::export;
 use crate::domain::suite::{self, FRAME_CSP};
 use crate::ports::assets::Assets;
-use std::io::{Cursor, Write};
 
 /// What an example needs to run.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -236,19 +235,7 @@ fn headers() -> String {
 /// export carries, with no data. The same every time for the same files and version, so the
 /// website's copy changes only when the app or Wardian's version does.
 fn wardian_file_of(assets: &dyn Assets, app: &str) -> Vec<u8> {
-    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    let opts = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .last_modified_time(zip::DateTime::default());
-    for (rel, bytes) in files_of(assets, app) {
-        zip.start_file(format!("{app}/{rel}"), opts).expect("a zip entry");
-        zip.write_all(bytes).expect("a zip entry");
-    }
-    let title = title(assets, app);
-    let manifest = export::manifest(app, title.as_deref(), 0, env!("CARGO_PKG_VERSION"), &export::DataIncluded::default());
-    zip.start_file(format!("{app}/.wardian/export.json"), opts).expect("a zip entry");
-    zip.write_all(serde_json::to_string_pretty(&manifest).unwrap_or_default().as_bytes()).expect("a zip entry");
-    zip.finish().expect("a zip").into_inner()
+    export::wardian_file(app, title(assets, app).as_deref(), files_of(assets, app), env!("CARGO_PKG_VERSION"))
 }
 
 /// The example's title, from its `suite.json` or `app.json`.

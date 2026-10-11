@@ -3771,6 +3771,19 @@ mod workshop {
     }
 
     #[test]
+    fn workshop_packages_a_wardian_file_that_wardian_imports_and_checks() {
+        use crate::usecases::import::import_zip;
+        let zip = workshop::package("counter", &page_app(), "9.9.9");
+        let base = super::tmp("workshop-package");
+        let done = import_zip(&super::LocalDisk, &*super::sys(), &zip, "counter.wardian", &base, false, &|_| {}).expect("imports");
+        assert_eq!(done.apps, ["counter"]);
+        let (ok, report) = super::checker().check_dir(&base.join("counter"), "counter");
+        assert!(ok, "{report}");
+        assert_eq!(workshop::package("counter", &page_app(), "9.9.9"), zip, "the same files make the same bytes");
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
     fn workshop_finish_saves_only_what_passes_and_names_a_new_app() {
         let mut broken = page_app();
         broken.remove("app.json");
