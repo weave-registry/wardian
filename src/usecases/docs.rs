@@ -337,6 +337,13 @@ fn layout(pages: &[DocPage], at: usize, body: &str, toc: &[(u8, String, String)]
     nav.side summary {{ display: list-item; cursor: pointer; padding: .5rem 0; color: var(--ink); font-weight: 600; }}
     header .brand span, header .links a:not(:first-child) {{ display: none; }}
   }}
+  @media (max-width: 600px) {{
+    header {{ flex-wrap: wrap; padding: .6rem 1rem; gap: .5rem 1rem; }}
+    header .links {{ margin-left: auto; }}
+    .search {{ order: 3; flex-basis: 100%; max-width: none; margin: 0; }}
+    /* 16px or more, or iOS zooms the page when the field is tapped. */
+    .search input {{ font-size: 16px; padding: .55rem .75rem; }}
+  }}
 </style>
 <a class="skip" href="#content">Skip to content</a>
 <header>
