@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end test of the example apps on the static website (ADR-2610081900), served by a plain
 # static server, as a host with no Wardian behind it would. The website is its own repository,
-# wardian-web (ADR-2610111000): set SITE=<its checkout> to test it as deployed, home page included.
+# wardian-web (ADR-2610111000): set SITE=<its checkout>/public to test it as deployed, home page included.
 # Without SITE, the test writes the site with `wardian docs` into a temporary folder and tests the
 # examples, the part this repository writes.
 # Needs: python3, Node with the playwright package (npm i -g playwright) and Google Chrome (or

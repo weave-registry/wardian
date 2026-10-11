@@ -215,10 +215,10 @@ fn read_key(file: &str) -> Result<String, String> {
 }
 
 /// `wardian docs <folder>`: the docs site as static files, the same pages Wardian serves at /docs.
-/// The website keeps them in the wardian-web repository (`wardian docs ../wardian-web`).
+/// The website keeps them in the wardian-web repository (`wardian docs ../wardian-web/public`).
 fn docs(args: &[String], pages: &dyn Pages) -> i32 {
     let [out] = args else {
-        eprintln!("usage: wardian docs <folder>\n\nexample: wardian docs ../wardian-web   (writes docs/, schemas/, ui/, apps/, downloads/ and vercel.json)");
+        eprintln!("usage: wardian docs <folder>\n\nexample: wardian docs ../wardian-web/public   (writes docs/, schemas/, ui/, apps/, downloads/ and vercel.json)");
         return 2;
     };
     let out = Path::new(out);

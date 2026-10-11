@@ -16,17 +16,18 @@ served it from a static server.
 ## Decision
 
 1. **The website lives in [wardian-web](https://github.com/weave-registry/wardian-web).** `website/`
-   moved there with its history (`git subtree split`); it is the root of that repository. Its
+   moved there with its history (`git subtree split`), into its `public/` folder (the hosted builder, decided in
+   wardian-web's own `docs/adrs/`, sits beside it); `vercel.json` sits at that repository's root. Its
    hand-written pages (the marketing page) are edited there.
 2. **Wardian still writes the generated part.** `wardian docs <folder>` is unchanged; it writes into
-   a checkout of wardian-web (`wardian docs ../wardian-web`). The docs remain Markdown in this
+   a checkout of wardian-web (`wardian docs ../wardian-web/public`, which wardian-web runs as `npm run site`). The docs remain Markdown in this
    repository, so the program and the website still show one text.
 3. **The freshness check moves with the copy.** wardian-web's CI builds Wardian from `main`, runs
    `wardian docs .` and fails if anything changed. `docs_website_copy_is_fresh` is removed from this
    repository: there is no copy here to compare.
 4. **The examples are still tested here.** `tests/run-website-e2e.sh` writes the site with
    `wardian docs` into a temporary folder and serves that, so a change to an example is tested by the
-   change that makes it. With `SITE=<wardian-web checkout>` it tests the deployed site, home page
+   change that makes it. With `SITE=<wardian-web checkout>/public` it tests the deployed site, home page
    included; wardian-web's CI runs it that way.
 
 ## Consequences
