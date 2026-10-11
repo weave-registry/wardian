@@ -17,7 +17,8 @@ served it from a static server.
 
 1. **The website lives in [wardian-web](https://github.com/weave-registry/wardian-web).** `website/`
    moved there with its history (`git subtree split`), into its `public/` folder (the hosted builder, decided in
-   wardian-web's own `docs/adrs/`, sits beside it); `vercel.json` sits at that repository's root. Its
+   wardian-web's own `docs/adrs/`, sits beside it). wardian-web is a Next.js app; the headers `wardian docs` writes as
+   `vercel.json` are kept there as `site-headers.json` and applied by its Next.js configuration. Its
    hand-written pages (the marketing page) are edited there.
 2. **Wardian still writes the generated part.** `wardian docs <folder>` is unchanged; it writes into
    a checkout of wardian-web (`wardian docs ../wardian-web/public`, which wardian-web runs as `npm run site`). The docs remain Markdown in this

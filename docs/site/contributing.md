@@ -222,8 +222,8 @@ The docs are Markdown in the repository, built into the program (ADR-2610080903)
    PATH="../wardian/target/verify/release:$PATH" npm run site
    ```
 
-   `npm run site` runs `wardian docs public` and moves `vercel.json` to the root, where Vercel reads
-   it. Commit the result in wardian-web. Its CI builds Wardian from `main`, writes the site again and
+   `npm run site` runs `wardian docs public` and keeps the apps' headers as `site-headers.json`,
+   which wardian-web's Next.js configuration applies. Commit the result in wardian-web. Its CI builds Wardian from `main`, writes the site again and
    fails if its copy differs from what Wardian serves.
 
 The same steps apply when you change any page, including `GUIDE.md`, `SPEC.md` and `CHANGELOG.md`.
