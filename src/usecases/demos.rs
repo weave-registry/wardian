@@ -235,7 +235,7 @@ fn headers() -> String {
 /// export carries, with no data. The same every time for the same files and version, so the
 /// website's copy changes only when the app or Wardian's version does.
 fn wardian_file_of(assets: &dyn Assets, app: &str) -> Vec<u8> {
-    export::wardian_file(app, title(assets, app).as_deref(), files_of(assets, app), env!("CARGO_PKG_VERSION"))
+    super::workshop::wardian_file(app, title(assets, app).as_deref(), files_of(assets, app), env!("CARGO_PKG_VERSION"))
 }
 
 /// The example's title, from its `suite.json` or `app.json`.
@@ -291,6 +291,7 @@ fn suite_files(assets: &dyn Assets, app: &str) -> Vec<(String, Vec<u8>)> {
 mod tests {
     use super::*;
     use crate::adapters::secondary::embedded_assets::Embedded;
+    use std::io::Cursor;
 
     #[test]
     fn demos_kinds_of_the_examples() {

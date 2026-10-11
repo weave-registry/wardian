@@ -5,7 +5,6 @@
 use super::history::kept_in_copies;
 use super::package::safe_segment;
 use serde_json::{json, Value};
-use std::io::{Cursor, Write};
 
 /// The file's media type, and its type identifier on macOS (`wardian.studio`, reversed).
 pub const MIME: &str = "application/vnd.wardian+zip";
@@ -132,19 +131,3 @@ mod tests {
     }
 }
 
-/// A package as a `.wardian` file with no data (SPEC.md 7.2): its files under one folder named for
-/// it, and the manifest last. The same files, title and version always make the same bytes.
-pub fn wardian_file<'a>(package: &str, title: Option<&str>, files: impl IntoIterator<Item = (&'a str, &'a [u8])>, version: &str) -> Vec<u8> {
-    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    let opts = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .last_modified_time(zip::DateTime::default());
-    for (rel, bytes) in files {
-        zip.start_file(format!("{package}/{rel}"), opts).expect("a zip entry");
-        zip.write_all(bytes).expect("a zip entry");
-    }
-    let manifest = manifest(package, title, 0, version, &DataIncluded::default());
-    zip.start_file(format!("{package}/{MANIFEST}"), opts).expect("a zip entry");
-    zip.write_all(serde_json::to_string_pretty(&manifest).unwrap_or_default().as_bytes()).expect("a zip entry");
-    zip.finish().expect("a zip").into_inner()
-}

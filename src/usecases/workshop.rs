@@ -5,12 +5,13 @@
 
 use crate::domain::check::{check_package, format_report, Report};
 use crate::domain::components::{files_for, page_tags, wire_suite, GUIDE};
-use crate::domain::export::wardian_file;
+use crate::domain::export::{manifest, DataIncluded, MANIFEST};
 use crate::domain::package::safe_rel;
 use crate::domain::studio::{free_name, size_text, EMPTY_WASM};
 use crate::ports::assets::Assets;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::io::{Cursor, Write};
 
 /// A package: path → bytes.
 pub type Files = BTreeMap<String, Vec<u8>>;
@@ -244,4 +245,22 @@ pub fn package(name: &str, files: &Files, version: &str) -> Vec<u8> {
         .and_then(|b| serde_json::from_slice::<Value>(b).ok())
         .and_then(|v| v["title"].as_str().map(str::to_string));
     wardian_file(name, title.as_deref(), all.iter().map(|(p, b)| (p.as_str(), b.as_slice())), version)
+}
+
+/// A package as a `.wardian` file with no data (SPEC.md 7.2): its files under one folder named for
+/// it, and the manifest last. The same files, title and version always make the same bytes. The
+/// website's example downloads are made with it too (demos.rs).
+pub fn wardian_file<'a>(package: &str, title: Option<&str>, files: impl IntoIterator<Item = (&'a str, &'a [u8])>, version: &str) -> Vec<u8> {
+    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .last_modified_time(zip::DateTime::default());
+    for (rel, bytes) in files {
+        zip.start_file(format!("{package}/{rel}"), opts).expect("a zip entry");
+        zip.write_all(bytes).expect("a zip entry");
+    }
+    let manifest = manifest(package, title, 0, version, &DataIncluded::default());
+    zip.start_file(format!("{package}/{MANIFEST}"), opts).expect("a zip entry");
+    zip.write_all(serde_json::to_string_pretty(&manifest).unwrap_or_default().as_bytes()).expect("a zip entry");
+    zip.finish().expect("a zip").into_inner()
 }
