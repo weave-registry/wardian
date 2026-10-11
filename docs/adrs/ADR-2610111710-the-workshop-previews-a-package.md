@@ -48,4 +48,4 @@ start. Packaging a package that had come back from a `.wardian` file also failed
 
 ## Gate
 
-`env CARGO_TARGET_DIR=target/verify cargo test --release demos_a_preview workshop_packages`
+`env CARGO_TARGET_DIR=target/verify cargo test --release -- demos_a_preview workshop_packages`

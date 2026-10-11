@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.18] - 2026-10-11
+
 ### Added
 
 - An "App store" link in the header, and "Find apps in the store" on the home card, in the empty app
@@ -36,9 +38,9 @@ Wardian 1.0") is done or written down there as left out.
 - A suite's kernel page names its files from its own folder, so a copy runs under any path.
 - Each panel sits in a glass frame, and its zoom button is in the frame's top strip, so it no
   longer covers the panel.
-- Inside Wardian an app's own title is hidden, because Wardian's header above it names the app.
-  Opened on its own or saved as a web page, the app shows it. A page app marks its title with
-  `data-app-title`.
+- Inside Wardian an older app's own title is hidden, because Wardian's header above it names the
+  app; opened on its own or saved as a web page, the app shows it. New apps have no title of their
+  own (see above); one that marks a title with `data-app-title` still has it hidden.
 
 ### Fixed
 
@@ -46,6 +48,18 @@ Wardian 1.0") is done or written down there as left out.
 - A page saved as a web page no longer carries the zoom buttons.
 - A zoomed suite part whose box sits inside another element, as in CSV explorer, now fills the
   zoomed panel.
+- The browser-runtime spike builds again: it had not been given the workshop module the core now
+  uses. Two ADR gates now run their tests, and the load test uses the browser the others do.
+
+### Live checks
+
+2026-10-11, Linux on x86_64, no service credentials on the machine that ran them:
+
+- PASS export-100mb: exported 95 MB with data in 1 s, imported it into an empty Wardian intact; over the limit is refused
+- SKIP bedrock-api-key: AWS_BEARER_TOKEN_BEDROCK is not set
+- SKIP bedrock-sigv4: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are not both set
+- SKIP splunk: SPLUNK_URL is not set
+- SKIP drive: GDRIVE_SA_KEY (the path of a service account key) is not set
 
 ## [0.4.17] - 2026-10-10
 

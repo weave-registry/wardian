@@ -64,5 +64,6 @@ mod usecases {
     pub mod studio;
     pub mod usage;
     pub mod viewer_state;
+    pub mod workshop;
     pub mod workspace;
 }

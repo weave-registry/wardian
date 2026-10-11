@@ -49,7 +49,7 @@ const get = path => `GET ${path} HTTP/1.1\r\nHost: ${HOST}:${PORT}\r\nConnection
 
 async function browserLoads() {
   console.log(`== a browser loads the app list and ${SUITE} ${LOADS} times`);
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(require('./browser')({ headless: true }));
   const pending = new Map();
   let requests = 0;
   const stuck = [];

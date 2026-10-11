@@ -45,4 +45,4 @@ the usage notes `add_components` returns and the app-factory skill did not.
 
 ## Gate
 
-`env CARGO_TARGET_DIR=target/verify cargo test --release workshop_says ui_copies`
+`env CARGO_TARGET_DIR=target/verify cargo test --release -- workshop_says ui_copies`
