@@ -305,11 +305,12 @@ Writes this documentation site as static files into `FOLDER`, the same pages War
 - `ui/index.html` (the component gallery) and every component file.
 
 ```
-$ wardian docs website
-wrote <n> files of the docs site into website
+$ wardian docs ../wardian-web
+wrote <n> files of the docs site into ../wardian-web
 ```
 
-The project website keeps its copy in `website/`. [Contributing](/docs/contributing#add-a-docs-page)
+The project website keeps its copy in the
+[wardian-web](https://github.com/weave-registry/wardian-web) repository. [Contributing](/docs/contributing#add-a-docs-page)
 says when to run it.
 
 ## skills

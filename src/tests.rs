@@ -276,20 +276,6 @@ fn docs_links_resolve() {
     assert!(broken.is_empty(), "broken docs links:\n{}", broken.join("\n"));
 }
 
-/// website/ holds the docs site as `wardian docs website` writes it, so the website never shows
-/// other text than Wardian does (ADR-2610080903).
-#[test]
-fn docs_website_copy_is_fresh() {
-    let docs = Docs::new(Arc::new(Embedded));
-    let stale: Vec<String> = docs
-        .site()
-        .into_iter()
-        .filter(|(rel, body)| fs::read(Path::new("website").join(rel)).ok().as_ref() != Some(body))
-        .map(|(rel, _)| rel)
-        .collect();
-    assert!(stale.is_empty(), "website/ is out of date; run `wardian docs website` and commit. Stale: {}", stale.join(", "));
-}
-
 // ---------- skills ----------
 
 /// Every shipped skill has a SKILL.md named after its folder, with a description, and carries

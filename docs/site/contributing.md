@@ -66,7 +66,7 @@ Claude and Bedrock where it needs them, and drives the pages in a real browser.
 | `run-a11y-e2e.sh` | The first-run setup appears once, and every control in the app list, Settings, Arrange and History has a name and works from the keyboard. |
 | `run-load-e2e.sh` | The app list and a suite load 200 times, and bursts of idle, slow and unread connections leave no request unanswered. |
 | `run-examples-e2e.sh` | Every example app in `apps/` opens with no fault: a module's functions, a page's text, every part of a suite. |
-| `run-website-e2e.sh` | The website, from a plain static server: each example that needs no server runs on its page, every part of each such suite starts with no fault, and every example's download is a zip. |
+| `run-website-e2e.sh` | The website, as `wardian docs` writes it, from a plain static server: each example that needs no server runs on its page, every part of each such suite starts with no fault, and every example's download is a zip. |
 
 They need python3, curl and Node with the `playwright` package (`npm i -g playwright`). They launch
 Google Chrome. Set `WARDIAN_BROWSER=chromium` to use Playwright's own Chromium instead
@@ -210,15 +210,19 @@ The docs are Markdown in the repository, built into the program (ADR-2610080903)
 
 3. Link to other pages as `/docs/<name>` or `/docs/<name>#<heading>`. A heading's anchor is its text
    in lowercase, with every run of other characters turned into one `-`.
-4. Build, then write the website's copy:
+4. Run `cargo test --release docs_`. It fails if a `/docs/…` link names a page or heading that does
+   not exist.
+5. Once the change is on `main`, write the website's copy. The website is its own repository,
+   [wardian-web](https://github.com/weave-registry/wardian-web) (ADR-2610111000); clone it next to
+   this one, then:
 
    ```
    env CARGO_TARGET_DIR=target/verify cargo build --release
-   target/verify/release/wardian docs website
+   target/verify/release/wardian docs ../wardian-web
    ```
 
-5. Run `cargo test --release docs_`. It fails if a `/docs/…` link names a page or heading that does
-   not exist, or if `website/` differs from what Wardian serves. Commit `website/` with the page.
+   Commit the result in wardian-web. Its CI builds Wardian from `main`, writes the site again and
+   fails if its copy differs from what Wardian serves.
 
 The same steps apply when you change any page, including `GUIDE.md`, `SPEC.md` and `CHANGELOG.md`.
 

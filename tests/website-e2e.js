@@ -1,6 +1,6 @@
 // End-to-end test of the example apps on the static website (ADR-2610081900): each runnable
 // example's page shows it running with no error, a module's Run works, and every example page
-// links its download. Run with tests/run-website-e2e.sh: BASE=<static server of website/> node tests/website-e2e.js
+// links its download. Run with tests/run-website-e2e.sh: BASE=<static server of the site> node tests/website-e2e.js
 const { chromium } = require('playwright');
 const B = process.env.BASE;
 let pass = 0, fail = 0;
@@ -28,8 +28,12 @@ const SERVER_ONLY = ['csv-explorer', 'focus-log', 'focus-timer', 'splunk-table',
     await page.locator('section.gallery a.go').first().click();
     await page.waitForLoadState('load');
     ok(await page.locator('iframe.try-frame').count() === 1, 'Try it opens the app running: ' + page.url());
-    await page.goto(`${B}/`);
-    ok(await page.locator('a[href="/docs/examples#try"]').count() >= 1, 'the home page links to them');
+    // The home page is wardian-web's own; it is there only when SITE names that checkout.
+    if (process.env.NO_HOME_PAGE) console.log('  skip  the home page links to them (no SITE)');
+    else {
+      await page.goto(`${B}/`);
+      ok(await page.locator('a[href="/docs/examples#try"]').count() >= 1, 'the home page links to them');
+    }
     await page.close();
   }
   for (const app of RUNNABLE) {

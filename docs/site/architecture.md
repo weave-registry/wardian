@@ -187,7 +187,7 @@ file, in menu order.
 `src/usecases/docs.rs` renders a page when the browser asks for `/docs/<name>`. It gives every `##`
 and `###` heading an anchor, builds the menu and a search index of every heading, and links each
 page to its file on GitHub. `wardian docs FOLDER` writes the same pages as static HTML, with the
-schemas and the component gallery; the website keeps them in `website/`. So the program and the
+schemas and the component gallery; the website keeps them in the wardian-web repository. So the program and the
 website show one text. [Contributing](/docs/contributing#add-a-docs-page) says how to add a page.
 
 ## hexa gates
