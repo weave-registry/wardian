@@ -3784,6 +3784,16 @@ mod workshop {
     }
 
     #[test]
+    fn workshop_packages_an_app_that_was_exported_before() {
+        // A package read back from a .wardian file still holds that file's manifest; packaging it
+        // again writes a new one instead of failing on a second entry of the same name.
+        let mut again = page_app();
+        again.insert(".wardian/export.json".into(), br#"{"old":true}"#.to_vec());
+        let zip = workshop::package("counter", &again, "9.9.9");
+        assert_eq!(zip, workshop::package("counter", &page_app(), "9.9.9"), "the old manifest is left out");
+    }
+
+    #[test]
     fn workshop_finish_saves_only_what_passes_and_names_a_new_app() {
         let mut broken = page_app();
         broken.remove("app.json");

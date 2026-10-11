@@ -249,13 +249,17 @@ pub fn package(name: &str, files: &Files, version: &str) -> Vec<u8> {
 
 /// A package as a `.wardian` file with no data (SPEC.md 7.2): its files under one folder named for
 /// it, and the manifest last. The same files, title and version always make the same bytes. The
-/// website's example downloads are made with it too (demos.rs).
+/// website's example downloads are made with it too (demos.rs). Files under `.wardian/` are an
+/// earlier export's manifest and data, not the app: they are left out, and the new manifest written.
 pub fn wardian_file<'a>(package: &str, title: Option<&str>, files: impl IntoIterator<Item = (&'a str, &'a [u8])>, version: &str) -> Vec<u8> {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let opts = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .last_modified_time(zip::DateTime::default());
     for (rel, bytes) in files {
+        if rel.starts_with(".wardian/") {
+            continue;
+        }
         zip.start_file(format!("{package}/{rel}"), opts).expect("a zip entry");
         zip.write_all(bytes).expect("a zip entry");
     }
