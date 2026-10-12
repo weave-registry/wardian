@@ -27,14 +27,14 @@ and drew one card per function, with an input per number. That is a **module** a
 Wardian keeps your layout in its data folder. A restart, another browser or cleared site data does
 not lose it. The app itself never changes. **Reset** brings back the app's own layout.
 
-## Make room
+## Switch apps and make room
 
-- The chevron at the top of the app list folds it to a slim rail, and the app gets the width. Press
-  it again to bring the list back. Wardian remembers the choice in this browser.
-- **Full window** (or the F key) gives the open app the whole window. Point at the top edge, or
-  press Tab, to bring the header back; Escape leaves. The next app opens the same way until you do.
-- On a narrow window the less used header buttons move into **Menu**. **App store ↗** opens
-  wardian.studio's store of apps people made, in a new tab.
+- With an app open, the app list is a rail of tiles, one per app. Click a tile to switch, or use ↑ and
+  ↓. The toggle at its top keeps the named list open instead; Wardian remembers that.
+- **Apps** in the header, or Ctrl+K (⌘K on a Mac), finds an app as you type its name. Enter opens it.
+- **Full window**, in the **Menu** or with the F key, gives the app the whole window. Point at the top
+  edge, or press Tab, to bring the header back; Escape leaves.
+- **App store ↗** opens wardian.studio's store of apps people made, in a new tab.
 
 ## 3. Save what you see
 

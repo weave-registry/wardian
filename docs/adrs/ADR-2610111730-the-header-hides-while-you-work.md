@@ -1,6 +1,7 @@
 # ADR-2610111730: The header hides while you work
 
-**Status:** Accepted
+**Status:** Superseded
+**Superseded by:** ADR-2610111760
 **Date:** 2026-10-11
 **Drivers:** The user: "our navigation bar should have the ability to auto hide so our app can get
 more room".

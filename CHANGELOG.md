@@ -14,19 +14,26 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
-- The app list folds to a slim rail with the chevron at its top, giving the app the width; the
-  choice is kept in the browser.
-- A Menu button holds what the header has no room for, so the header is always one line.
-- Full window: while an app is open, the Full window button (or F) gives it the whole window, edge
-  to edge. The header comes back over the app at the top edge or with Tab; Escape leaves. The choice
-  is kept in the browser.
+- An app switcher that is always at hand: while an app is open the app list is a rail of app tiles
+  (one click switches, ↑ ↓ move, the open app marked), and Ctrl+K or ⌘K, or the Apps button, opens a
+  quick switcher: type to filter, Enter opens, recent apps first. A toggle keeps the named list open.
+- Full window: the Menu's Full window, or F, gives the open app the whole window, edge to edge. The
+  header comes back over the app at the top edge or with Tab; switching apps keeps Full window;
+  Escape leaves. The choice is kept in the browser.
 
 ### Changed
 
+- An open app gets the room by default: a slim one-line header, the list folded to its rail, a
+  one-line app head, and the frame filling the rest. The version line shows on the home screen only.
+- The header is Apps, App store ↗, Make an app, Settings and Menu, always one line; what has no room
+  moves into the Menu. The Menu has rows of one height with icons, in groups, and names the source
+  in short (the whole path is its tooltip).
 - App store is an outlined "App store ↗" button in the header, on the home card, on the first-run
   page and in the empty app list, instead of small plain text.
-- Less room goes to the frame around an app: tighter padding, and the version line under the app
-  only shows on the home screen.
+
+### Removed
+
+- The Auto-hide button: the slim header and Full window replace it.
 
 ### Fixed
 

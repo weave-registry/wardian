@@ -127,7 +127,8 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   ok(await page.locator('#runner a[href="https://wardian.studio/store/"]', { hasText: 'Find apps in the store' }).count() === 1, 'the home card offers the store too');
   ok(/opens .*in a new tab/.test(await page.getAttribute('#storeLink', 'aria-label')), 'its name says it opens a new tab');
 
-  console.log('== the header keeps to one line; what has no room goes into the Menu (ADR-2610111760)');
+  console.log('== the header keeps to one line; the Menu is tidy (ADR-2610111760)');
+  ok(await page.locator('#hdrPin').count() === 0, 'there is no Auto-hide button: Full window is the one way to hide everything');
   for (const [w, h] of [[1440, 900], [1280, 800], [1024, 800], [768, 900], [390, 844], [360, 740]]) {
     const v = await (await browser.newContext({ viewport: { width: w, height: h } })).newPage();
     v.on('pageerror', e => errors.push(`${w}px: ${e.message}`));
@@ -136,61 +137,98 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
       const hdr = document.querySelector('body > header');
       const ctl = [...hdr.querySelectorAll(':scope > a, :scope > button, .hdr-menu-wrap > button')].filter(n => n.offsetParent);
       const store = document.querySelector('#storeLink');
-      return { tall: ctl.filter(n => n.getBoundingClientRect().height > 44).map(n => n.id || n.textContent.trim()),
+      return { tall: ctl.filter(n => n.getBoundingClientRect().height > 40).map(n => n.id || n.textContent.trim()),
         over: hdr.scrollWidth - hdr.clientWidth, wide: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        store: !!store.offsetParent && !store.closest('.hdr-menu'), inMenu: !!store.closest('.hdr-menu') };
+        apps: !!document.querySelector('#appsBtn').offsetParent, store: !!store.offsetParent && !store.closest('.hdr-menu'), hdrH: Math.round(hdr.getBoundingClientRect().height) };
     });
-    ok(r.tall.length === 0 && r.over <= 1 && r.wide <= 0, `${w}px: no header control wraps, the header fits, no sideways scroll ` + JSON.stringify(r));
+    ok(r.tall.length === 0 && r.over <= 1 && r.wide <= 0 && r.apps && r.hdrH <= 56, `${w}px: one slim line with Apps in it, nothing wraps, no sideways scroll ` + JSON.stringify(r));
     if (w >= 1024) ok(r.store, `${w}px: App store shows in the header`);
-    else {
-      ok(r.store || r.inMenu, `${w}px: App store is in the header or the Menu (${r.store ? 'header' : 'Menu'})`);
-      await v.focus('#hdrMenuBtn'); await v.keyboard.press('Enter'); await sleep(200);
-      const open = await v.evaluate(() => ({ expanded: document.querySelector('#hdrMenuBtn').getAttribute('aria-expanded'),
-        store: !!document.querySelector('#storeLink').offsetParent, focus: document.activeElement.closest('#hdrMenu') !== null }));
-      ok(open.expanded === 'true' && open.store && open.focus, `${w}px: Enter opens the Menu, with the store in it and the focus inside ` + JSON.stringify(open));
-      await v.keyboard.press('Escape'); await sleep(150);
-      ok(await v.getAttribute('#hdrMenuBtn', 'aria-expanded') === 'false' && await v.evaluate(() => document.activeElement.id) === 'hdrMenuBtn',
-        `${w}px: Escape closes it and the focus is back on Menu`);
-    }
+    await v.focus('#hdrMenuBtn'); await v.keyboard.press('Enter'); await sleep(200);
+    const m = await v.evaluate(() => {
+      const items = [...document.querySelectorAll('#hdrMenu a, #hdrMenu button')].filter(n => n.offsetParent);
+      const src = document.querySelector('#badge');
+      return { expanded: document.querySelector('#hdrMenuBtn').getAttribute('aria-expanded'), focus: document.activeElement.closest('#hdrMenu') !== null,
+        store: !!document.querySelector('#storeLink').offsetParent, tall: items.filter(n => n.getBoundingClientRect().height > 40).map(n => n.textContent.trim()),
+        names: items.map(n => n.textContent.trim()), source: src.textContent.trim(), sourceTitle: src.title, width: Math.round(document.querySelector('#hdrMenu').getBoundingClientRect().width) };
+    });
+    ok(m.expanded === 'true' && m.focus && m.store && m.tall.length === 0 && m.width <= 260 && m.names.some(n => /^Docs/.test(n)) && m.names.some(n => /^Refresh/.test(n)),
+      `${w}px: Enter opens the Menu, focus inside, App store reachable, every item one line: ` + JSON.stringify(m.names));
+    ok(!m.source.includes('/') && m.sourceTitle.length > m.source.length, `${w}px: the Menu names the source in short ("${m.source}"), the path in its tooltip`);
+    await v.keyboard.press('Escape'); await sleep(150);
+    ok(await v.getAttribute('#hdrMenuBtn', 'aria-expanded') === 'false' && await v.evaluate(() => document.activeElement.id) === 'hdrMenuBtn',
+      `${w}px: Escape closes it and the focus is back on Menu`);
     await v.context().close();
   }
 
-  console.log('== the app list folds to a rail (ADR-2610111760)');
+  console.log('== an open app gets the room; the list is a rail of apps (ADR-2610111760)');
+  for (const [w, h] of [[1440, 900], [390, 844]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+    const v = await ctx.newPage();
+    v.on('pageerror', e => errors.push(`app view ${w}px: ${e.message}`));
+    await v.goto(B + '/'); await sleep(800);
+    await v.locator('#apps li button', { hasText: /loan/i }).first().click(); await sleep(1200);
+    const r = await v.evaluate(() => {
+      const f = document.querySelector('#runner iframe.appframe').getBoundingClientRect();
+      const side = document.querySelector('aside').getBoundingClientRect(), hdr = document.querySelector('body > header').getBoundingClientRect();
+      return { frame: [f.x, f.y, f.width, f.height].map(Math.round), rail: Math.round(side.width), hdr: Math.round(hdr.height), folded: document.body.classList.contains('side-folded'),
+        footer: !!document.querySelector('#appFooter').offsetParent, wide: document.documentElement.scrollWidth - innerWidth };
+    });
+    const [x, y, fw, fh] = r.frame;
+    ok(r.folded && !r.footer && r.wide <= 0 && fw >= w - r.rail - 24 && y + fh <= h + 1 && fh >= h - r.hdr - (w < 701 ? 110 : 70),
+      `${w}x${h}: with no setting changed, the app fills what the slim header and the rail leave: frame ${r.frame}, rail ${r.rail}, header ${r.hdr}`);
+    if (w < 701) {
+      ok(r.rail === 0, '390px: the list is hidden while an app is open');
+      await v.click('#appsBtn'); await sleep(250);
+      ok(await v.locator('#switcher').isVisible(), '390px: Apps opens the switcher');
+      await v.keyboard.press('Escape');
+    }
+    await ctx.close();
+  }
   await page.goto(B + '/'); await sleep(800);
-  await page.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(800);
+  await page.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(900);
+  const tileOf = (re) => page.locator('#apps button.app-open', { hasText: re }).first();
+  ok(await page.evaluate(() => document.body.classList.contains('side-folded')) && await tileOf(/loan/i).isVisible()
+    && (await tileOf(/loan/i).boundingBox()).width <= 44, 'the folded list shows every app as a tile');
+  ok(await tileOf(/life/i).getAttribute('aria-current') === 'page', 'the open app is marked current');
+  await tileOf(/loan/i).click(); await sleep(900);
+  ok(/loan/i.test(await page.locator('#runner h2').textContent()) && await tileOf(/loan/i).getAttribute('aria-current') === 'page', 'one click on a tile switches apps');
+  await tileOf(/loan/i).focus();
+  const label = () => page.evaluate(() => document.activeElement.querySelector('.label')?.textContent || '');
+  const before = await label();
+  await page.keyboard.press('ArrowDown');
+  const after = await label();
+  await page.keyboard.press('Enter'); await sleep(900);
+  ok(after && after !== before && (await page.locator('#runner h2').textContent()).trim() === after.trim(), `↓ moves to the next tile and Enter opens it (${before} → ${after})`);
   const contentW = () => page.evaluate(() => document.querySelector('#content').getBoundingClientRect().width);
   const w0 = await contentW();
   await page.click('#sideToggle'); await sleep(450);
-  const w1 = await contentW();
-  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'false' && await page.getAttribute('#sideToggle', 'aria-label') === 'Expand the app list'
-    && await page.locator('#apps').isHidden() && w1 > w0 + 150, `folding hides the list and gives the app the width: ${w0} → ${w1}px`);
+  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'true' && await page.locator('#filter').isVisible() && await contentW() < w0 - 100,
+    'the toggle keeps the list open, with its names and filter');
   await page.reload(); await sleep(800);
-  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'false' && await page.locator('#apps').isHidden(), 'it stays folded after a reload');
-  await page.click('#sideToggle'); await sleep(450);
-  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'true' && await page.locator('#apps').isVisible(), 'and opens again');
-
-  console.log('== the header hides while you work, when asked to');
-  const hdrTop = () => page.evaluate(() => document.querySelector('body > header').getBoundingClientRect().bottom);
-  await page.goto(B + '/'); await sleep(800);
-  ok(await page.getAttribute('#hdrPin', 'aria-pressed') === 'false' && await hdrTop() > 0, 'off at first: the header stays');
-  await page.click('#hdrPin');
-  ok(await page.getAttribute('#hdrPin', 'aria-pressed') === 'true', 'Auto-hide is pressed');
   await page.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(800);
-  await page.mouse.click(700, 600); await sleep(500);
-  ok(await hdrTop() <= 1, 'working in the app hides the header (bottom at ' + await hdrTop() + ')');
-  const roomy = await page.evaluate(() => document.querySelector('main').getBoundingClientRect().height);
-  ok(roomy >= 1000 - 60, 'and the app gets the room: ' + roomy + 'px of 1000');
-  await page.mouse.move(700, 3); await sleep(500);
-  ok(await hdrTop() > 20, 'pointing at the top edge brings it back');
-  await page.mouse.move(700, 600); await sleep(1300);
-  ok(await hdrTop() <= 1, 'and it goes again when the pointer leaves it');
-  await page.focus('#settingsBtn'); await sleep(400);
-  ok(await hdrTop() > 20, 'Tab into the header shows it');
-  await page.reload(); await sleep(800);
-  ok(await page.getAttribute('#hdrPin', 'aria-pressed') === 'true', 'the choice is kept in this browser');
-  await page.click('#hdrPin');
-  await page.mouse.click(700, 600); await sleep(500);
-  ok(await hdrTop() > 20, 'off again: the header stays');
+  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'true' && !(await page.evaluate(() => document.body.classList.contains('side-folded'))), 'and stays open for the next app, after a reload');
+  await page.click('#sideToggle'); await sleep(450);
+  ok(await page.evaluate(() => document.body.classList.contains('side-folded')), 'the toggle folds it again');
+
+  console.log('== the quick switcher: Ctrl+K (ADR-2610111760)');
+  await page.evaluate(() => document.activeElement.blur());
+  await page.keyboard.press('Control+k'); await sleep(250);
+  ok(await page.locator('#switcher').isVisible() && await page.evaluate(() => document.activeElement.id) === 'switcherInput', 'Ctrl+K opens it, ready to type');
+  const firstTwo = await page.$$eval('#switcherList li', lis => lis.slice(0, 2).map(l => l.textContent));
+  ok(/life/i.test(firstTwo[0]) && /loan|mandel|meeting|number|monte|schedule/i.test(firstTwo[1] || ''), 'the apps opened last come first: ' + JSON.stringify(firstTwo));
+  await page.keyboard.type('mandel'); await sleep(150);
+  const hits = await page.$$eval('#switcherList li', lis => lis.map(l => l.textContent));
+  ok(hits.length === 1 && /mandelbrot/i.test(hits[0]), 'typing filters by name: ' + JSON.stringify(hits));
+  await page.keyboard.press('Enter'); await sleep(900);
+  ok(!(await page.locator('#switcher').isVisible()) && /mandelbrot/i.test(await page.locator('#runner h2').textContent()), 'Enter opens it and closes the switcher');
+  await page.keyboard.press('Control+k'); await sleep(200);
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown');
+  ok(await page.getAttribute('#switcherInput', 'aria-activedescendant') === 'sw-2', '↓ moves the choice');
+  await page.keyboard.press('Escape'); await sleep(200);
+  ok(!(await page.locator('#switcher').isVisible()) && /mandelbrot/i.test(await page.locator('#runner h2').textContent()), 'Escape closes it and changes nothing');
+  await page.click('#appsBtn'); await sleep(200);
+  ok(await page.locator('#switcher').isVisible(), 'the Apps button opens it too');
+  await page.keyboard.press('Escape'); await sleep(150);
 
   console.log('== Full window: the open app fills the window (ADR-2610111760)');
   for (const [w, h] of [[1440, 900], [390, 844]]) {
@@ -212,22 +250,30 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
       ok(!(await fw.evaluate(() => document.body.classList.contains('full-window'))) && (await box())[3] < h - 50, `${w}px ${name}: Escape leaves`);
     }
     if (w === 1440) {
-      await fw.click('#fullBtn'); await sleep(700);
+      await fw.click('#hdrMenuBtn'); await fw.click('#fullBtn'); await sleep(700);
       const hb = () => fw.evaluate(() => document.querySelector('body > header').getBoundingClientRect().bottom);
-      ok(await hb() <= 1 && await fw.getAttribute('#fullBtn', 'aria-pressed') === 'true', 'the button enters Full window and the header waits above');
+      ok(await hb() <= 1 && await fw.getAttribute('#fullBtn', 'aria-pressed') === 'true', "the Menu's Full window enters it and the header waits above");
       await fw.mouse.move(700, 2); await sleep(500);
       ok(await hb() > 30 && near(await box()), 'the top edge brings the header back, over the app, which keeps its size');
+      ok(await fw.locator('#appsBtn').isVisible(), 'the header that comes back has Apps in it');
+      await fw.click('#appsBtn'); await sleep(250);
+      await fw.keyboard.type('loan'); await fw.keyboard.press('Enter'); await sleep(1200);
+      ok(/loan/i.test(await fw.locator('#runner h2').textContent()) && await fw.evaluate(() => document.body.classList.contains('full-window')) && near(await box()),
+        'switching apps from there keeps Full window');
+      await fw.mouse.move(700, 2); await sleep(500);
       await fw.mouse.move(700, 600, { steps: 12 }); await sleep(1100);   // down across the header, as a hand moves
       ok(await hb() <= 1, 'and it goes again when the pointer leaves');
-      await fw.focus('#settingsBtn'); await sleep(400);
+      await fw.focus('#appsBtn'); await sleep(400);
       ok(await hb() > 30, 'Tab into the header shows it');
+      await fw.evaluate(() => document.activeElement.blur()); await sleep(300);
       await fw.reload(); await sleep(800);
       await fw.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(1000);
       ok(await fw.evaluate(() => document.body.classList.contains('full-window')) && near(await box()), 'the choice is kept in this browser: the next app opens in Full window');
-      await fw.focus('#fullBtn'); await fw.keyboard.press('Enter'); await sleep(400);
-      ok(!(await fw.evaluate(() => document.body.classList.contains('full-window'))), 'the button, from the keyboard, leaves it again');
+      await fw.keyboard.press('f'); await sleep(400);
+      ok(!(await fw.evaluate(() => document.body.classList.contains('full-window'))), 'F leaves it again');
       await fw.goto(B + '/'); await sleep(700);
-      ok(await fw.locator('#fullBtn').isHidden() && await fw.locator('#appFooter').isVisible(), 'on the home screen there is no Full window button, and the version line shows');
+      ok(await fw.locator('#fullBtn').count() === 1 && await fw.evaluate(() => document.querySelector('#fullBtn').classList.contains('hidden')) && await fw.locator('#appFooter').isVisible(),
+        'on the home screen Full window is not offered, and the version line shows');
     }
     await ctx.close();
   }

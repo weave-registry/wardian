@@ -116,17 +116,22 @@
   /* The header is one line at every width (ADR-2610111760): nothing in it wraps. What does not fit
      goes into the Menu, least needed first (the script at the end says the order). */
   header {
-    display: flex; align-items: center; gap: 1rem; padding: .55rem 1rem; flex-wrap: nowrap; position: relative;
+    display: flex; align-items: center; gap: .6rem; padding: .35rem .75rem; flex-wrap: nowrap; position: relative;
     background: var(--bg); border-bottom: 1px solid var(--line);
   }
   header > *, header a, header button { white-space: nowrap; flex: none; }
   header > .spacer { flex: 1 1 0; min-width: 0; }
-  header > #badge { flex: 0 1 auto; min-width: 7rem; }
-  .brand small.hdr-gone { display: none; }
+  header button { padding: .28rem .65rem; }
+  header .brand img { width: 26px; height: 26px; }
+  header .brand b { font-size: 1.3rem; }
+  .brand small.hdr-gone, body.viewing-app .brand small { display: none; }
+  #appsBtn { display: inline-flex; align-items: center; gap: .4rem; }
+  #appsBtn svg { width: 15px; height: 15px; }
+  #appsBtn kbd { font: 500 .72rem var(--sans); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 .3rem; }
   /* The app store: a pill, so it reads as a place to go, not a word in the bar. */
   .store-link {
     display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap;
-    border: 1px solid var(--field); border-radius: 999px; padding: .3rem .8rem; background: var(--panel);
+    border: 1px solid var(--field); border-radius: 999px; padding: .25rem .75rem; background: var(--panel);
     color: var(--text); text-decoration: none; font-size: .9rem; font-weight: 500;
     transition: background-color .15s, border-color .15s;
   }
@@ -138,18 +143,29 @@
   #hdrMenuBtn { display: inline-flex; align-items: center; gap: .35rem; }
   #hdrMenuBtn svg { width: 16px; height: 16px; }
   #hdrMenuBtn[hidden] { display: none; }
-  .hdr-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 45; min-width: 14rem; max-width: calc(100vw - 1.5rem);
-    display: flex; flex-direction: column; gap: .15rem; padding: .35rem; background: var(--panel);
+  .hdr-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 45; width: 15rem; max-width: calc(100vw - 1rem);
+    display: flex; flex-direction: column; padding: .3rem; background: var(--panel);
     border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
   .hdr-menu[hidden] { display: none; }
-  .hdr-menu > a, .hdr-menu > button, .hdr-menu > .store-link {
-    display: flex; align-items: center; gap: .45rem; width: 100%; text-align: left; justify-content: flex-start;
-    border: 0; border-radius: 5px; background: none; padding: .45rem .6rem; font-size: .92rem; color: var(--text);
+  .hdr-menu a, .hdr-menu button {
+    display: flex; align-items: center; gap: .55rem; width: 100%; height: 2.25rem; text-align: left; justify-content: flex-start;
+    border: 0; border-radius: 5px; background: none; padding: 0 .6rem; font-size: .9rem; font-weight: 500; color: var(--text);
+    text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .hdr-menu > a:hover, .hdr-menu > button:hover:not(:disabled), .hdr-menu > a:focus-visible, .hdr-menu > button:focus-visible { background: var(--hover); }
-  .hdr-menu > button.primary { background: var(--accent); color: var(--accent-ink); }
-  .hdr-menu > #badge { padding: .35rem .6rem .5rem; border-bottom: 1px solid var(--line); margin-bottom: .2rem; max-width: none; white-space: normal; }
-  .hdr-menu > #badge span:last-child { overflow-wrap: anywhere; }
+  .hdr-menu a:hover, .hdr-menu button:hover:not(:disabled), .hdr-menu a:focus-visible, .hdr-menu button:focus-visible { background: var(--hover); }
+  .hdr-menu svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
+  .hdr-menu .out { margin-left: auto; color: var(--muted); font-size: .8rem; }
+  .hdr-menu button.primary { background: var(--accent); color: var(--accent-ink); }
+  .hdr-menu button.primary svg { color: inherit; }
+  .hdr-menu .store-link { border-radius: 5px; }
+  .hdr-menu .hidden { display: none; }
+  .menu-group { display: flex; flex-direction: column; }
+  .menu-group:empty { display: none; }
+  .menu-group:not(:empty) + .menu-sep, .menu-sep + .menu-sep { display: block; }
+  .hdr-menu .menu-sep { height: 1px; background: var(--line); margin: .3rem .2rem; }
+  .menu-source { display: flex; align-items: center; gap: .5rem; height: 2rem; padding: 0 .6rem; margin: 0; font-size: .82rem; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .menu-source span:last-child { overflow: hidden; text-overflow: ellipsis; }
   /* The website's wordmark: the mark, then "wardian" in lower case, set tight. */
   .brand { display: flex; align-items: center; gap: .6rem; text-decoration: none; color: var(--text); }
   .brand img { width: 28px; height: 28px; border-radius: 7px; box-shadow: 0 0 0 1px var(--line); }   /* an edge on the dark theme */
@@ -192,18 +208,65 @@
   #sideToggle { flex: none; display: grid; place-items: center; width: 2.1rem; height: 2.1rem; padding: 0; color: var(--muted); background: none; border-color: transparent; }
   #sideToggle:hover:not(:disabled) { color: var(--text); background: var(--hover); }
   #sideToggle svg { width: 16px; height: 16px; transition: transform .2s ease; }
+  /* While an app is open the list is a rail of tiles, one per app, unless the user keeps it open:
+     a switcher that takes 3.25rem. Folders become separators; every app shows, whatever folder it
+     is in. The names stay for screen readers and tooltips. */
+  #apps .app-open .initial { display: none; }
   @media (min-width: 701px) {
     main { transition: grid-template-columns .2s ease; }
-    body.side-folded main { grid-template-columns: 3rem 1fr; }
-    body.side-folded aside { padding: .6rem .45rem; overflow: hidden; }
+    body.side-folded main { grid-template-columns: 3.25rem minmax(0, 1fr); }
+    body.side-folded aside { padding: .45rem .35rem; }
     body.side-folded .side-top { justify-content: center; }
-    body.side-folded #filter, body.side-folded #sideBody { display: none; }
+    body.side-folded #filter, body.side-folded .apps-tools, body.side-folded #appsEmpty, body.side-folded #dropLoose { display: none; }
     body.side-folded #sideToggle svg { transform: rotate(180deg); }
+    body.side-folded #apps .folder-row, body.side-folded #apps .app-move, body.side-folded #apps .folder-empty { display: none; }
+    body.side-folded #apps ul.folder-apps, body.side-folded #apps ul.folder-apps[hidden] { display: block; margin: 0; padding: 0; border: 0; }
+    body.side-folded #apps li.folder { border-top: 1px solid var(--line); margin-top: .35rem; padding-top: .35rem; }
+    body.side-folded #apps li.app { justify-content: center; margin: .15rem 0; }
+    body.side-folded #apps li.app > button.app-open { flex: none; width: 2.4rem; height: 2.4rem; padding: 0; display: grid; place-items: center; border-radius: 8px;
+      background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+    body.side-folded #apps li.app > button.app-open:hover:not(.active) { background: var(--hover); }
+    body.side-folded #apps li.app > button.app-open.active { background: var(--select); box-shadow: inset 0 0 0 2px var(--focus); }
+    body.side-folded #apps .app-open .initial { display: block; font: 600 .85rem/1 var(--sans); letter-spacing: -.02em; }
+    body.side-folded #apps .app-open .label, body.side-folded #apps .app-open .kind {
+      position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   }
-  @media (max-width: 700px) { #sideToggle { display: none; } }
+  @media (max-width: 700px) { #sideToggle { display: none; } body.viewing-app aside { display: none; } }
   @media (prefers-reduced-motion: reduce) { main, #sideToggle svg { transition: none; } }
-  /* While an app is open, the version line under it takes no room (it shows on the home screen). */
-  body.app-open #appFooter { display: none; }
+  /* While an app is open it gets the window below the slim header (ADR-2610111760): its head is one
+     line, its frame fills the rest, and the version line takes no room (it shows on the home screen).
+     The Output card waits below, a scroll away. */
+  body.viewing-app #appFooter { display: none; }
+  body.viewing-app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+  body.viewing-app > header { flex: none; }
+  body.viewing-app main { flex: 1; min-height: 0; }
+  body.viewing-app aside, body.viewing-app #content { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+  body.viewing-app #content { padding: .35rem .5rem; display: flex; flex-direction: column; }
+  body.viewing-app #runner { flex: 0 0 100%; min-height: 0; display: flex; flex-direction: column; margin: 0 0 .5rem; padding: 0; border: 0; background: none; }
+  body.viewing-app #runner:not(:has(> iframe.appframe)) { flex: none; }
+  body.viewing-app #runner > iframe.appframe { flex: 1; min-height: 18rem; height: auto !important; margin: .3rem 0 0; }
+  body.viewing-app #runner:has(> iframe.appframe) > .app-desc { display: none; }
+  .apphead { flex-wrap: nowrap; gap: .5rem; min-height: 2.4rem; }
+  .apphead h2 { margin: 0 !important; font-size: 1.3rem !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .apphead .sealed { flex: none; position: relative; margin: 0; }
+  .apphead .sealed ul { position: absolute; left: 0; top: calc(100% + 4px); z-index: 30; width: min(22rem, 80vw); margin: 0;
+    padding: .55rem .8rem .55rem 1.7rem; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); }
+  .apphead .tools a.docslink { align-self: center; padding: 0 .3rem; }
+  .apphead .tools { margin-left: auto; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding: 2px; }
+  .apphead .tools > * { flex: none; }
+  /* The quick switcher: Ctrl or ⌘ K, or Apps. */
+  #switcher { width: min(30rem, calc(100vw - 1.5rem)); margin-top: 12vh; }
+  #switcher .dlg-body { padding: .5rem; max-height: 60vh; }
+  #switcherInput { width: 100%; font-size: 1rem; padding: .55rem .7rem; }
+  #switcherList { list-style: none; margin: .5rem 0 0; padding: 0; max-height: 50vh; overflow: auto; }
+  #switcherList li { display: flex; align-items: center; gap: .6rem; padding: .45rem .6rem; border-radius: 6px; cursor: pointer; }
+  #switcherList li[aria-selected="true"] { background: var(--select); color: var(--select-ink); }
+  #switcherList .initial { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 6px; background: var(--hover); font: 600 .78rem var(--sans); flex: none; }
+  #switcherList li[aria-selected="true"] .initial { background: var(--panel); }
+  #switcherList .kind, #switcherList .recent { color: var(--muted); font-size: .78rem; }
+  #switcherList li[aria-selected="true"] .kind, #switcherList li[aria-selected="true"] .recent { color: inherit; opacity: .75; }
+  #switcherList .recent { margin-left: auto; }
+  #switcherEmpty { padding: .6rem; }
   /* Full window (ADR-2610111760): the open app fills the window, edge to edge. The list and the app's
      own head go, and the header waits above the window: it comes back over the app, not pushing it,
      when the pointer reaches the top edge or the keyboard moves into it. Escape or the button leaves. */
@@ -460,32 +523,21 @@
     aside, #content { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
     #appFooter { padding: .45rem 1rem; }
   }
-  /* Auto-hide (a choice kept in this browser): on a wide screen the header slides away while you
-     work in an app, and the app gets its room. It comes back when you scroll up, point at the top
-     edge or Tab into it. A phone needs none of this: there the header scrolls away with the page. */
-  #hdrPin[aria-pressed="true"] { background: var(--select); color: var(--select-ink); border-color: var(--select); }
   #hdrEdge { display: none; }
-  @media (min-width: 701px) {
-    body.hdr-auto > header { position: relative; z-index: 40; transition: margin-top .25s ease; }
-    body.hdr-auto.hdr-away > header:not(:focus-within) { margin-top: calc(-1 * var(--hdr-h, 3.25rem)); }
-    body.hdr-auto.hdr-away #hdrEdge { display: block; position: fixed; inset: 0 0 auto 0; height: 8px; z-index: 41; }
-  }
-  @media (prefers-reduced-motion: reduce) { body.hdr-auto > header { transition: none; } }
   @media (max-width: 700px) {
-    #hdrPin { display: none; }
     main { grid-template-columns: 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); }
-    header { padding: .6rem 1rem; gap: .6rem; }
+    header { padding: .35rem .75rem; gap: .5rem; }
+    .apphead { flex-wrap: wrap; row-gap: .25rem; }
+    .apphead .tools { order: 3; width: 100%; margin-left: 0; }
   }
 </style>
 
 <header>
   <a class="brand" href="/" aria-label="Wardian home"><img id="mark" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23183e32'/%3E%3Cpath d='M10 16 20 8l10 8v17H10Z' fill='none' stroke='%23dce8a5' stroke-width='1.4'/%3E%3Cpath d='M20 8v25M10 17h20M20 30c-9-1-8-10-8-10 8 0 8 10 8 10Zm0-4c8-1 8-9 8-9-8 0-8 9-8 9Z' fill='none' stroke='%23dce8a5' stroke-width='1.3'/%3E%3C/svg%3E" alt=""><b>Wardian</b><small id="tagline">Small apps, sealed. On your machine.</small></a>
-  <span class="badge" id="badge"><span class="dot"></span><span>…</span></span>
   <span class="spacer"></span>
+  <button id="appsBtn" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title="Switch to another app (Ctrl+K or ⌘K)"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>Apps</button>
   <a href="https://wardian.studio/store/" target="_blank" rel="noopener" class="store-link" id="storeLink" aria-label="App store: apps people made, on wardian.studio (opens in a new tab)" title="Apps people made, ready to install (opens wardian.studio in a new tab)"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2.5 5.5h11l-1 8h-9z"/><path d="M5.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5"/></svg>App store<span class="out" aria-hidden="true">↗</span></a>
-  <a href="/docs" target="_blank" rel="noopener" class="docslink" id="docsLink">Docs</a>
-  <a href="/ui" target="_blank" rel="noopener" class="docslink" id="uiLink">Components</a>
   <span class="jobs-wrap">
     <button id="jobsBtn" class="hidden" aria-expanded="false" aria-controls="jobsPanel">Jobs</button>
     <div id="jobsPanel" class="w-card jobs-panel hidden" role="region" aria-label="Background jobs">
@@ -495,16 +547,31 @@
     </div>
   </span>
   <button id="aiBtn" class="primary" title="Describe an app and Claude builds it">Make an app</button>
-  <button id="refreshBtn" title="Re-read the app list now">Refresh</button>
   <button id="settingsBtn">Settings</button>
-  <button id="fullBtn" class="hidden" aria-pressed="false" title="Give the app the whole window (F). Escape or this button leaves; point at the top edge for this bar.">Full window</button>
-  <button id="hdrPin" aria-pressed="false" title="Hide this bar while you work in an app. Scroll up or point at the top edge to bring it back.">Auto-hide</button>
   <span class="hdr-menu-wrap">
-    <button id="hdrMenuBtn" aria-expanded="false" aria-controls="hdrMenu" hidden><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>Menu</button>
-    <div id="hdrMenu" class="hdr-menu" hidden></div>
+    <button id="hdrMenuBtn" aria-expanded="false" aria-controls="hdrMenu"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>Menu</button>
+    <div id="hdrMenu" class="hdr-menu" hidden>
+      <div class="menu-group" id="menuMore"></div>
+      <div class="menu-sep" hidden></div>
+      <button id="fullBtn" class="hidden" aria-pressed="false" aria-keyshortcuts="F" title="Give the app the whole window (F). Escape or this item leaves; point at the top edge for the header."><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg><span>Full window</span></button>
+      <button id="refreshBtn" title="Re-read the app list now"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3"/></svg><span>Refresh the app list</span></button>
+      <div class="menu-sep"></div>
+      <a href="/docs" target="_blank" rel="noopener" id="docsLink"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2.5h7.5l2.5 2.5v8.5H3z"/><path d="M5.5 7h5M5.5 9.5h5"/></svg><span>Docs</span><span class="out" aria-hidden="true">↗</span></a>
+      <a href="/ui" target="_blank" rel="noopener" id="uiLink"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M2.5 7h11M7 7v6.5"/></svg><span>Components</span><span class="out" aria-hidden="true">↗</span></a>
+      <div class="menu-sep"></div>
+      <p class="menu-source" id="badge"><span class="dot"></span><span>…</span></p>
+    </div>
   </span>
 </header>
 <div id="hdrEdge" aria-hidden="true"></div>
+<dialog id="switcher" aria-labelledby="switcherTitle">
+  <div class="dlg-body">
+    <h2 id="switcherTitle" class="w-sr">Switch to an app</h2>
+    <input id="switcherInput" type="text" role="combobox" aria-expanded="true" aria-controls="switcherList" aria-autocomplete="list" placeholder="Type an app’s name…" aria-label="App name">
+    <ul id="switcherList" role="listbox" aria-label="Apps"></ul>
+    <p id="switcherEmpty" class="muted hidden">No app matches.</p>
+  </div>
+</dialog>
 
 <main>
   <aside>
@@ -887,7 +954,10 @@ function renderStatus() {
   renderFooter();
   const s = status;
   const [cls, label] = health(s);
-  $('badge').replaceChildren(el('span', { className: `dot ${cls}` }), el('span', { textContent: label }));
+  // In the Menu, the source in short ("Local · apps"); the whole path is its tooltip and in Settings.
+  const short = s.source === 'drive' ? label : `Local · ${String(s.local_root || 'apps').replace(/[\\/]+$/, '').split(/[\\/]/).pop()}`;
+  $('badge').replaceChildren(el('span', { className: `dot ${cls}` }), el('span', { textContent: short }));
+  $('badge').title = label;
 
   const rows = [['Source', s.source === 'drive' ? 'Google Drive' : 'Local folder']];
   if (s.source === 'drive') {
@@ -1026,9 +1096,11 @@ function renderApps() {
 
 function appRow(a, loose) {
   const open = el('button', {
-    title: a.error || a.description || a.name,
+    title: a.error || (a.description ? `${titleOf(a)}: ${a.description}` : titleOf(a)),
     className: 'app-open' + (a.name === current ? ' active' : ''), onclick: () => openApp(a),
-  }, (a.error ? '⚠ ' : '') + titleOf(a), el('span', { className: 'kind', textContent: a.suite ? 'suite' : a.page ? 'page' : 'module' }));
+  }, el('span', { className: 'initial', ariaHidden: 'true', textContent: a.error ? '⚠' : initials(titleOf(a)) }),
+  el('span', { className: 'label', textContent: (a.error ? '⚠ ' : '') + titleOf(a) }),
+  el('span', { className: 'kind', textContent: a.suite ? 'suite' : a.page ? 'page' : 'module' }));
   open.dataset.key = 'app:' + a.name;
   if (a.name === current) open.setAttribute('aria-current', 'page');
   const move = el('button', { className: 'app-move', ariaLabel: `Move ${titleOf(a)} to…`, title: 'Move to a folder' }, dots());
@@ -1436,7 +1508,8 @@ async function openApp(app) {
   current = name;
   renderApps();
   if (typeof renderJobs === 'function') renderJobs();
-  const tools = el('span', { className: 'row' });
+  noteRecent(name);
+  const tools = el('span', { className: 'row tools' });
   if (status.admin && status.source === 'local') {
     tools.append(el('button', { textContent: 'Change this app', onclick: () => openAi({ app: name }) }));
     tools.append(el('button', { id: 'historyBtn', textContent: 'History', title: 'Every saved version of this app', onclick: () => openHistory(app) }));
@@ -1458,9 +1531,11 @@ async function openApp(app) {
   const saveBar = el('div', { id: 'saveWebBar', className: 'row savebar hidden' });
   if (!app.error) tools.append(el('button', { id: 'saveWebBtn', textContent: 'Save as web page', title: 'Save what you see as one web page that opens in any browser, offline', onclick: () => askSaveWeb(app, saveBar) }));
   tools.append(removeControl(name));
-  const head = [el('div', { className: 'row apphead' }, el('h2', { textContent: app.title || name }), tools), saveBar];
-  if (app.description) head.push(el('p', { className: 'muted', textContent: app.description }));
-  head.push(sealedLabel(app));
+  // One line: the title (its description as a tooltip), what it may reach, and the tools.
+  const h2 = el('h2', { textContent: app.title || name });
+  if (app.description) h2.title = app.description;
+  const head = [el('div', { className: 'row apphead' }, h2, sealedLabel(app), tools), saveBar];
+  if (app.description) head.push(el('p', { className: 'muted app-desc', textContent: app.description }));
   if (app.error) {
     $('runner').replaceChildren(...head, el('p', { className: 'err', textContent: app.error }));
     log(`${name}: ${app.error}`, 'e');
@@ -1470,9 +1545,7 @@ async function openApp(app) {
     // The kernel page is the host's own trusted code, so this frame is not
     // sandboxed; the kernel puts each of the suite's apps in a sandboxed frame.
     const src = `/run/${encodeURIComponent(name)}/`;
-    head.push(el('p', { className: 'row' },
-      el('span', { className: 'muted', textContent: 'Suite of cooperating apps' }),
-      el('a', { href: src, target: '_blank', rel: 'noopener', textContent: 'Open full screen' })));
+    tools.append(el('a', { href: src, target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Open in a new tab ↗', title: 'This suite on its own, in a new tab' }));
     $('runner').replaceChildren(...head, el('iframe', { src, title: `${name} suite`, className: 'appframe suiteframe' }));
     log(`opened suite ${name}`, 'a');
     return;
@@ -1482,9 +1555,7 @@ async function openApp(app) {
     // The page is the app's own code, so it runs sandboxed: the server also
     // sends a CSP sandbox header, which covers "open in a new tab" as well.
     const src = appUrl(name, app.page);
-    head.push(el('p', { className: 'row' },
-      el('span', { className: 'muted', textContent: `Page: ${app.page}` }),
-      el('a', { href: src, target: '_blank', rel: 'noopener', textContent: 'Open in a new tab' })));
+    tools.append(el('a', { href: src, target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Open in a new tab ↗', title: `This app's page (${app.page}) on its own, in a new tab` }));
     const frame = el('iframe', { title: `${name} page`, className: 'appframe' });
     frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
     permBox = el('div');
@@ -3214,46 +3285,13 @@ function leaveSetup() {
   $('runner').querySelector('h2')?.focus();
 }
 
-// ---------- the header hides while you work (a choice kept in this browser) ----------
-(() => {
-  const hdr = document.querySelector('body > header'), content = $('content'), pin = $('hdrPin');
-  let on = false, last = 0, peek = 0;
-  try { on = localStorage.getItem('headerAutoHide') === '1'; } catch { /* blocked: off */ }
-  new ResizeObserver(() => document.body.style.setProperty('--hdr-h', hdr.offsetHeight + 'px')).observe(hdr);
-  const away = (yes) => { clearTimeout(peek); document.body.classList.toggle('hdr-away', on && yes); };
-  const set = (yes) => {
-    on = yes;
-    document.body.classList.toggle('hdr-auto', yes);
-    pin.setAttribute('aria-pressed', String(yes));
-    if (!yes) away(false);
-    try { localStorage.setItem('headerAutoHide', yes ? '1' : '0'); } catch { /* not kept */ }
-  };
-  pin.addEventListener('click', () => set(!on));
-  // Working: scrolling down the app, clicking in it, or moving into the app's own frame.
-  content.addEventListener('scroll', () => {
-    const y = content.scrollTop;
-    if (y > last + 4 && y > 24) away(true); else if (y < last - 12 || y < 8) away(false);
-    last = y;
-  }, { passive: true });
-  content.addEventListener('pointerdown', () => away(true));
-  addEventListener('blur', () => setTimeout(() => {
-    const a = document.activeElement;
-    if (a && a.tagName === 'IFRAME' && content.contains(a)) away(true);
-  }));
-  // Back: the pointer at the top edge (until it leaves the header again), or Tab into it (CSS).
-  $('hdrEdge').addEventListener('pointerenter', () => away(false));
-  hdr.addEventListener('pointerleave', () => { if (on) peek = setTimeout(() => { if (!hdr.contains(document.activeElement)) away(true); }, 700); });
-  hdr.addEventListener('pointerenter', () => clearTimeout(peek));
-  set(on);
-})();
-
 // ---------- the header keeps to one line (ADR-2610111760) ----------
-// Nothing in the header wraps. When it has no room, the tagline goes first, then these go into the
-// Menu, least needed first; Make an app goes last. The Menu lists them in a reading order instead.
+// Nothing in the header wraps. When it has no room the tagline goes first, then App store, Settings
+// and Make an app move to the top of the Menu, in that order; Apps and Menu always stay.
 (() => {
-  const hdr = document.querySelector('body > header'), btn = $('hdrMenuBtn'), panel = $('hdrMenu');
-  const ORDER = ['badge', 'uiLink', 'docsLink', 'hdrPin', 'refreshBtn', 'fullBtn', 'storeLink', 'settingsBtn', 'aiBtn'].map($);
-  const READING = ['badge', 'aiBtn', 'storeLink', 'fullBtn', 'settingsBtn', 'refreshBtn', 'hdrPin', 'docsLink', 'uiLink'].map($);
+  const hdr = document.querySelector('body > header'), btn = $('hdrMenuBtn'), panel = $('hdrMenu'), more = $('menuMore');
+  const ORDER = ['storeLink', 'settingsBtn', 'aiBtn'].map($);
+  const READING = ['aiBtn', 'storeLink', 'settingsBtn'].map($);
   const homes = new Map(ORDER.map((n) => { const mark = document.createComment(n.id); n.before(mark); return [n, mark]; }));
   const over = () => hdr.scrollWidth > hdr.clientWidth + 1;
   const items = () => [...panel.querySelectorAll('a, button')].filter((n) => n.offsetParent !== null);
@@ -3261,22 +3299,16 @@ function leaveSetup() {
     const had = document.activeElement;
     for (const n of ORDER) homes.get(n).after(n);
     $('tagline').classList.remove('hdr-gone');
-    btn.hidden = true;
     if (over()) $('tagline').classList.add('hdr-gone');
-    if (over()) {
-      btn.hidden = false;
-      for (const n of ORDER) { if (!over()) break; panel.append(n); }
-      for (const n of READING) if (panel.contains(n)) panel.append(n);
-    }
-    if (!panel.children.length) { btn.hidden = true; close(false); }
+    for (const n of ORDER) { if (!over()) break; more.append(n); }
+    for (const n of READING) if (more.contains(n)) more.append(n);
     if (had && had !== document.activeElement && had.isConnected) had.focus();
   }
   let queued = 0;
   const soon = () => { cancelAnimationFrame(queued); queued = requestAnimationFrame(fit); };
   const ro = new ResizeObserver(soon);
-  for (const n of [hdr, $('badge'), $('aiBtn'), $('jobsBtn'), $('fullBtn')]) ro.observe(n);
-  // The badge's words change as the source does; a change of size alone may not show it.
-  new MutationObserver(soon).observe($('badge'), { childList: true, subtree: true, characterData: true });
+  for (const n of [hdr, $('aiBtn'), $('jobsBtn')]) ro.observe(n);
+  new MutationObserver(soon).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   document.fonts?.ready.then(soon);
 
   function open() {
@@ -3299,6 +3331,8 @@ function leaveSetup() {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
     else if (e.key === 'ArrowDown') go(i + 1);
     else if (e.key === 'ArrowUp') go(i - 1);
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(all.length - 1);
     else if (e.key === 'Tab' && ((e.shiftKey && i === 0) || (!e.shiftKey && i === all.length - 1))) close(false);
   });
   // Picking something closes the Menu; a dialog it opens takes the focus.
@@ -3306,59 +3340,53 @@ function leaveSetup() {
   fit();
 })();
 
-// ---------- the app list folds to a rail (ADR-2610111760; a choice kept in this browser) ----------
+// ---------- the open app gets the room (ADR-2610111760) ----------
+// While an app is open the list is a rail of app tiles (unless the user keeps it open: a choice kept
+// in this browser) and the app fills what the slim header leaves. Full window gives it the whole
+// window: the header waits above and comes back over the app at the top edge or on Tab. Escape, the
+// Menu's Full window or F leaves; it stays on for the next app until then. F is ignored while
+// typing, in a dialog, and inside the app's frame, which keeps its own keys.
 (() => {
-  const t = $('sideToggle');
-  const set = (folded, keep) => {
-    document.body.classList.toggle('side-folded', folded);
-    t.setAttribute('aria-expanded', String(!folded));
-    const say = folded ? 'Expand the app list' : 'Collapse the app list';
-    t.setAttribute('aria-label', say);
-    t.title = say;
-    if (keep) try { localStorage.setItem('appListFolded', folded ? '1' : '0'); } catch { /* not kept */ }
-  };
-  let folded = false;
-  try { folded = localStorage.getItem('appListFolded') === '1'; } catch { /* blocked: open */ }
-  set(folded, false);
-  t.addEventListener('click', () => set(!document.body.classList.contains('side-folded'), true));
-})();
-
-// ---------- full window (ADR-2610111760; a choice kept in this browser) ----------
-// While an app is open: the app fills the window. It stays on for the next app until left, with
-// Escape, the button, or F (never while typing, and not from inside the app's frame, which keeps
-// its own keys).
-(() => {
-  const btn = $('fullBtn'), hdr = document.querySelector('body > header'), body = document.body;
-  let wanted = false, peek = 0;
-  try { wanted = localStorage.getItem('fullWindow') === '1'; } catch { /* blocked: off */ }
+  const full = $('fullBtn'), side = $('sideToggle'), hdr = document.querySelector('body > header'), body = document.body;
+  const get = (k) => { try { return localStorage.getItem(k) === '1'; } catch { return false; } };
+  const put = (k, yes) => { try { localStorage.setItem(k, yes ? '1' : '0'); } catch { /* not kept */ } };
+  try { localStorage.removeItem('headerAutoHide'); localStorage.removeItem('appListFolded'); } catch { /* nothing to tidy */ }
+  let wanted = get('fullWindow'), pinned = get('appListPinned'), peek = 0;
   const appShown = () => !!$('runner').querySelector('.apphead');
   const apply = () => {
-    const shown = appShown();
-    body.classList.toggle('app-open', shown);
-    btn.classList.toggle('hidden', !shown);
-    body.classList.toggle('full-window', shown && wanted);
-    if (!(shown && wanted)) body.classList.remove('full-peek');
-    btn.setAttribute('aria-pressed', String(shown && wanted));
-    btn.textContent = shown && wanted ? 'Leave full window' : 'Full window';
+    const shown = appShown(), isFull = shown && wanted, folded = shown && !pinned;
+    body.classList.toggle('viewing-app', shown);
+    body.classList.toggle('full-window', isFull);
+    body.classList.toggle('side-folded', folded);
+    if (!isFull) body.classList.remove('full-peek');
+    full.classList.toggle('hidden', !shown);
+    full.setAttribute('aria-pressed', String(isFull));
+    full.querySelector('span').textContent = isFull ? 'Leave full window' : 'Full window';
+    side.classList.toggle('hidden', !shown);
+    side.setAttribute('aria-expanded', String(!folded));
+    const say = folded ? 'Keep the app list open' : 'Fold the app list to a rail';
+    side.setAttribute('aria-label', say);
+    side.title = say;
   };
-  const set = (yes) => {
-    wanted = yes;
-    try { localStorage.setItem('fullWindow', yes ? '1' : '0'); } catch { /* not kept */ }
-    apply();
-  };
-  // A click lets go of the button, or the header, holding the focus, would stay; a key press keeps it.
-  btn.addEventListener('click', (e) => { set(!wanted); if (e.detail) btn.blur(); });
+  const setFull = (yes) => { wanted = yes; put('fullWindow', yes); apply(); };
+  // A click lets go of the item, or the header, holding the focus, would stay; a key press keeps it.
+  full.addEventListener('click', (e) => { setFull(!wanted); if (e.detail) full.blur(); });
+  side.addEventListener('click', () => { pinned = !pinned; put('appListPinned', pinned); apply(); });
   new MutationObserver(apply).observe($('runner'), { childList: true });
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-    const t = e.target, typing = t.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], dialog');
-    if (e.key === 'Escape' && body.classList.contains('full-window') && !document.querySelector('dialog[open]')) { set(false); return; }
-    if ((e.key === 'f' || e.key === 'F') && !typing && appShown()) { e.preventDefault(); set(!wanted); }
+    const typing = e.target.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], dialog');
+    if (e.key === 'Escape' && body.classList.contains('full-window') && !document.querySelector('dialog[open]')) { setFull(false); return; }
+    if ((e.key === 'f' || e.key === 'F') && !typing && appShown()) { e.preventDefault(); setFull(!wanted); }
   });
   // Back for a look: the pointer at the top edge, until it leaves the header again.
   $('hdrEdge').addEventListener('pointerenter', () => { if (body.classList.contains('full-window')) { clearTimeout(peek); peek = 0; body.classList.add('full-peek'); } });
+  const later = () => { clearTimeout(peek); peek = setTimeout(() => { peek = 0; body.classList.remove('full-peek'); }, 600); };
   hdr.addEventListener('pointerenter', () => { clearTimeout(peek); peek = 0; });
-  hdr.addEventListener('pointerleave', () => { clearTimeout(peek); peek = setTimeout(() => { peek = 0; body.classList.remove('full-peek'); }, 600); });
+  hdr.addEventListener('pointerleave', later);
+  // A quick move down from the edge can go straight into the app's frame, whose pointer events the
+  // page never sees: leaving the edge starts the clock too, and the header stops it if entered.
+  $('hdrEdge').addEventListener('pointerleave', () => { if (body.classList.contains('full-peek')) later(); });
   // The header slides in under a pointer that has not moved, so it may never hear it enter or leave:
   // a pointer well below it lets it go too.
   document.addEventListener('pointermove', (e) => {
@@ -3366,7 +3394,91 @@ function leaveSetup() {
     if (e.clientY > hdr.offsetHeight + 24) peek = setTimeout(() => { peek = 0; body.classList.remove('full-peek'); }, 600);
   }, { passive: true });
   hdr.addEventListener('pointermove', () => { clearTimeout(peek); peek = 0; });
+  // In the rail, ↑ and ↓ move between the apps, Home and End to the ends.
+  $('apps').addEventListener('keydown', (e) => {
+    if (!body.classList.contains('side-folded') || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    const tiles = [...$('apps').querySelectorAll('button.app-open')].filter((b) => b.offsetParent !== null);
+    const i = tiles.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    const j = e.key === 'Home' ? 0 : e.key === 'End' ? tiles.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + tiles.length) % tiles.length;
+    tiles[j].focus();
+  });
   apply();
+})();
+
+// ---------- the quick switcher: Ctrl or ⌘ K, or Apps (ADR-2610111760) ----------
+// Type to find an app by its title or name; ↑ ↓ choose, Enter opens it, Escape closes. The apps
+// opened last come first. Opening one keeps the view as it was, Full window included.
+const RECENT_MAX = 8;
+function recentApps() { try { return JSON.parse(localStorage.getItem('recentApps') || '[]').filter((n) => typeof n === 'string'); } catch { return []; } }
+function noteRecent(name) {
+  const list = [name, ...recentApps().filter((n) => n !== name)].slice(0, RECENT_MAX);
+  try { localStorage.setItem('recentApps', JSON.stringify(list)); } catch { /* not kept */ }
+}
+function initials(t) {
+  const words = String(t).replace(/[^\p{L}\p{N} ]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  return ((words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)) || '?').toUpperCase();
+}
+(() => {
+  const dlg = $('switcher'), input = $('switcherInput'), list = $('switcherList'), none = $('switcherEmpty');
+  let shown = [], at = 0, back = null;
+  function render() {
+    const q = input.value.trim().toLowerCase();
+    const recent = recentApps(), rank = (a) => { const i = recent.indexOf(a.name); return i < 0 ? RECENT_MAX : i; };
+    shown = apps.filter((a) => !q || `${titleOf(a)} ${a.name}`.toLowerCase().includes(q))
+      .sort((x, y) => (q && (titleOf(y).toLowerCase().startsWith(q) - titleOf(x).toLowerCase().startsWith(q))) || rank(x) - rank(y) || byTitle(x, y));
+    at = Math.min(at, Math.max(0, shown.length - 1));
+    list.replaceChildren(...shown.map((a, i) => {
+      const li = el('li', { id: 'sw-' + i, onclick: () => pick(i) },
+        el('span', { className: 'initial', ariaHidden: 'true', textContent: initials(titleOf(a)) }),
+        el('span', { textContent: titleOf(a) }),
+        el('span', { className: 'kind', textContent: a.suite ? 'suite' : a.page ? 'page' : 'module' }),
+        recent.includes(a.name) ? el('span', { className: 'recent', textContent: a.name === current ? 'open now' : 'recent' }) : '');
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', String(i === at));
+      return li;
+    }));
+    none.classList.toggle('hidden', shown.length > 0);
+    if (shown.length) { input.setAttribute('aria-activedescendant', 'sw-' + at); list.children[at].scrollIntoView({ block: 'nearest' }); }
+    else input.removeAttribute('aria-activedescendant');
+  }
+  function pick(i) {
+    const a = shown[i];
+    if (!a) return;
+    back = null;
+    dlg.close();
+    openApp(a);
+    // The dialog hands the focus back to Apps; in the header it would keep the header out in Full
+    // window, so it lets go: the app has the window.
+    requestAnimationFrame(() => { if (document.querySelector('body > header').contains(document.activeElement)) document.activeElement.blur(); });
+  }
+  window.openSwitcher = () => {
+    if (dlg.open) return;
+    back = document.activeElement;
+    input.value = ''; at = 0;
+    render();
+    dlg.showModal();
+    input.focus();
+  };
+  input.addEventListener('input', () => { at = 0; render(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (shown.length) { at = (at + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length; render(); }
+    } else if (e.key === 'Enter') { e.preventDefault(); pick(at); }
+  });
+  dlg.addEventListener('close', () => { if (back?.isConnected) back.focus(); back = null; });
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });   // a click outside the box
+  $('appsBtn').addEventListener('click', () => window.openSwitcher());
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+      const t = e.target;
+      if (t !== input && t.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+      e.preventDefault();
+      if (dlg.open) dlg.close(); else window.openSwitcher();
+    }
+  });
 })();
 
 // ---------- start ----------
