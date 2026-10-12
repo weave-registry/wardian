@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.19] - 2026-10-11
+
 ### Added
 
 - An app switcher that is always at hand: while an app is open the app list is a rail of app tiles
@@ -42,6 +44,16 @@ Wardian 1.0") is done or written down there as left out.
 
 - Header buttons no longer break onto two lines ("App store", "Auto-hide").
 - The first-run page no longer scrolls sideways on a phone when the apps folder's path is long.
+
+### Live checks
+
+2026-10-11, Linux on x86_64, no service credentials on the machine that ran them:
+
+- PASS export-100mb: exported 95 MB with data in 1 s, imported it into an empty Wardian intact; over the limit is refused
+- SKIP bedrock-api-key: AWS_BEARER_TOKEN_BEDROCK is not set
+- SKIP bedrock-sigv4: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are not both set
+- SKIP splunk: SPLUNK_URL is not set
+- SKIP drive: GDRIVE_SA_KEY (the path of a service account key) is not set
 
 ## [0.4.18] - 2026-10-11
 
