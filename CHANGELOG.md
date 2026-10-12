@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.20] - 2026-10-11
+
 ### Added
 
 - Field widths that say what goes in them: `.size-xs` (7 characters), `.size-sm`, `.size-md`,
@@ -26,6 +28,30 @@ Wardian 1.0") is done or written down there as left out.
   Its notes now say which control enforces each data type, how wide each field is, when and where to
   validate and how errors are announced, how fields align, how every state looks, and tab order. The
   skill, "Design an app" and the templates say the same.
+- Every example app is rebuilt to that method: a README that opens with who it is for and a field
+  spec, no app name repeated inside it, typed and sized fields with their units beside them, one
+  parser per input shared by the form and imports, problems shown under the field when you leave it
+  and on submit, results never from invalid input, disabled controls that say why, and labelled
+  sample data. Splunk table offers a labelled sample table when Splunk is not set up.
+
+### Fixed
+
+- A sized field stops at its container: a sized select in a grid field outgrew it.
+- The documented confirm call is `WardianUI.confirm(text, {title, ok, destructive})`.
+- Focus log no longer snaps a wrong daily goal back silently, and Focus timer keeps the last good
+  length instead of clamping one.
+- Unit converter returns "not a number" for impossible inputs instead of a made-up 0.
+- Text tools keeps your text when it refuses a file.
+
+### Live checks
+
+2026-10-11, Linux on x86_64, no service credentials on the machine that ran them:
+
+- PASS export-100mb: exported 95 MB with data in 2 s, imported it into an empty Wardian intact; over the limit is refused
+- SKIP bedrock-api-key: AWS_BEARER_TOKEN_BEDROCK is not set
+- SKIP bedrock-sigv4: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are not both set
+- SKIP splunk: SPLUNK_URL is not set
+- SKIP drive: GDRIVE_SA_KEY (the path of a service account key) is not set
 
 ## [0.4.19] - 2026-10-11
 
