@@ -145,6 +145,22 @@ still needs an `app.wasm` at its top (spec §3.2); keep the template's empty one
   drawing your own: `bar.start(label)`, `bar.update({value, max})`, `bar.done(text)`.
 - Support light and dark: the tokens in `ui/theme.css` switch with the viewer's system.
 
+### The method: Blueprint, Design, Develop, Validate
+Work like a professional product team, in these four stages, in order, for every new app and every
+change. `references/components.md` (Design an app) has the full rules and the checklist.
+1. **Blueprint.** Write `README.md` first, for the person who will use the app: who it is for and
+   the job; *What you put in*, the **field spec**, one line per input (label, data type, unit,
+   allowed range or format, default, required); *What it shows*; *How it behaves* (first screen with
+   sample data, empty state, errors, slow work, what is kept). For a change, update it first.
+2. **Design.** A *Layout* section in the README: panels in reading order; each input's control,
+   width class, validation rule and message; which fields share a row; tab order; each view's one
+   main action; every panel's sample, empty, loading and error states.
+3. **Develop.** `wardian add` the components; then a data module with no DOM, one parse function per
+   input (text in, typed value or a clear error out) and the calculations; then markup in reading
+   order, styles, wiring. Realistic, labelled sample data; no TODOs or dead controls.
+4. **Validate.** Read back every file against the checklist in `references/components.md`, fix
+   every miss, then `wardian check`, then prove it works (section 4). Report what you validated.
+
 ### Design: every app looks like Wardian
 Full markup in `references/components.md` (Design an app); the short form:
 - **Glass.** Add `type` and `surface`. A page app puts `class="w-wallpaper"` on `<body>` and makes
@@ -167,11 +183,25 @@ Full markup in `references/components.md` (Design an app); the short form:
 - **States.** The first screen shows the point of the app: realistic sample data, marked as such,
   with a way to clear it. An empty state says what to do next beside the button that does it. Every
   action answers: an instant result, a toast, or a message next to the field it is about.
+- **Forms.** The control enforces the type: `type="number"` with `inputmode`, `step`, `min`, `max`
+  for numbers (the unit in a `w-affix` span, never in the value), `type="date|month|time|email|url|tel"`,
+  `maxlength` on text, a radio group for 2–5 options, a `select` for more, a `switch` for on/off.
+  Every field has a visible `w-label` and a width from the library that fits its content
+  (`.size-xs` 7ch … `.size-lg` 32ch, `.size-full`); numbers get `.num`. Validate on change and on
+  submit, not per keystroke; an error sets `aria-invalid="true"`, sits in the field's `w-hint`
+  (`aria-describedby`) and says what is allowed; focus goes to the first invalid field; nothing typed
+  is lost; results come only from valid values.
+- **Alignment, states, keyboard.** Labels above fields on one left edge; related fields in a
+  `fieldset`; spacing `--w-space-1` label to field, `-4` field to field, `-6` group to group; a button
+  beside a field shares its height and baseline. Every state is designed: focus (the library's
+  ring), hover, pressed (`aria-pressed`), disabled only with its reason shown, busy ("Calculating…"),
+  empty, error, success. Tab order equals reading order equals markup order; no positive
+  `tabindex`; Escape closes; focus returns after a dialog.
 - **Words and access.** Sentence case, verbs on buttons ("Add habit"), units everywhere, numbers and
   dates through `toLocaleString`. A label on every input, never colour alone, everything reachable
   by keyboard; keep the library's focus rings. Let the library move; add no motion of your own.
-- Write a `README.md` for the package: what it is, which kind and why, a table of its files or
-  parts (with each part's contract), how data moves, and its limits.
+- The `README.md` from the Blueprint stays true: the field spec, what it shows, how it behaves, the
+  layout, and for a suite a table of its parts with each part's contract and how data moves.
 
 ### Turning an existing project into a package
 Keep its folder tree. For a module plus page, add `app.json` with `"page"`. For a set of

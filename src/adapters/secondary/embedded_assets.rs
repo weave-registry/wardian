@@ -198,6 +198,7 @@ const SUITE: TemplateFiles = &[
 
 /// The example suite Claude reads before it builds one.
 const EXAMPLES: &[(&str, &str)] = &[
+    ("README.md", include_str!("../../../templates/suite/README.md")),
     ("suite.json", include_str!("../../../templates/suite/suite.json")),
     ("style.css", include_str!("../../../templates/suite/style.css")),
     ("apps/input/app.js", include_str!("../../../templates/suite/apps/input/app.js")),

@@ -1,5 +1,31 @@
 # {{name}}
 
+Counts the words in a piece of text and shows it in capitals, as you type. For anyone checking a
+text's length before they send it.
+
+## What you put in
+
+- Your text: long text, up to 10,000 characters, default "hello from a Wardian suite", required.
+  Kept for next time.
+
+## What it shows
+
+- The number of words (a whole number) and the text in capitals, worked out by the WebAssembly
+  module.
+
+## How it behaves
+
+- The first screen shows the sample text and its result; the result follows as you type.
+- Empty text gives 0 words. The text is kept between visits.
+
+## Layout
+
+- Aside "Your text": the text area, full width, with a hint giving the limit and that it is kept.
+- Main "Result": the word count as a figure, and the text in capitals. Tab order: the text, then the
+  result.
+
+## How it is built
+
 A Wardian **suite**: several sealed apps on one screen that talk only through the kernel.
 
 | App | Slot | Contract |

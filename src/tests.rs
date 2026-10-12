@@ -3711,10 +3711,22 @@ mod workshop {
         for must in ["w-wallpaper", "\"surface\": \"glass\"", "bento", "sample data", "360px", "Never repeat the app's own name"] {
             assert!(intro.contains(must), "the prompt does not teach {must}");
         }
+        // The method (ADR-2610111770): four stages, in order, with the field spec and the checklist.
+        let at = |w: &str| intro.find(w).unwrap_or_else(|| panic!("the prompt does not name {w}"));
+        assert!(at("1. Blueprint") < at("2. Design") && at("2. Design") < at("3. Develop") && at("3. Develop") < at("4. Validate"), "the stages are in order");
+        for must in ["field spec", "README.md first", "The Validate checklist", "one parse function per input"] {
+            assert!(intro.contains(must), "the prompt does not teach {must}");
+        }
+        let guide = crate::domain::components::GUIDE;
+        let field = guide.split("\n- field:").nth(1).and_then(|r| r.split("\n- card:").next()).expect("the field note");
+        for must in ["inputmode", "step", "min", "max", "aria-invalid", "aria-describedby", ".size-xs", ".size-sm", ".size-md", ".size-lg", ".size-full", "w-affix", "tabindex"] {
+            assert!(field.contains(must), "the field note does not teach {must}");
+        }
         assert!(!intro.contains("data-app-title"), "the prompt must not ask for a title header: Wardian shows the name");
         let reference = workshop::system(&Embedded)[1]["text"].as_str().unwrap().to_string();
         let example = reference.split("<example-suite>").nth(1).expect("the example suite");
         assert!(!example.contains("w-display") && !example.contains("\"header\""), "the example suite must not open with its own name");
+        assert!(example.contains("## What you put in") && example.contains("## Layout"), "the example suite shows a blueprint README");
     }
 
     #[test]

@@ -12,6 +12,21 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- Field widths that say what goes in them: `.size-xs` (7 characters), `.size-sm`, `.size-md`,
+  `.size-lg` and `.size-full`, all full width on a narrow screen; `.num` right-aligns a number, and
+  `w-affix` puts a unit beside a field.
+
+### Changed
+
+- Make an app works to a method, for every new app and every change: Blueprint (a README first,
+  with a field spec for every input), Design, Develop (a data module with one parser per input
+  before the markup), and Validate (a ten-item checklist read back over every file before `check`).
+  Its notes now say which control enforces each data type, how wide each field is, when and where to
+  validate and how errors are announced, how fields align, how every state looks, and tab order. The
+  skill, "Design an app" and the templates say the same.
+
 ## [0.4.19] - 2026-10-11
 
 ### Added

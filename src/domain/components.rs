@@ -18,7 +18,7 @@ pub struct Added {
 /// (name, what it is, its files).
 pub const COMPONENTS: &[(&str, &str, &[&str])] = &[
     ("button", "buttons in five variants and three sizes", &["button.css"]),
-    ("field", "text inputs, selects, text areas, labels and hints", &["field.css"]),
+    ("field", "text inputs, selects, text areas, labels and hints, with widths that fit the content", &["field.css"]),
     ("card", "a bordered box with a title, a description, content and a footer", &["card.css"]),
     ("badge", "a small label for a state or a count", &["badge.css"]),
     ("table", "a data table with a sticky header and right-aligned numbers", &["table.css"]),
@@ -88,14 +88,18 @@ pub fn page_tags(rels: &[String]) -> Vec<String> {
 
 /// How to use each component, for Claude when it builds an app (Make an app).
 pub const GUIDE: &str = r#"Classes and helpers of the Wardian component library. Colours come from theme.css tokens: var(--w-bg), --w-fg, --w-muted, --w-muted-bg, --w-border, --w-primary, --w-primary-fg, --w-destructive, --w-success, --w-radius, --w-space-1..6, --w-font, --w-font-mono. Use them for your own styles too; never hard-code a palette.
-- button: <button class="w-button">Save</button>; data-variant="secondary|outline|ghost|destructive"; data-size="sm|lg|icon".
-- field: <div class="w-field"><label class="w-label" for="x">Name</label><input class="w-input" id="x"><p class="w-hint">Help</p></div>; .w-input also fits <select> and <textarea>; aria-invalid="true" shows an error.
+- button: <button class="w-button">Save</button>; data-variant="secondary|outline|ghost|destructive"; data-size="sm|lg|icon". One solid main action per view, at the end of what it acts on; a toggle sets aria-pressed. Disable a button only with its reason shown beside it ("Add an amount to calculate"); while it works, disable it and say so ("Calculating…"). Beside a field it has the field's height and baseline.
+- field: <div class="w-field"><label class="w-label" for="rate">Interest rate</label><div class="w-affix"><input class="w-input size-xs num" id="rate" type="number" inputmode="decimal" step="0.01" min="0" max="30" required aria-describedby="rate-hint"><span>% a year</span></div><p class="w-hint" id="rate-hint">From 0 to 30</p></div>. .w-input also fits <select> and <textarea>. A visible w-label on every field (never the placeholder as label).
+  Type, enforced by the control: whole number type="number" inputmode="numeric" step="1" min max; decimal or money type="number" inputmode="decimal" step (0.01 for money) min max, the unit in a w-affix span, never in the value; percent the same with min="0" max="100"; dates type="date|month|time" with min/max; short text type="text" maxlength (autocomplete where it applies); type="email|url|tel"; long text <textarea rows="4".."8"> with maxlength; 2–5 options a radio group; 6 or more a <select> (a <datalist> for free entry); on/off a switch; a file input type="file" accept.
+  Size, from the library: .size-xs (7ch: ages, percents), .size-sm (11ch: amounts, dates, codes), .size-md (20ch: names), .size-lg (32ch: email, URL, titles), .size-full (long text, search); a narrow screen widens them all. .num right-aligns a number. Don't stretch a short field across the panel.
+  Validate: the control prevents what it can; check a field on change (when the user leaves it), not on every keystroke; clear its error on input once valid; on submit check all, show every error and focus the first invalid field. Error: aria-invalid="true" on the input, the message in its w-hint (aria-describedby), saying what is allowed ("Enter a rate from 0 to 30%"). A rule between fields goes on the second. Never clear what was typed or clamp silently; compute results only from valid values.
+  Layout: labels above fields on one left edge; related fields in a <fieldset> with a <legend>; short related fields share a row, long ones get their own; label to field --w-space-1, field to field --w-space-4, group to group --w-space-6. Tab order is reading order is markup order: no positive tabindex.
 - card: <section class="w-card"><div class="w-card-header"><h2 class="w-card-title">Title</h2><p class="w-card-description">…</p></div><div class="w-card-content">…</div><div class="w-card-footer">…</div></section>
 - badge: <span class="w-badge">New</span>; data-variant="secondary|outline|destructive|success".
 - table: <table class="w-table"> with <thead>/<tbody>; class "num" on number cells right-aligns them.
 - switch: <input type="checkbox" class="w-switch" role="switch">
-- tabs: <div class="w-tabs"><div role="tablist"><button role="tab" aria-controls="p1">One</button>…</div><div role="tabpanel" id="p1">…</div>…</div> (tabs.js wires keys and ARIA).
-- dialog: <dialog class="w-dialog">…</dialog> with showModal(); await WardianUI.confirm({title, text, confirm: 'Delete', destructive: true}).
+- tabs: <div class="w-tabs"><div role="tablist"><button role="tab" aria-controls="p1">One</button>…</div><div role="tabpanel" id="p1">…</div>…</div> (tabs.js wires keys and ARIA: arrow keys move between tabs, aria-selected marks the open one).
+- dialog: <dialog class="w-dialog">…</dialog> with showModal(); await WardianUI.confirm({title, text, confirm: 'Delete', destructive: true}). Escape closes it; when it closes, focus goes back to what opened it.
 - toast: WardianUI.toast('Saved', {variant: 'success'|'destructive'}).
 - tooltip: data-tooltip="Hint" on any element.
 - progress: <wardian-progress label="Loading"></wardian-progress>; .start(label), .update({value, max}), .done(text), .fail(text).

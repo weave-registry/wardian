@@ -1,5 +1,28 @@
 # {{name}}
 
+Turns a piece of text into upper case and counts its words, as you type. For anyone who wants a
+quick look at a text's length.
+
+## What you put in
+
+- Your text: long text, up to 10,000 characters, default "hello from Wardian", required.
+
+## What it shows
+
+- The text in upper case, and its number of words (a whole number).
+
+## How it behaves
+
+- The first screen shows the sample text and its result. Results follow as you type.
+- Empty text gives an empty result and 0 words. Nothing is kept between visits.
+
+## Layout
+
+- Side panel "Your text": the text area, full width, with a hint giving the limit.
+- Main panel "Result": the result, read out as it changes. Tab order: the text, then the result.
+
+## How it is built
+
 A Wardian **page app**: a WebAssembly module plus a page that drives it.
 Use a page whenever the module works on text, arrays or JSON, or needs a real interface.
 

@@ -73,6 +73,31 @@ const lowestContrast = ({ paneSel, textSel }) => {
   const narrow = await tiles();
   ok(narrow.every(t => Math.abs(t.w - bentoW) <= 1), `in a narrow box every tile takes the whole width (${narrow.map(t => t.w).join(', ')} of ${bentoW})`);
 
+  // components.md, Forms: field widths fit their content, grow in order, and fill the row on a phone.
+  const sizes = () => p.evaluate(() => {
+    let box = document.getElementById('sizes');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'sizes'; box.style.width = '600px';
+      box.innerHTML = ['xs', 'sm', 'md', 'lg', 'full'].map(z => `<input class="w-input size-${z}${z === 'xs' ? ' num' : ''}" value="12">`).join('')
+        + '<div class="w-affix"><input class="w-input size-xs" id="affixed"><span>%</span></div>';
+      document.body.append(box);
+    }
+    const ws = [...box.querySelectorAll(':scope > .w-input')].map(i => Math.round(i.getBoundingClientRect().width));
+    const a = document.getElementById('affixed').getBoundingClientRect(), u = document.querySelector('#sizes .w-affix span').getBoundingClientRect();
+    return { ws, box: Math.round(box.getBoundingClientRect().width), align: getComputedStyle(box.querySelector('.num')).textAlign,
+      unitBeside: u.left >= a.right && Math.abs((u.top + u.bottom) / 2 - (a.top + a.bottom) / 2) < 4 };
+  });
+  const fit = await sizes();
+  ok(fit.ws[0] < fit.ws[1] && fit.ws[1] < fit.ws[2] && fit.ws[2] < fit.ws[3] && fit.ws[3] < fit.ws[4] && fit.ws[4] === fit.box,
+    `.size-xs … .size-full grow in order and size-full fills the row (${fit.ws.join(', ')} of ${fit.box})`);
+  ok(fit.align === 'end' || fit.align === 'right', `.num right-aligns a number (${fit.align})`);
+  ok(fit.unitBeside, 'w-affix puts the unit beside the field, on its line');
+  await p.setViewportSize({ width: 380, height: 800 });
+  await p.evaluate(() => { document.getElementById('sizes').style.width = '340px'; });
+  const phone = await sizes();
+  ok(phone.ws.every(w => w === phone.box), `on a phone every sized field takes the whole width (${phone.ws.join(', ')} of ${phone.box})`);
+  await p.setViewportSize({ width: 1200, height: 900 });
+
   // components.md, receipt: the same message looks the same in both apps; the id gives the colour and the short id.
   const r = await p.evaluate(() => {
     const id = '3f9a2c1e-7b4d-4c2a-9e51-0d6f8a3b2c47', at = Date.UTC(2026, 9, 9, 14, 41);
