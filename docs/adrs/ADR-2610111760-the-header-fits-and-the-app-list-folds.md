@@ -30,26 +30,32 @@ above a version line. Auto-hide was an opt-in button that, unpressed, did nothin
    opens it with the focus on its first item, ↑ ↓ Home End move, Escape, Tab out or a click outside
    closes it, and choosing an item closes it.
 4. **An open app gets the room without the user doing anything:** the app list folds to a rail of
-   app tiles, the app's head is one line (title, with its description as a tooltip; the sealed
-   label; the tools, with "Open in a new tab ↗"), and its frame fills what the slim header and the
-   rail leave. The version line shows on the home screen only; the Output card waits below, a scroll
-   away. On a phone the list is hidden while an app is open, and the head takes two lines.
-5. **The rail is a switcher:** every app as a tile with its initials (its name for screen readers
+   app tiles, the app's head is one line, and its frame fills what the slim header and the rail
+   leave. The version line shows on the home screen only; the Output card waits below, a scroll
+   away. On a phone the list is hidden while an app is open.
+5. **The app's head is one line at every width:** the title (its description as a tooltip), the
+   sealed label, Arrange and Change this app, then a **⋯** button ("More actions for <app>") with
+   History, Download, Save as web page, Open in a new tab ↗ and, set apart in red, Remove app…, as
+   rows with icons. ⋯ works as the header's Menu does (the same `menuButton()`). Remove app… asks in
+   a bar under the head, Remove or Cancel, and Cancel gives the focus back to ⋯. When the line has no
+   room (a phone), Change this app and then Arrange move to the top of ⋯; nothing in the head
+   scrolls or wraps.
+6. **The rail is a switcher:** every app as a tile with its initials (its name for screen readers
    and as a tooltip), the open one marked (`aria-current`), folders as separators, every app shown
    whatever folder it is in. One click switches; ↑ ↓ Home End move between tiles. A toggle keeps
    the full list open instead, a choice kept in this browser (`appListPinned`).
-6. **The quick switcher:** Ctrl+K or ⌘K, or Apps, opens a small dialog: type to filter by title or
+7. **The quick switcher:** Ctrl+K or ⌘K, or Apps, opens a small dialog: type to filter by title or
    name, ↑ ↓ choose, Enter opens, Escape closes. The apps opened last come first (`recentApps`, the
    last eight). The shortcut is ignored while typing in a field; an app's frame keeps its own keys.
-7. **Full window** is the one way to hide everything: the Menu's Full window or F gives the open app
+8. **Full window** is the one way to hide everything: the Menu's Full window or F gives the open app
    the whole window, edge to edge; the header waits above and slides back over the app (not
    pushing it) when the pointer reaches the top edge or the keyboard moves into it, and leaves again
    when the pointer goes, even straight into the app's frame. Switching apps there, from the rail's
    absence by Apps or Ctrl+K, keeps Full window. Escape, F or the Menu leaves. The choice is kept in
    this browser (`fullWindow`).
-8. **Auto-hide is gone:** its button and its stored choice (`headerAutoHide`) are removed; the slim
+9. **Auto-hide is gone:** its button and its stored choice (`headerAutoHide`) are removed; the slim
    header and Full window do its job.
-9. The first-run page's cards no longer grow wider than a phone for a long folder name.
+10. The first-run page's cards no longer grow wider than a phone for a long folder name.
 
 ## Consequences
 
@@ -67,4 +73,6 @@ above a version line. Auto-hide was an opt-in button that, unpressed, did nothin
 `static/index.html`: `.store-link` and `storeLink()`; the header, `#appsBtn`, `#hdrMenu` with
 `#menuMore` and the fitting script; the view controller (`viewing-app`, `side-folded`,
 `full-window`, `full-peek`); `appRow`'s initials and labels and the rail's keys; `#switcher`,
-`recentApps()`, `initials()`; the one-line `.apphead`; `tests/layout-e2e.js`.
+`recentApps()`, `initials()`; the one-line `.apphead` with `#moreBtn`, `#moreMenu` and its fitting;
+`menuButton()` and `menuItem()`; `tests/layout-e2e.js`, and the suites that open ⋯ first (a11y,
+background, export, snapshot, splunk).

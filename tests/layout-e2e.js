@@ -230,6 +230,55 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   ok(await page.locator('#switcher').isVisible(), 'the Apps button opens it too');
   await page.keyboard.press('Escape'); await sleep(150);
 
+  console.log("== the app's head is one line; the rest is in ⋯ (ADR-2610111760)");
+  for (const [w, h] of [[1440, 900], [1024, 800], [768, 900], [390, 844], [360, 740]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+    const v = await ctx.newPage();
+    v.on('pageerror', e => errors.push(`head ${w}px: ${e.message}`));
+    await v.goto(B + '/'); await sleep(700);
+    await v.locator('#apps li button', { hasText: /loan/i }).first().click(); await sleep(1500);
+    const r = await v.evaluate(() => {
+      const row = document.querySelector('.apphead');
+      const ctl = [...row.querySelectorAll('button, a, h2')].filter(n => n.offsetParent && !n.closest('#moreMenu'));
+      return { h: Math.round(row.getBoundingClientRect().height), over: row.scrollWidth - row.clientWidth,
+        tall: ctl.filter(n => n.getBoundingClientRect().height > 44).map(n => n.id || n.textContent.trim()),
+        shown: ctl.map(n => n.id || n.tagName), wide: document.documentElement.scrollWidth - innerWidth };
+    });
+    ok(r.h <= 48 && r.over <= 1 && r.tall.length === 0 && r.wide <= 0 && r.shown.includes('moreBtn'), `${w}px: the head is one line, with ⋯, and does not scroll ` + JSON.stringify(r));
+    if (w >= 1024) ok(r.shown.includes('arrangeTool') && r.shown.includes('changeBtn'), `${w}px: Arrange and Change this app stay in view`);
+    await v.focus('#moreBtn'); await v.keyboard.press('Enter'); await sleep(200);
+    const m = await v.evaluate(() => ({ expanded: document.querySelector('#moreBtn').getAttribute('aria-expanded'), focus: document.activeElement.closest('#moreMenu') !== null,
+      items: [...document.querySelectorAll('#moreMenu a, #moreMenu button')].filter(n => n.offsetParent).map(n => n.id),
+      tall: [...document.querySelectorAll('#moreMenu a, #moreMenu button')].filter(n => n.offsetParent && n.getBoundingClientRect().height > 40).length }));
+    ok(m.expanded === 'true' && m.focus && m.tall === 0 && ['historyBtn', 'downloadBtn', 'saveWebBtn', 'openTabLink', 'removeBtn'].every(id => m.items.includes(id))
+      && (m.items.includes('changeBtn') || r.shown.includes('changeBtn')), `${w}px: Enter opens ⋯ with the focus inside, every action one line; Change this app in the head or here: ` + m.items.join());
+    await v.keyboard.press('ArrowDown');
+    await v.keyboard.press('Escape'); await sleep(150);
+    ok(await v.getAttribute('#moreBtn', 'aria-expanded') === 'false' && await v.evaluate(() => document.activeElement.id) === 'moreBtn', `${w}px: Escape closes ⋯ and the focus is back on it`);
+    if (w === 1440) {
+      ok(await v.getAttribute('#moreBtn', 'aria-label') === 'More actions for Loan planner' && await v.getAttribute('#moreBtn', 'aria-haspopup') === 'true', '⋯ is named for the app and says it opens a menu');
+      const link = await v.$eval('#openTabLink', a => ({ href: a.getAttribute('href'), target: a.target, rel: a.rel }));
+      ok(link.target === '_blank' && /noopener/.test(link.rel) && /\/run\/loan-planner\//.test(link.href), 'Open in a new tab opens the app on its own: ' + JSON.stringify(link));
+      await v.click('#moreBtn'); await v.click('#removeBtn'); await sleep(200);
+      ok(await v.locator('#moreMenu').isHidden() && /Remove loan-planner\?/.test(await v.locator('.removebar').textContent())
+        && await v.evaluate(() => document.activeElement.getAttribute('aria-label')) === 'Remove loan-planner', 'Remove app… closes ⋯ and asks first, the focus on Remove');
+      await v.locator('.removebar button', { hasText: 'Cancel' }).click(); await sleep(200);
+      ok(await v.locator('.removebar button').count() === 0 && await v.evaluate(() => document.activeElement.id) === 'moreBtn'
+        && /loan/i.test(await v.locator('#runner h2').textContent()), 'Cancel keeps the app and gives the focus back to ⋯');
+      await v.click('#moreBtn'); await v.click('#historyBtn');
+      await v.locator('#historyList').waitFor({ timeout: 5000 });
+      ok(await v.locator('#historyList').isVisible(), 'History, from ⋯, opens the app\'s history');
+      await v.locator('#apps li button', { hasText: /loan/i }).first().click(); await sleep(1200);
+      await v.click('#moreBtn'); await v.click('#downloadBtn');
+      await v.locator('#exportList strong').first().waitFor({ timeout: 5000 });
+      ok(await v.locator('#exportList strong').first().isVisible(), 'Download, from ⋯, opens the download of the app');
+      await v.locator('#apps li button', { hasText: /loan/i }).first().click(); await sleep(1200);
+      await v.click('#moreBtn'); await v.click('#saveWebBtn'); await sleep(300);
+      ok(await v.locator('#saveWebBar').isVisible(), 'Save as web page, from ⋯, offers to save it');
+    }
+    await ctx.close();
+  }
+
   console.log('== Full window: the open app fills the window (ADR-2610111760)');
   for (const [w, h] of [[1440, 900], [390, 844]]) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h } });

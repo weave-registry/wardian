@@ -266,8 +266,9 @@ async function answer(page, re, yes, what) {
   const host = await context.newPage();
   await host.goto(B + '/');
   await host.locator('#apps li button', { hasText: /Splunk table/i }).first().click();
-  await host.locator('#saveWebBtn').waitFor({ timeout: 10000 });
+  await host.locator('#saveWebBtn').waitFor({ state: 'attached', timeout: 10000 });
   await sleep(4000);                                  // every part starts and shows the table
+  await host.click('#moreBtn');
   await host.click('#saveWebBtn');
   const [dl] = await Promise.all([host.waitForEvent('download', { timeout: 60000 }), host.click('#saveWebGo')]);
   const webFile = require('path').join(require('os').tmpdir(), 'splunk-web-' + process.pid + '.html');

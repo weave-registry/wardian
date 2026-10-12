@@ -262,8 +262,10 @@ const api = async (p, body) => {
   await page.reload(); await sleep(800);
   await page.locator('#apps li button', { hasText: /loan/i }).first().focus();
   await page.keyboard.press('Enter');
-  await page.locator('#historyBtn').waitFor({ timeout: 5000 });
-  ok(await keyboardPress(page, '#historyBtn'), 'History is reached and pressed by keyboard');
+  await page.locator('#moreBtn').waitFor({ timeout: 5000 });
+  ok(await keyboardPress(page, '#moreBtn') && await page.evaluate(() => document.activeElement.id) === 'historyBtn',
+    'the ⋯ button is reached and opened by keyboard, with History first in it');
+  await page.keyboard.press('Enter');
   await page.locator('#historyList .ver').first().waitFor({ timeout: 5000 });
   ok(await page.locator('#historyList .ver').count() >= 2, 'History lists the versions');
   await checkNames(page, '#runner', 'History', 3);

@@ -246,14 +246,20 @@
   body.viewing-app #runner:not(:has(> iframe.appframe)) { flex: none; }
   body.viewing-app #runner > iframe.appframe { flex: 1; min-height: 18rem; height: auto !important; margin: .3rem 0 0; }
   body.viewing-app #runner:has(> iframe.appframe) > .app-desc { display: none; }
-  .apphead { flex-wrap: nowrap; gap: .5rem; min-height: 2.4rem; }
-  .apphead h2 { margin: 0 !important; font-size: 1.3rem !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  /* The app's head is one line at every width: what has no room goes into ⋯ (ADR-2610111760). */
+  .apphead { flex-wrap: nowrap; gap: .5rem; min-height: 2.4rem; position: relative; }
+  .apphead h2 { margin: 0 !important; font-size: 1.3rem !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 3rem; flex: 0 1 auto; }
   .apphead .sealed { flex: none; position: relative; margin: 0; }
   .apphead .sealed ul { position: absolute; left: 0; top: calc(100% + 4px); z-index: 30; width: min(22rem, 80vw); margin: 0;
     padding: .55rem .8rem .55rem 1.7rem; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); }
-  .apphead .tools a.docslink { align-self: center; padding: 0 .3rem; }
-  .apphead .tools { margin-left: auto; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding: 2px; }
-  .apphead .tools > * { flex: none; }
+
+  .apphead .tools { margin-left: auto; flex-wrap: nowrap; flex: none; }
+  .apphead .tools > * { flex: none; white-space: nowrap; }
+  .more-btn { font-size: 1.1rem; line-height: 1; padding: .2rem .6rem; letter-spacing: .05em; }
+  .more-menu { width: 14rem; }
+  .hdr-menu button.danger-item, .hdr-menu button.danger-item svg { color: var(--bad); }
+  .removebar { margin: .3rem 0 0; }
+  .removebar:empty { display: none; }
   /* The quick switcher: Ctrl or ⌘ K, or Apps. */
   #switcher { width: min(30rem, calc(100vw - 1.5rem)); margin-top: 12vh; }
   #switcher .dlg-body { padding: .5rem; max-height: 60vh; }
@@ -528,8 +534,6 @@
     main { grid-template-columns: 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); }
     header { padding: .35rem .75rem; gap: .5rem; }
-    .apphead { flex-wrap: wrap; row-gap: .25rem; }
-    .apphead .tools { order: 3; width: 100%; margin-left: 0; }
   }
 </style>
 
@@ -878,6 +882,56 @@
 const $ = (id) => document.getElementById(id);
 // The app store on the website (ADR-2610111740): apps people made, each a .wardian file to import.
 const STORE = 'https://wardian.studio/store/';
+/**
+ * A button that opens a small panel of actions (the header's Menu, an app's ⋯): Enter or ↓ opens it
+ * with the focus on its first item, ↑ ↓ Home End move, Escape closes it and gives the focus back,
+ * Tab out or a click outside closes it, and choosing an item closes it.
+ */
+function menuButton(btn, panel) {
+  const items = () => [...panel.querySelectorAll('a, button')].filter((n) => n.offsetParent !== null);
+  const outside = (e) => { if (!panel.contains(e.target) && !btn.contains(e.target)) close(false); };
+  function open() {
+    panel.hidden = false; btn.setAttribute('aria-expanded', 'true');
+    items()[0]?.focus();
+    document.addEventListener('pointerdown', outside, true);
+  }
+  function close(refocus = true) {
+    document.removeEventListener('pointerdown', outside, true);
+    if (panel.hidden) return;
+    panel.hidden = true; btn.setAttribute('aria-expanded', 'false');
+    if (refocus && btn.isConnected) btn.focus();
+  }
+  btn.setAttribute('aria-haspopup', 'true');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.addEventListener('click', () => (panel.hidden ? open() : close()));
+  btn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' && panel.hidden) { e.preventDefault(); open(); } });
+  panel.addEventListener('keydown', (e) => {
+    const all = items(), i = all.indexOf(document.activeElement);
+    const go = (j) => { e.preventDefault(); all[(j + all.length) % all.length]?.focus(); };
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'ArrowDown') go(i + 1);
+    else if (e.key === 'ArrowUp') go(i - 1);
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(all.length - 1);
+    else if (e.key === 'Tab' && ((e.shiftKey && i === 0) || (!e.shiftKey && i === all.length - 1))) close(false);
+  });
+  panel.addEventListener('click', (e) => { if (e.target.closest('a, button')) setTimeout(() => close(false)); });
+  return { open, close };
+}
+const ICON = (d) => { const t = document.createElement('template'); t.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`; return t.content.firstChild; };   // our own constant paths only
+const ICONS = {
+  history: '<path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.5H5"/><path d="M8 5v3l2 1.5"/>',
+  download: '<path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/>',
+  page: '<path d="M4 2.5h5.5L12 5v8.5H4z"/><path d="M9.5 2.5V5H12"/>',
+  open: '<path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M12 9.5v4H2.5V4h4"/>',
+  remove: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 9h5.8l.6-9"/>',
+};
+/** A ⋯ menu item: its icon and its words. */
+function menuItem(tag, props, icon, text) {
+  const n = el(tag, props);
+  n.append(ICON(ICONS[icon]), el('span', { textContent: text }));
+  return n;
+}
 /** A link to the app store, as the header's: a pill that says it opens a new tab. */
 function storeLink(text) {
   const a = el('a', { href: STORE, target: '_blank', rel: 'noopener', className: 'store-link' });
@@ -1483,7 +1537,8 @@ function sealedLabel(app) {
     ...can.map((t) => el('li', { className: 'can', textContent: t }))));
 }
 
-let arrangeHost = null;   // the open app's Arrange button in the toolbar: {btn, win, open}
+let arrangeHost = null;
+let headFit = null;       // the open app's head keeps to one line (a ResizeObserver)   // the open app's Arrange button in the toolbar: {btn, win, open}
 addEventListener('message', (e) => {
   const m = e.data;
   if (!arrangeHost || !m || m.wardian !== 'arrange') return;
@@ -1509,12 +1564,8 @@ async function openApp(app) {
   renderApps();
   if (typeof renderJobs === 'function') renderJobs();
   noteRecent(name);
+  const label = app.title || name, local = status.admin && status.source === 'local';
   const tools = el('span', { className: 'row tools' });
-  if (status.admin && status.source === 'local') {
-    tools.append(el('button', { textContent: 'Change this app', onclick: () => openAi({ app: name }) }));
-    tools.append(el('button', { id: 'historyBtn', textContent: 'History', title: 'Every saved version of this app', onclick: () => openHistory(app) }));
-    tools.append(el('button', { id: 'downloadBtn', textContent: 'Download', title: 'Download this app as a .wardian file, to send to someone', onclick: () => openExport(app) }));
-  }
   // Arrange: shown once the app's frame says it has panels (ui/arrange.js). It lives here, in
   // view, because the app's own frame is often taller than the window.
   const arrangeTool = el('button', { id: 'arrangeTool', textContent: 'Arrange', className: 'hidden', title: 'Change the layout of this app, for you only' });
@@ -1525,16 +1576,49 @@ async function openApp(app) {
     arrangeHost.win.postMessage({ wardian: 'arrange', k: arrangeHost.open ? 'close' : 'open' }, '*');
     if (!arrangeHost.open) $('runner').querySelector('iframe.appframe')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
-  tools.prepend(arrangeTool);
-  // Save as web page: anyone who can open the app may keep a picture of what they see. It needs
-  // no server and nothing an admin guards, unlike Download, which reads the package from the server.
+  tools.append(arrangeTool);
+  const change = local ? el('button', { id: 'changeBtn', textContent: 'Change this app', onclick: () => openAi({ app: name }) }) : null;
+  if (change) tools.append(change);
+  // ⋯: the rest, in a menu that works as the header's does (ADR-2610111760).
   const saveBar = el('div', { id: 'saveWebBar', className: 'row savebar hidden' });
-  if (!app.error) tools.append(el('button', { id: 'saveWebBtn', textContent: 'Save as web page', title: 'Save what you see as one web page that opens in any browser, offline', onclick: () => askSaveWeb(app, saveBar) }));
-  tools.append(removeControl(name));
+  const removeBar = el('div', { className: 'row removebar' });
+  const moreTop = el('div', { className: 'menu-group', id: 'moreTop' });
+  const more = el('div', { className: 'hdr-menu more-menu', id: 'moreMenu', hidden: true }, moreTop, el('div', { className: 'menu-sep', hidden: true }));
+  if (local) {
+    more.append(menuItem('button', { id: 'historyBtn', title: 'Every saved version of this app', onclick: () => openHistory(app) }, 'history', 'History'));
+    more.append(menuItem('button', { id: 'downloadBtn', title: 'Download this app as a .wardian file, to send to someone', onclick: () => openExport(app) }, 'download', 'Download'));
+  }
+  if (!app.error) more.append(menuItem('button', { id: 'saveWebBtn', title: 'Save what you see as one web page that opens in any browser, offline', onclick: () => askSaveWeb(app, saveBar) }, 'page', 'Save as web page'));
+  const src = app.error ? null : app.suite ? `/run/${encodeURIComponent(name)}/` : app.page ? appUrl(name, app.page) : null;
+  if (src) {
+    const a = menuItem('a', { id: 'openTabLink', href: src, target: '_blank', rel: 'noopener', title: 'This app on its own, in a new tab' }, 'open', 'Open in a new tab');
+    a.append(el('span', { className: 'out', ariaHidden: 'true', textContent: '↗' }));
+    more.append(a);
+  }
+  const moreBtn = el('button', { id: 'moreBtn', className: 'more-btn', textContent: '⋯', title: 'More actions', ariaLabel: `More actions for ${label}` });
+  moreBtn.setAttribute('aria-controls', 'moreMenu');
+  const ask = removeControl(name, removeBar, moreBtn);
+  if (ask) {
+    more.append(el('div', { className: 'menu-sep' }));
+    more.append(menuItem('button', { id: 'removeBtn', className: 'danger-item', title: `Remove ${label} (it goes to the trash)`, onclick: ask }, 'remove', 'Remove app…'));
+  }
+  menuButton(moreBtn, more);
+  tools.append(el('span', { className: 'hdr-menu-wrap more-wrap' }, moreBtn, more));
   // One line: the title (its description as a tooltip), what it may reach, and the tools.
-  const h2 = el('h2', { textContent: app.title || name });
+  const h2 = el('h2', { textContent: label });
   if (app.description) h2.title = app.description;
-  const head = [el('div', { className: 'row apphead' }, h2, sealedLabel(app), tools), saveBar];
+  const row = el('div', { className: 'row apphead' }, h2, sealedLabel(app), tools);
+  const head = [row, saveBar, removeBar];
+  // When the line has no room, Change this app and then Arrange move to the top of ⋯.
+  const fitHead = () => {
+    for (const n of [arrangeTool, change]) if (n && n.parentNode !== tools) moreBtn.parentNode.before(n);
+    if (change) tools.insertBefore(arrangeTool, change);
+    for (const n of [change, arrangeTool]) { if (!n || row.scrollWidth <= row.clientWidth + 1) break; moreTop.prepend(n); }
+  };
+  headFit?.disconnect();
+  headFit = new ResizeObserver(() => requestAnimationFrame(fitHead));
+  headFit.observe(row);
+  headFit.observe(tools);   // Arrange appears later, when the app says it has panels
   if (app.description) head.push(el('p', { className: 'muted app-desc', textContent: app.description }));
   if (app.error) {
     $('runner').replaceChildren(...head, el('p', { className: 'err', textContent: app.error }));
@@ -1544,8 +1628,6 @@ async function openApp(app) {
   if (app.suite) {
     // The kernel page is the host's own trusted code, so this frame is not
     // sandboxed; the kernel puts each of the suite's apps in a sandboxed frame.
-    const src = `/run/${encodeURIComponent(name)}/`;
-    tools.append(el('a', { href: src, target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Open in a new tab ↗', title: 'This suite on its own, in a new tab' }));
     $('runner').replaceChildren(...head, el('iframe', { src, title: `${name} suite`, className: 'appframe suiteframe' }));
     log(`opened suite ${name}`, 'a');
     return;
@@ -1554,8 +1636,6 @@ async function openApp(app) {
   if (app.page) {
     // The page is the app's own code, so it runs sandboxed: the server also
     // sends a CSP sandbox header, which covers "open in a new tab" as well.
-    const src = appUrl(name, app.page);
-    tools.append(el('a', { href: src, target: '_blank', rel: 'noopener', className: 'docslink', textContent: 'Open in a new tab ↗', title: `This app's page (${app.page}) on its own, in a new tab` }));
     const frame = el('iframe', { title: `${name} page`, className: 'appframe' });
     frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
     permBox = el('div');
@@ -2090,19 +2170,19 @@ addEventListener('message', async (e) => {
 
 // ---------- removing apps ----------
 // Removal moves the app to apps/.trash on the server; Undo and Settings → Removed apps put it back.
-function removeControl(name) {
-  const box = el('span', { className: 'row removebox' });
-  if (!status.admin || status.source !== 'local') return box;   // Drive apps are removed in Drive
-  const ask = () => {
-    box.replaceChildren(
+/**
+ * Remove app, from ⋯: it asks in a bar under the app's head, Remove or Cancel; Cancel gives the
+ * focus back to ⋯. Null where removing is not this page's to do (Drive apps are removed in Drive).
+ */
+function removeControl(name, bar, back) {
+  if (!status.admin || status.source !== 'local') return null;
+  return () => {
+    bar.replaceChildren(
       el('span', { className: 'muted', textContent: `Remove ${name}?` }),
       el('button', { className: 'danger', textContent: 'Remove', ariaLabel: `Remove ${name}`, onclick: () => removeApp(name) }),
-      el('button', { textContent: 'Cancel', onclick: () => { idle(); box.querySelector('button').focus(); } }));
-    box.querySelector('button.danger').focus();
+      el('button', { textContent: 'Cancel', onclick: () => { bar.replaceChildren(); back.focus(); } }));
+    setTimeout(() => bar.querySelector('button.danger').focus());
   };
-  const idle = () => box.replaceChildren(el('button', { className: 'link', textContent: 'Remove app', onclick: ask }));
-  idle();
-  return box;
 }
 
 async function removeApp(name) {
@@ -3294,7 +3374,6 @@ function leaveSetup() {
   const READING = ['aiBtn', 'storeLink', 'settingsBtn'].map($);
   const homes = new Map(ORDER.map((n) => { const mark = document.createComment(n.id); n.before(mark); return [n, mark]; }));
   const over = () => hdr.scrollWidth > hdr.clientWidth + 1;
-  const items = () => [...panel.querySelectorAll('a, button')].filter((n) => n.offsetParent !== null);
   function fit() {
     const had = document.activeElement;
     for (const n of ORDER) homes.get(n).after(n);
@@ -3311,32 +3390,7 @@ function leaveSetup() {
   new MutationObserver(soon).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   document.fonts?.ready.then(soon);
 
-  function open() {
-    panel.hidden = false; btn.setAttribute('aria-expanded', 'true');
-    items()[0]?.focus();
-    document.addEventListener('pointerdown', outside, true);
-  }
-  function close(refocus = true) {
-    if (panel.hidden) return;
-    panel.hidden = true; btn.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('pointerdown', outside, true);
-    if (refocus) btn.focus();
-  }
-  const outside = (e) => { if (!panel.contains(e.target) && !btn.contains(e.target)) close(false); };
-  btn.addEventListener('click', () => (panel.hidden ? open() : close()));
-  btn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' && panel.hidden) { e.preventDefault(); open(); } });
-  panel.addEventListener('keydown', (e) => {
-    const all = items(), i = all.indexOf(document.activeElement);
-    const go = (j) => { e.preventDefault(); all[(j + all.length) % all.length]?.focus(); };
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
-    else if (e.key === 'ArrowDown') go(i + 1);
-    else if (e.key === 'ArrowUp') go(i - 1);
-    else if (e.key === 'Home') go(0);
-    else if (e.key === 'End') go(all.length - 1);
-    else if (e.key === 'Tab' && ((e.shiftKey && i === 0) || (!e.shiftKey && i === all.length - 1))) close(false);
-  });
-  // Picking something closes the Menu; a dialog it opens takes the focus.
-  panel.addEventListener('click', (e) => { if (e.target.closest('a, button')) setTimeout(() => close(false)); });
+  menuButton(btn, panel);
   fit();
 })();
 

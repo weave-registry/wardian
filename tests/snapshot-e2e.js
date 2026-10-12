@@ -14,7 +14,7 @@ async function open(page, name) {
   const row = page.locator('#apps li.app', { hasText: name }).first();
   if (!(await row.isVisible())) await page.locator('#apps li.folder', { has: page.locator('li.app', { hasText: name }) }).first().locator('.folder-toggle').click();
   await row.locator('.app-open').click();
-  await page.locator('#saveWebBtn').waitFor({ timeout: 5000 });
+  await page.locator('#saveWebBtn').waitFor({ state: 'attached', timeout: 5000 });
 }
 
 // Wait until every app of the open suite has started, so each can answer with its own snapshot.
@@ -28,6 +28,7 @@ async function started(page, name, n) {
 }
 
 async function save(page, name, wait = 20000) {
+  await page.click('#moreBtn');
   await page.click('#saveWebBtn');
   const warn = await page.locator('#saveWebBar').textContent();
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: wait }), page.click('#saveWebGo')]);

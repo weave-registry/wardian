@@ -38,6 +38,7 @@ function unzip(buf) {
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(A + '/'); await sleep(800);
   await page.locator('#apps li button', { hasText: /Splunk table/i }).first().click(); await sleep(800);
+  await page.click('#moreBtn');
   await page.click('#downloadBtn');
   await page.locator('#exportList strong').first().waitFor({ timeout: 5000 });
   ok(/splunk-table\.wardian · \d+ files/.test(await page.locator('#exportList').textContent()), 'the preview names the file and counts its files');

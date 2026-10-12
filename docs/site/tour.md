@@ -35,6 +35,8 @@ not lose it. The app itself never changes. **Reset** brings back the app's own l
 - **Full window**, in the **Menu** or with the F key, gives the app the whole window. Point at the top
   edge, or press Tab, to bring the header back; Escape leaves.
 - **App store ↗** opens wardian.studio's store of apps people made, in a new tab.
+- Beside an app's title, **Arrange** and **Change this app** stay in view; **⋯** holds History,
+  Download, Save as web page, Open in a new tab and Remove app.
 
 ## 3. Save what you see
 

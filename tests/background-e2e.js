@@ -92,6 +92,7 @@ async function until(fn, ms, what) {
   let hist = await (await fetch(B + '/api/history/bg-test')).json();
   ok(hist.versions.map(v => v.n + ':' + v.by).join() === '2:make-an-app,1:make-an-app' && hist.versions[0].why === 'A small test app.' && hist.versions[0].current, 'the build and its fix are two versions, with Claude\'s reason: ' + JSON.stringify(hist.versions.map(v => [v.n, v.by, v.why])));
   await a.locator('#apps li button', { hasText: /Background test/ }).first().click();
+  await a.click('#moreBtn');
   await a.locator('#historyBtn').click();
   await a.locator('#historyList .ver').first().waitFor({ timeout: 5000 });
   ok(await a.locator('#historyList .ver').count() === 2 && /current/.test(await a.locator('#historyList .ver').first().textContent()), 'the History panel lists both, newest first');

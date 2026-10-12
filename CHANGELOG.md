@@ -25,6 +25,9 @@ Wardian 1.0") is done or written down there as left out.
 
 - An open app gets the room by default: a slim one-line header, the list folded to its rail, a
   one-line app head, and the frame filling the rest. The version line shows on the home screen only.
+- The app's head keeps Arrange and Change this app in view; History, Download, Save as web page, Open
+  in a new tab and Remove app are in a ⋯ menu beside them (Remove still asks first). On a phone,
+  Arrange and Change this app join them, so the head is always one line.
 - The header is Apps, App store ↗, Make an app, Settings and Menu, always one line; what has no room
   moves into the Menu. The Menu has rows of one height with icons, in groups, and names the source
   in short (the whole path is its tooltip).
