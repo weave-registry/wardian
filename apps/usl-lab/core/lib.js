@@ -17,16 +17,21 @@ const Lib = (() => {
     return {kind:'linear', nStar:Infinity, xMax:Infinity};
   }
 
+  // A number to sig significant figures, at every size: very small and very large ones in
+  // exponent form, the rest with grouping. Trailing zeros are dropped, so 0.0006 is 6e-4.
   function fmt(v, sig){
     sig = sig || 3;
     if (v === Infinity) return 'no limit';
     if (!isFinite(v)) return '–';
     if (v === 0) return '0';
-    const av = Math.abs(v);
-    if (av < 1e-3) return v.toExponential(1);
-    if (av >= 1e9) return v.toExponential(2);
-    return Number(v.toPrecision(sig)).toLocaleString('en-US', {maximumFractionDigits: 6});
+    const av = Math.abs(v), r = Number(v.toPrecision(sig));
+    if (av < 1e-3 || av >= 1e9) return r.toExponential();
+    return r.toLocaleString('en-US', {maximumSignificantDigits: sig});
   }
+  // Significant figures for each fitted value: on screen and to Claude (SIG), and in the report (SIG_REPORT).
+  // The fit is good to about 1e-7 or better, so these are limited by the data, not the maths.
+  const SIG = Object.freeze({alpha: 4, beta: 4, lambda: 5, nStar: 4, xMax: 5});
+  const SIG_REPORT = 6;
   function fmtTick(v){
     if (v >= 1e6) return Number((v/1e6).toFixed(2)) + 'M';
     if (v >= 1000) return Number((v/1000).toFixed(2)) + 'k';
@@ -92,5 +97,5 @@ const Lib = (() => {
     return {value: v};
   }
 
-  return Object.freeze({esc, clamp, model, peakInfo, fmt, fmtTick, niceTicks, fmtRange, wiActive, whatIf, describe, domainMax, parseMeasurements, parseTarget, MIN_RUNS, MIN_LOADS});
+  return Object.freeze({esc, clamp, model, peakInfo, fmt, SIG, SIG_REPORT, fmtTick, niceTicks, fmtRange, wiActive, whatIf, describe, domainMax, parseMeasurements, parseTarget, MIN_RUNS, MIN_LOADS});
 })();

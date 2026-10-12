@@ -19,6 +19,9 @@ started=$(date +%s)
 step "cargo test --release"
 cargo test --release
 
+step "node tests/usl-math.js"
+node tests/usl-math.js
+
 # ADR-2610071106 and ADR-2610071219 promise a self-contained binary under 12 MB (ADR-2610081041).
 step "release binary under 12 MB"
 cargo build --release -q --bin wardian

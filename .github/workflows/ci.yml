@@ -64,6 +64,9 @@ jobs:
       - name: cargo test --release
         run: cargo test --release
 
+      - name: The USL lab's maths (ADR-2610121300)
+        run: node tests/usl-math.js
+
       - name: Make an app's workshop builds as WebAssembly (ADR-2610111500)
         working-directory: wasm/workshop
         run: |

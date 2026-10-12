@@ -164,8 +164,9 @@ const UslEngine = (() => {
       if (store.bandKey !== key){
         const lo = [], hi = [];
         ns.forEach(x => {
-          const v = store.boot.map(b => b.lambda*model(x, b.alpha, b.beta)).sort((p, q) => p-q);
-          lo.push(v[Math.floor(band[0]*(v.length-1))]); hi.push(v[Math.ceil(band[1]*(v.length-1))]);
+          // Interpolated like the parameter ranges (pct), so the band and the stated ranges agree.
+          const v = store.boot.map(b => b.lambda*model(x, b.alpha, b.beta));
+          lo.push(pct(v, band[0])); hi.push(pct(v, band[1]));
         });
         store.bandKey = key; store.band = {low: lo, high: hi};
       }

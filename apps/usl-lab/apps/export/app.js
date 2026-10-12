@@ -6,7 +6,7 @@ Kernel.register({
   needs: ['engine.curve'],
   caps: ['claude:downloads'],
   init(ctx){
-    const $ = ctx.$, {fmt, fmtRange, peakInfo, whatIf, wiActive, describe, domainMax, model} = Lib;
+    const $ = ctx.$, {fmt, fmtRange, peakInfo, whatIf, wiActive, describe, domainMax, model, SIG_REPORT} = Lib;
     let A = null, wi = {a: 1, b: 1, l: 1, note: ''}, checks = [], dx = {text: '', stale: false}, context = '', eng = null, dl = null;
 
     ctx.cap('downloads').then(d => { dl = d; sync(); }).catch(() => sync());
@@ -41,14 +41,14 @@ Kernel.register({
       }
       if (context) L.push('## System', '', context, '');
       L.push('## Fit', '', '| Parameter | Value | 90% range |', '|---|---|---|');
-      L.push('| α (contention) | ' + fmt(f0.alpha, 3) + ' | ' + fmtRange(ci.alpha[0], ci.alpha[1], 3) + ' |');
-      L.push('| β (coherency) | ' + fmt(f0.beta, 3) + ' | ' + fmtRange(ci.beta[0], ci.beta[1], 3) + ' |');
-      L.push('| λ (single-unit rate) | ' + fmt(f0.lambda, 4) + ' | ' + fmtRange(ci.lambda[0], ci.lambda[1], 4) + ' |');
+      L.push('| α (contention) | ' + fmt(f0.alpha, SIG_REPORT) + ' | ' + fmtRange(ci.alpha[0], ci.alpha[1], SIG_REPORT) + ' |');
+      L.push('| β (coherency) | ' + fmt(f0.beta, SIG_REPORT) + ' | ' + fmtRange(ci.beta[0], ci.beta[1], SIG_REPORT) + ' |');
+      L.push('| λ (single-unit rate) | ' + fmt(f0.lambda, SIG_REPORT) + ' | ' + fmtRange(ci.lambda[0], ci.lambda[1], SIG_REPORT) + ' |');
       if (pk.kind === 'peak'){
-        L.push('| Peak load N* | ' + fmt(pk.nStar) + ' | ' + fmtRange(ci.nStar[0], ci.nStar[1]) + ' |');
-        L.push('| Peak throughput | ' + fmt(pk.xMax, 4) + ' | ' + fmtRange(ci.xMax[0], ci.xMax[1], 4) + ' |');
-      } else if (pk.kind === 'ceiling') L.push('| Throughput ceiling λ/α | ' + fmt(pk.xMax, 4) + ' | ' + fmtRange(ci.xMax[0], ci.xMax[1], 4) + ' |');
-      L.push('', 'R² = ' + f0.r2.toFixed(3) + '; typical error ' + (f0.rmsePct*100).toFixed(1) + '%.', '', '## Data checks', '');
+        L.push('| Peak load N* | ' + fmt(pk.nStar, SIG_REPORT) + ' | ' + fmtRange(ci.nStar[0], ci.nStar[1], SIG_REPORT) + ' |');
+        L.push('| Peak throughput | ' + fmt(pk.xMax, SIG_REPORT) + ' | ' + fmtRange(ci.xMax[0], ci.xMax[1], SIG_REPORT) + ' |');
+      } else if (pk.kind === 'ceiling') L.push('| Throughput ceiling λ/α | ' + fmt(pk.xMax, SIG_REPORT) + ' | ' + fmtRange(ci.xMax[0], ci.xMax[1], SIG_REPORT) + ' |');
+      L.push('', 'R² = ' + fmt(f0.r2, SIG_REPORT) + '; typical error ' + fmt(f0.rmsePct*100, 4) + '%.', '', '## Data checks', '');
       checks.forEach(c => L.push('- **' + ({ok: 'OK', watch: 'Watch', problem: 'Problem'}[c.level]) + ':** ' + c.title + '. ' + c.detail));
       if (wiActive(wi)){
         const w = whatIf(f0, wi), pw = peakInfo(w.lam, w.a, w.b);
@@ -67,7 +67,8 @@ Kernel.register({
       for (let i = 0; i <= 60; i++) ns.push(Math.max(hi*i/60, 0.0001));
       const c = await ctx.call('engine', 'curve', {id: A.id, sets: [{lambda: f0.lambda, alpha: f0.alpha, beta: f0.beta}], ns, band: [0.05, 0.95]});
       const out = ['load,fitted_throughput,low_90,high_90,linear_scaling,efficiency'];
-      ns.forEach((n, i) => out.push([n.toFixed(3), c.ys[0][i].toFixed(3), c.low[i].toFixed(3), c.high[i].toFixed(3), (f0.lambda*n).toFixed(3), (model(n, f0.alpha, f0.beta)/n).toFixed(4)].join(',')));
+      // Full precision: each number as the shortest text that reads back as the same double.
+      ns.forEach((n, i) => out.push([n, c.ys[0][i], c.low[i], c.high[i], f0.lambda*n, model(n, f0.alpha, f0.beta)/n].map(String).join(',')));
       return out.join('\n');
     }
 

@@ -15,7 +15,7 @@ Kernel.register({
       const distinct = new Set(d.rows.map(r => r.n)).size;
       if (d.rows.length < 4 || distinct < 3){ ctx.emit('analysis:ready', Object.assign({ok: false}, base)); return; }
       try {
-        const res = await ctx.call('engine', 'analyze', {id: my, rows: d.rows, rdiv: d.rdiv, boots: 240, seed: 20240611});
+        const res = await ctx.call('engine', 'analyze', {id: my, rows: d.rows, rdiv: d.rdiv, boots: 1000, seed: 20240611});
         if (my !== seq) return;                      // newer data arrived while the engine was working
         ctx.emit('analysis:ready', Object.assign({ok: true}, base, res));
       } catch (e) {

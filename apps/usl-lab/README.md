@@ -31,6 +31,9 @@ app, where you pick the Load, Throughput and, optionally, Response time columns.
   the data and the fit.
 - **Diagnosis:** Claude's reading of the results and your description, when Claude is available.
 - **Take it with you:** a Markdown report and the fitted curve as CSV.
+- **Precision:** α and β to 4 significant figures, λ and the peak throughput to 5, the peak load to
+  4. The report shows 6, and the CSV every digit. The fit itself recovers known parameters to about
+  1e-10 (`tests/usl-math.js` holds it to 1e-6). The 90% ranges come from 1000 refits.
 
 ## How it behaves
 

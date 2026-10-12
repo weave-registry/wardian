@@ -12,6 +12,14 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- The USL lab shows the precision its fit has: α and β to 4 significant figures, λ and peak
+  throughput to 5, N* to 4 (they were 2 and 3, and every value under 0.001 had 2), the report to 6,
+  and the curve's CSV in full. Its 90% ranges come from 1000 refits instead of 240, and the chart's
+  band is interpolated like them. `tests/usl-math.js` checks the fit recovers known parameters to
+  1e-6. ADR-2610121300.
+
 ## [0.4.20] - 2026-10-11
 
 ### Added

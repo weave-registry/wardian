@@ -8,7 +8,7 @@ Kernel.register({
   provides: ['parseWhatIf'],
   caps: ['claude:sample'],
   init(ctx){
-    const $ = ctx.$, {fmt, fmtRange, clamp} = Lib;
+    const $ = ctx.$, {fmt, fmtRange, clamp, SIG} = Lib;
     let A = null, checks = [], context = '', sample = null, text = '', stale = false, busy = false, ctl = null;
 
     ctx.root.hidden = true;
@@ -64,13 +64,13 @@ Kernel.register({
       L.push('System description from the user: ' + (context || '(none given)'));
       L.push('Units: load is in ' + u.n + '; throughput is in ' + u.x + '.', '');
       L.push('USL fit (computed by the page; 90% bootstrap ranges in brackets):');
-      L.push('- alpha (contention) = ' + fmt(f0.alpha, 3) + ' [' + fmtRange(ci.alpha[0], ci.alpha[1], 3) + ']');
-      L.push('- beta (coherency) = ' + fmt(f0.beta, 3) + ' [' + fmtRange(ci.beta[0], ci.beta[1], 3) + ']');
-      L.push('- lambda (single-unit throughput) = ' + fmt(f0.lambda, 4) + ' [' + fmtRange(ci.lambda[0], ci.lambda[1], 4) + ']');
+      L.push('- alpha (contention) = ' + fmt(f0.alpha, SIG.alpha) + ' [' + fmtRange(ci.alpha[0], ci.alpha[1], SIG.alpha) + ']');
+      L.push('- beta (coherency) = ' + fmt(f0.beta, SIG.beta) + ' [' + fmtRange(ci.beta[0], ci.beta[1], SIG.beta) + ']');
+      L.push('- lambda (single-unit throughput) = ' + fmt(f0.lambda, SIG.lambda) + ' [' + fmtRange(ci.lambda[0], ci.lambda[1], SIG.lambda) + ']');
       if (pk.kind === 'peak'){
-        L.push('- peak load N* = ' + fmt(pk.nStar) + ' [' + fmtRange(ci.nStar[0], ci.nStar[1]) + ']');
-        L.push('- peak throughput = ' + fmt(pk.xMax, 4) + ' [' + fmtRange(ci.xMax[0], ci.xMax[1], 4) + ']');
-      } else if (pk.kind === 'ceiling') L.push('- no peak (beta is about zero); throughput ceiling lambda/alpha = ' + fmt(pk.xMax, 4));
+        L.push('- peak load N* = ' + fmt(pk.nStar, SIG.nStar) + ' [' + fmtRange(ci.nStar[0], ci.nStar[1], SIG.nStar) + ']');
+        L.push('- peak throughput = ' + fmt(pk.xMax, SIG.xMax) + ' [' + fmtRange(ci.xMax[0], ci.xMax[1], SIG.xMax) + ']');
+      } else if (pk.kind === 'ceiling') L.push('- no peak (beta is about zero); throughput ceiling lambda/alpha = ' + fmt(pk.xMax, SIG.xMax));
       else L.push('- no peak and no ceiling (alpha and beta both about zero)');
       L.push('- R squared = ' + f0.r2.toFixed(3) + '; typical error = ' + (f0.rmsePct*100).toFixed(1) + '%; highest measured load = ' + fmt(A.rows[A.rows.length-1].n), '');
       L.push('Data checks:');
@@ -112,7 +112,7 @@ Kernel.register({
         if (!sample) throw new Error('AI is not available in this view.');
         if (!A || !A.ok) throw new Error('Add measurements first.');
         const f0 = A.fit, u = A.units;
-        const prompt = 'A Universal Scalability Law model of a system has alpha (serialized fraction) = ' + fmt(f0.alpha, 3) + ', beta (coherency cost) = ' + fmt(f0.beta, 3) + ', lambda (single-unit throughput) = ' + fmt(f0.lambda, 4) + ' ' + u.x + '. Load is measured in ' + u.n + '.\n' +
+        const prompt = 'A Universal Scalability Law model of a system has alpha (serialized fraction) = ' + fmt(f0.alpha, SIG.alpha) + ', beta (coherency cost) = ' + fmt(f0.beta, SIG.beta) + ', lambda (single-unit throughput) = ' + fmt(f0.lambda, SIG.lambda) + ' ' + u.x + '. Load is measured in ' + u.n + '.\n' +
           'System description: ' + (context || '(none given)') + '\n\n' +
           'The user proposes this change: "' + String(ask).replace(/"/g, "'") + '"\n\n' +
           'Convert it into multiplicative factors: alphaFactor scales the serialized share of work (locks, single writers, shared queues), betaFactor scales the coordination cost between workers (crosstalk, cache sync, consensus), lambdaFactor scales single-worker throughput. 1 means unchanged, 0.5 halves it. Keep each factor between 0 and 3. If the change cannot be mapped to these, return all 1 and say why.\n' +
