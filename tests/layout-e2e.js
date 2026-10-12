@@ -299,8 +299,12 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
       ok(!(await fw.evaluate(() => document.body.classList.contains('full-window'))) && (await box())[3] < h - 50, `${w}px ${name}: Escape leaves`);
     }
     if (w === 1440) {
-      await fw.click('#hdrMenuBtn'); await fw.click('#fullBtn'); await sleep(700);
+      await fw.click('#hdrMenuBtn'); await fw.click('#fullBtn');
       const hb = () => fw.evaluate(() => document.querySelector('body > header').getBoundingClientRect().bottom);
+      // The click leaves the pointer near the top edge, which rightly keeps the header out; once it
+      // moves into the app the header goes. Wait for that rather than for a fixed time (CI is slower).
+      await fw.mouse.move(700, 450);
+      for (let i = 0; i < 30 && await hb() > 1; i++) await sleep(100);
       ok(await hb() <= 1 && await fw.getAttribute('#fullBtn', 'aria-pressed') === 'true', "the Menu's Full window enters it and the header waits above");
       await fw.mouse.move(700, 2); await sleep(500);
       ok(await hb() > 30 && near(await box()), 'the top edge brings the header back, over the app, which keeps its size');
