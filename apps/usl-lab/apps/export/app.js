@@ -9,7 +9,7 @@ Kernel.register({
     const $ = ctx.$, {fmt, fmtRange, peakInfo, whatIf, wiActive, describe, domainMax, model} = Lib;
     let A = null, wi = {a: 1, b: 1, l: 1, note: ''}, checks = [], dx = {text: '', stale: false}, context = '', eng = null, dl = null;
 
-    ctx.cap('downloads').then(d => { dl = d; sync(); });
+    ctx.cap('downloads').then(d => { dl = d; sync(); }).catch(() => sync());
     ctx.on('analysis:ready', a => { A = a; sync(); });
     ctx.on('whatif:changed', w => { wi = w; });
     ctx.on('checks:ready', c => { checks = c.items; });
@@ -18,7 +18,15 @@ Kernel.register({
     ctx.on('engine:status', s => { eng = s; });
     ctx.on('capability:ai', c => { $('#noAi').hidden = c.available; });
 
-    const sync = () => { const ok = !!(A && A.ok && dl); $('#btnReport').disabled = !ok; $('#btnCurve').disabled = !ok; };
+    // A disabled button always has its reason beside it.
+    const sync = () => {
+      const ok = !!(A && A.ok && dl);
+      $('#btnReport').disabled = !ok; $('#btnCurve').disabled = !ok;
+      const note = $('#exportNote');
+      if (!dl) note.textContent = 'Saving files is not available in this view.';
+      else if (!A || !A.ok) note.textContent = 'The downloads open once there are enough measurements to fit: at least ' + Lib.MIN_RUNS + ' runs at ' + Lib.MIN_LOADS + ' or more loads.';
+      else if (/^The downloads open|^Saving files is not/.test(note.textContent)) note.textContent = '';
+    };
 
     function report(){
       const f0 = A.fit, ci = A.ci, u = A.units, pk = f0.peak, L = [], rowsHaveR = A.rows.some(r => r.r);

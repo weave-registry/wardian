@@ -18,7 +18,6 @@
     "shared/model.js",
     "shared/stats.js"
   ],
-  "header": "header.html",
   "surface": "glass",
   "apps": [
     {

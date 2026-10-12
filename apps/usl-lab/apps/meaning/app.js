@@ -91,12 +91,23 @@ Kernel.register({
 
     // ---------- target ----------
     let target = ctx.store.get('target') || {value: '', per: '60'};
-    $('#tgtVal').value = target.value; $('#tgtPer').value = target.per;
+    $('#tgtVal').value = String(target.value || '').replace(/[, _]/g, ''); $('#tgtPer').value = target.per;   // older saves may hold "10,000"
 
+    // The target's problem shows when you leave the field, and clears as soon as it is right.
+    let tgtShown = false;
+    function readTarget(){
+      const el = $('#tgtVal');
+      const r = el.validity && el.validity.badInput ? {error: 'Enter a throughput above 0, like 10000.'} : Lib.parseTarget(el.value);
+      if (!r.error) tgtShown = false;
+      const bad = !!r.error && tgtShown;
+      el.setAttribute('aria-invalid', bad ? 'true' : 'false');
+      $('#tgtHint').textContent = bad ? r.error : 'A number above 0.';
+      return r;
+    }
     function forecast(){
-      const out = $('#tgtOut'), raw = $('#tgtVal').value.replace(/[, _]/g, ''), want = Number(raw);
-      if (!raw){ out.innerHTML = ''; ctx.emit('target:changed', {x: null}); return; }
-      if (!(want > 0) || !isFinite(want)){ out.innerHTML = P('Type a positive number, such as 10000.'); ctx.emit('target:changed', {x: null}); return; }
+      const out = $('#tgtOut'), t0 = readTarget(), want = t0.value;
+      if (t0.error){ out.innerHTML = ''; ctx.emit('target:changed', {x: null}); return; }
+      if (want == null){ out.innerHTML = ''; ctx.emit('target:changed', {x: null}); return; }
       if (!A || !A.ok){ out.innerHTML = P('Add measurements first.'); ctx.emit('target:changed', {x: null}); return; }
       const f = A.fit, u = A.units, pk = f.peak, maxN = A.rows[A.rows.length-1].n, secs = secsOf(u.x);
       const per = Number($('#tgtPer').value);
@@ -140,8 +151,9 @@ Kernel.register({
       forecast();
     }
     $('#tgtVal').addEventListener('input', changed);
+    $('#tgtVal').addEventListener('change', () => { tgtShown = true; changed(); });
     $('#tgtPer').addEventListener('change', changed);
-    $('#tgtClear').addEventListener('click', () => { $('#tgtVal').value = ''; changed(); });
+    $('#tgtClear').addEventListener('click', () => { $('#tgtVal').value = ''; tgtShown = false; changed(); $('#tgtVal').focus(); });
 
     // ---------- glossary ----------
     function glossary(){

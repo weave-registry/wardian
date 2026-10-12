@@ -1,7 +1,56 @@
 # Habit tracker
 
-A Wardian **suite**: six sealed apps that track daily habits together. It is plain JavaScript, with
-no WebAssembly. It shows `storage` (saved state kept by Wardian) and retained topics.
+For anyone building daily habits: tick each one off every day, see a year of them at a glance, and
+keep your streaks going. Everything stays in this Wardian, with a backup file whenever you like.
+
+## What you put in
+
+| Field | Type | Unit | Allowed | Default | Required |
+|---|---|---|---|---|---|
+| New habit | short text | — | 1 to 60 characters, not the same as another habit (any case); up to 100 habits | empty | yes |
+| Colour | one of 8 | — | Green, Blue, Violet, Pink, Orange, Teal, Yellow, Grey | the first colour no habit uses | yes |
+| Name (when renaming) | short text | — | as New habit | the current name | yes |
+| A day's tick | on or off | a day | today and the 6 days before it (Today), any past day in the last 53 weeks (calendar); never a future day | off | — |
+| Restore from a file | file | JSON | a backup from this app, up to 5 MB | — | — |
+
+## What it shows
+
+- **Today:** each habit with a box for today and the six days before it, and how many are done today.
+- **Streaks:** the current and longest run of days in a row, and how often each habit was kept in
+  the last 30 and 90 days.
+- **Year calendar:** a square per day for the last 53 weeks, per habit and for all habits together.
+- **Backup:** how many habits and check-ins there are, to download or restore.
+
+## How it behaves
+
+- With no habits yet, the list says how to start and offers **Add three examples**; Today says to
+  add a habit first.
+- A name is checked when you leave the field and when you press Add habit: an empty or repeated name
+  is outlined and the hint under it says what is allowed. Nothing typed is cleared. Renaming works the
+  same way; Escape cancels.
+- Deleting a habit asks first, saying how many check-ins go with it.
+- Download backup is disabled only with its reason beside it (no habits yet, or downloads not
+  available), and says "Saving…" while it saves. A restore checks the whole file first, says what it
+  holds and what it replaces, and changes nothing until you press **Replace my data**.
+- The day moves on at midnight, and when the page comes back into view.
+
+## Layout
+
+Two columns: the habits on the left; Today, Streaks, the calendar and Backup on the right. One
+column on a phone. Tab order is the reading order.
+
+| Panel | Holds |
+|---|---|
+| Your habits (aside) | The list (each with ↑, ↓, Edit, Delete); New habit (`text`, `size-lg`, hint "Up to 60 characters"); Colour (radio group, arrow keys move); Add habit. |
+| Today | The week's boxes, one row per habit; arrow keys move between boxes, Space or Enter ticks. |
+| Streaks | A table of current, longest, 30-day and 90-day figures. |
+| Year calendar | The squares; arrows move, Enter ticks. |
+| Backup | Download backup and Restore from a file…, with the reason when Download is disabled. |
+
+## How it is built
+
+A Wardian **suite** of six sealed apps, plain JavaScript. It shows `storage` (saved state kept by
+Wardian) and retained topics.
 
 | App | Slot | Job | Contract |
 |---|---|---|---|

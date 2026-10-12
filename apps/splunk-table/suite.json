@@ -20,9 +20,9 @@
     "shared/cells.js",
     "shared/find.js",
     "shared/range.js",
-    "shared/saved.js"
+    "shared/saved.js",
+    "shared/sample.js"
   ],
-  "header": "header.html",
   "surface": "glass",
   "apps": [
     {

@@ -21,7 +21,6 @@
     "ui/receipt.js",
     "core/lib.js"
   ],
-  "header": "core/header.html",
   "surface": "glass",
   "apps": [
     {

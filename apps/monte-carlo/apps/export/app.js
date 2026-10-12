@@ -15,7 +15,10 @@ Kernel.register({
       const ok = !!(r && r.ok && downloads);
       $('#pct').disabled = !ok; $('#crit').disabled = !ok;
       $('#sub').textContent = r && r.ok ? Fmt.int(r.done) + ' trials · seed ' + r.seed : '';
+      // A disabled button always has its reason beside it.
       if (!downloads) note('Downloads are not available in this host.');
+      else if (!r) note('The downloads open once the first run finishes.');
+      else if (!r.ok) note('Fix the task list, and the downloads open after the next run.');
     }
     async function save(name, lines){
       const filename = name + '-seed-' + r.seed + '-' + r.done + '-trials.csv';
@@ -35,5 +38,6 @@ Kernel.register({
     });
     ctx.cap('downloads').then(d => { downloads = d; sync(); }).catch(() => sync());
     ctx.on('sim:result', p => { r = p; note(''); sync(); });
+    sync();
   }
 });

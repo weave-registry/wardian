@@ -14,7 +14,7 @@ Kernel.register({
     ctx.on('plan:ready', plan => {
       const tiles = ctx.$('#tiles'), saved = ctx.$('#saved');
       if (!plan.ok) {
-        tiles.replaceChildren(); saved.textContent = plan.error || plan.loan.problem || 'Check the loan details.';
+        tiles.replaceChildren(); saved.textContent = plan.error ? `The plan could not be worked out: ${plan.error}.` : (plan.loan.problem || 'Fix the highlighted field to see results.');
         ctx.$('#sub').textContent = '';
         return;
       }

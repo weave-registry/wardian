@@ -36,9 +36,7 @@ Kernel.register({
     if (st.pending && typeof st.pending === 'object' && typeof st.pending.search === 'string') pending = st.pending;
     if (typeof st.handled === 'string') handled = st.handled;
 
-    $('#spl').addEventListener('input', () => { form.forget(); persist(); });
-    for (const id of ['#range', '#relN', '#relUnit', '#absFrom', '#absTo', '#advE', '#advL'])
-      for (const ev of ['input', 'change']) $(id).addEventListener(ev, () => { form.showRange(); persist(); });
+    form.watch(persist);   // a field's problem shows when you leave it; typing clears a fixed one
     $('#title').addEventListener('input', persist);
     for (const id of ['#words', '#wordsIndex']){
       $(id).addEventListener('input', () => { if ($('#preset').value === 'find'){ form.fillFind(); persist(); } });
@@ -139,11 +137,11 @@ Kernel.register({
     async function run(why){
       const splunk = await ctx.cap('splunk').catch(() => null);
       if (!splunk){ status('Splunk is not set up in this Wardian.', 'warn'); return; }
-      if (!why && $('#preset').value === 'find' && !form.words().length){ status('Type the words to find first.', 'warn'); $('#words').focus(); return; }
+      if (!why && $('#preset').value === 'find' && !form.words().length){ mark('#words', true); status('Type the words to find first.', 'warn'); $('#words').focus(); return; }
       const search = $('#spl').value.trim();
-      if (!search){ status('Type a search first, or pick one under Start from.', 'warn'); $('#spl').focus(); return; }
+      if (!search){ mark('#spl', true); status('Type a search first, or pick one under Start from.', 'warn'); $('#spl').focus(); return; }
       const range = form.range();
-      if (range.error){ status(range.error, 'warn'); form.showRange(); return; }
+      if (range.error){ status(range.error, 'warn'); form.showRange(); if (range.field) $('#' + range.field).focus(); return; }
       $('#btnRun').disabled = true;
       // Splunk does not say how far a search has got, so the bar shows a clock rather than a share.
       bar.start('Searching Splunk', {detail: 'A search over many days can take a few minutes. You may leave this app meanwhile; Wardian stops it after 15.', cancelable: true});
@@ -164,6 +162,13 @@ Kernel.register({
       } finally { $('#btnRun').disabled = false; }
     }
     $('#btnRun').addEventListener('click', () => run());
+
+    // Without Splunk: a sample table (shared/sample.js), so every part can be tried.
+    $('#btnSample').addEventListener('click', () => {
+      table = SampleTable.make(); persist();
+      ctx.emit('table:ready', {table, send: false});
+      status('Showing a sample table: made-up rows, not from Splunk. Send it to other apps from Use this table to try the USL lab.');
+    });
 
     // Opening the app again: a search started earlier may still be running, or have finished
     // while the app was closed.
@@ -229,7 +234,11 @@ Kernel.register({
       db = await ctx.cap('db').catch(() => null);
       const splunk = await ctx.cap('splunk').catch(() => null);
       const ready = splunk && (await splunk.status().catch(() => ({ready: false}))).ready;
-      if (!ready){ $('#btnRun').disabled = true; status('Splunk is not set up in this Wardian. An admin adds it in Settings → Splunk. You can still open saved tables.', 'warn'); return; }
+      if (!ready){
+        $('#btnRun').disabled = true; $('#sampleRow').hidden = false;
+        status('Splunk is not set up in this Wardian, so Run search is off. An admin adds it in Settings → Splunk. Meanwhile you can open saved tables, or see how the app works with a sample table.', 'warn');
+        return;
+      }
       if (await resume(splunk)) return;
       if (table) status('The table shown is the last one you fetched. Run the search for fresh rows.');
     })();

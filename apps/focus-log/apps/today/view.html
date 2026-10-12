@@ -1,4 +1,4 @@
-<div class="head"><h2>Today</h2><span class="sub" id="sub"></span></div>
+<div class="head"><h2 class="w-heading">Today</h2><span class="sub" id="sub"></span></div>
 <div class="tiles">
   <div class="tile"><div class="label">Focused</div><div class="value" id="mins">0 min</div><div class="label" id="goalText"></div></div>
   <div class="tile"><div class="label">Sessions</div><div class="value" id="count">0</div><div class="label" id="done"></div></div>
@@ -6,6 +6,7 @@
 </div>
 <div class="goal">
   <div class="meter" aria-hidden="true"><span id="fill"></span></div>
-  <div class="w-field goalfield"><label class="w-label" for="goal">Daily goal (minutes)</label>
-    <input class="w-input" id="goal" type="number" min="5" max="1440" step="5" inputmode="numeric"></div>
+  <div class="w-field goalfield"><label class="w-label" for="goal">Daily goal</label>
+    <div class="w-affix"><input class="w-input size-xs num" id="goal" type="number" min="5" max="1440" step="1" inputmode="numeric" required aria-describedby="goal-hint"><span>minutes</span></div>
+    <p class="w-hint" id="goal-hint">From 5 to 1,440.</p></div>
 </div>

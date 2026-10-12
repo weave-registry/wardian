@@ -1,5 +1,62 @@
 # Splunk table
 
+For anyone who works with Splunk: run a search and see every row it returns, so you can check the
+data before another app uses it. The latest table goes out to other apps, such as the USL lab, which
+lets you choose the load, throughput and response time columns.
+
+## What you put in
+
+| Field | Type | Allowed | Default | Required |
+|---|---|---|---|---|
+| Start from | one of: my own search, find words, a load test template, a live traffic template | — | my own search | yes |
+| Words to find (find words only) | short text | up to 200 characters; a phrase in quotes | empty | yes, for that choice |
+| In index (find words only) | short text | up to 80 characters of letters, digits, `- _ * .` | every index | no |
+| Splunk search | long text in Splunk's search language | up to 10,000 characters | the last search | yes |
+| Time range | a ready range, a calendar range, Last …, Between two dates, or Splunk time codes | — | Last 24 hours | yes |
+| How many (Last …) | whole number | 1 to 100,000 | 3 | yes, for that choice |
+| Unit (Last …) | minutes, hours, days, weeks or months | — | days | yes, for that choice |
+| From / To (between two dates) | date and time | To after From; To empty means now | yesterday 00:00 / now | From: yes |
+| Earliest / Latest (time codes) | Splunk time code, like `-2d@d` | up to 40 characters; Latest empty means now | empty | no |
+| Name of this table | short text | up to 120 characters | from the template | no |
+| What you want (Ask Claude) | long text | up to 500 characters | empty | yes, to write with AI |
+| Find in results | search text | up to 200 characters: words, `column=text`, `column!=text`, `column>number` (also `<`, `>=`, `<=`) | empty | no |
+
+## What it shows
+
+- **About this table:** what the rows are, the search, the time range, when it ran and how long it took.
+- **Result:** every row, 100 at a time, sortable, with Find in results and how many rows match.
+- **Use this table:** Send to other apps, Download CSV, Save table, what was sent, and the saved tables.
+- **Ask Claude:** a search Claude writes from your description, from your index and field names.
+
+## How it behaves
+
+- Searches run as background jobs on the Wardian server, with a clock and Stop; you can leave the app
+  meanwhile, and it picks the result up when you come back.
+- **Without Splunk** (not set up in Settings), Run search is off and the status says why and who sets
+  it up. Saved tables still open, and **Show a sample table** loads made-up rows, titled as a sample
+  and never presented as Splunk's, so every part, and the USL lab, can be tried.
+- A field's problem shows when you leave it or press Run search: an empty search, no words to find, or
+  a time range it can't use. The field is marked, the message says what is allowed, and Run search
+  puts the focus on it. Find in results explains a filter it can't read under the field.
+- A disabled button has its reason next to it. Searches, saved searches and saved tables are kept in
+  this app.
+
+## Layout
+
+1. **Search** (the side column): Start from (`size-lg`), Words to find (`size-lg`) and In index
+   (`size-md`) when finding words, Splunk search (`size-full`), Time range (`size-md`) with How many
+   (`size-xs`, `num`) and Unit (`size-sm`), From and To (`size-md`), or Earliest and Latest
+   (`size-sm`), Name of this table (`size-lg`), Run search and Save search, the progress bar, the
+   status, Show a sample table (without Splunk only), Saved searches.
+2. **Ask Claude** (the side column): What you want (`size-full`), the USL switch, Write with AI.
+3. **About this table**, **Result** (Find in results, `size-full`, the table, the pager) and **Use
+   this table**, in the main column.
+
+The tab order follows that reading order. Errors are marked with `aria-invalid` and explained in
+hints tied to their fields with `aria-describedby`.
+
+## How it is built
+
 Runs a Splunk search on the Wardian server and shows every row it returns, so you can check the
 data before an app uses it. The latest table goes out on the channel `splunk.table`; the USL lab
 receives it and lets you choose which columns are load, throughput and response time.

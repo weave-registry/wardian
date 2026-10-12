@@ -1,9 +1,58 @@
 # Focus log
 
-A Wardian **suite** that keeps every focus session the **Focus timer** sends. It shows your time
-today, the last seven days, your time per label and the full history. The two are separate packages.
-They talk only on the channel `focus.session`, and only after you allow it (SPEC.md §6.9). So they
-show how two apps that know nothing of each other can work together, with your permission.
+For anyone using the **Focus timer**: every session you finish there lands here, so you can see how
+long you focused today, the last seven days, where the time went, and every session since you
+started. The two apps are separate packages that talk only on the channel `focus.session`, and only
+after you allow it (SPEC.md §6.9).
+
+## What you put in
+
+| Field | Type | Unit | Allowed | Default | Required |
+|---|---|---|---|---|---|
+| Daily goal | whole number | minutes | 5 to 1,440 | 120 | yes |
+| Period (Where the time went) | one of 3 | — | Last 7 days, Last 30 days, All time | Last 7 days | yes |
+| Allow the channel | yes or no | — | Wardian's own question when the log first opens | — | — |
+
+Sessions themselves come from the Focus timer: a label, minutes (above 0, up to 1,440), when it
+started and ended, and whether it was completed. A message that is not like that is refused and
+counted, never stored.
+
+## What it shows
+
+- **Sessions coming in:** whether the channel is open, and the last session received as a receipt.
+- **Today:** minutes focused, sessions (completed and stopped early), the longest one, and progress
+  toward the daily goal.
+- **The last 7 days:** minutes per day as bars, today on the right; hover or use the arrow keys.
+- **Where the time went:** minutes per label, most first, for the chosen period.
+- **Every session:** newest first, 20 a page, each with Remove.
+- **Export:** every session as CSV.
+
+## How it behaves
+
+- Until the first session arrives, each panel says what fills it ("Finish one in the Focus timer").
+- If you do not allow the channel, the log keeps what it has, explains how to change that, and
+  offers **Ask again**.
+- The goal is checked when you leave the field: a wrong value is outlined and its hint says what is
+  allowed; the last valid goal keeps working until it is fixed, and nothing is replaced silently.
+- Removing a session asks first, in a dialog (Escape keeps it).
+- Download CSV is disabled only with its reason beside it (no sessions yet, or downloads not
+  available), says "Exporting…" and shows progress while it writes.
+
+## Layout
+
+Two columns: Sessions coming in on the left; Today, the last 7 days, Where the time went, Every
+session and Export on the right. One column on a phone. Tab order is the reading order.
+
+| Panel | Holds |
+|---|---|
+| Sessions coming in (aside) | The channel's state, Ask again when refused, the last receipt. |
+| Today | Three tiles, the goal meter, Daily goal (`number`, `size-xs`, `num`, "minutes" beside it, hint). |
+| The last 7 days | The bar chart (focusable, arrow keys) and its reading. |
+| Where the time went | Period (a radio group, arrow keys move), the list of labels. |
+| Every session | The table (Remove on each row), Newer and Older. |
+| Export | Download CSV with its reason when disabled, and the progress bar. |
+
+## How it is built
 
 It is a suite because it has several jobs: receive, three summaries, a history and an export. Each
 part has its own panel and reads the same SQLite table.

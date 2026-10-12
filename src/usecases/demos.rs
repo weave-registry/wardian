@@ -376,7 +376,13 @@ mod tests {
                     assert!(has(&format!("apps/{app}/{page}")) && b.contains(&format!("/apps/{app}/{page}")), "{app}");
                 }
                 Kind::Suite { browser_only: true } => {
-                    assert!(has(&format!("run/{app}/index.html")) && has(&format!("frame/{app}/index.html")) && has(&format!("apps/{app}/suite.json")), "{app}");
+                    // A suite has no header frame now that apps don't repeat their name (ADR-2610111750);
+                    // each of its parts has one.
+                    assert!(has(&format!("run/{app}/index.html")) && has(&format!("apps/{app}/suite.json")), "{app}");
+                    let suite: serde_json::Value = serde_json::from_slice(&files_of(&a, app).find(|(r, _)| *r == "suite.json").unwrap().1).unwrap();
+                    for part in suite["apps"].as_array().unwrap().iter().filter(|p| p.get("slot").is_some()).filter_map(|p| p["name"].as_str()) {
+                        assert!(has(&format!("frame/{app}/{part}/index.html")), "{app}: a frame for {part}");
+                    }
                     assert!(b.contains(&format!("/run/{app}/")), "{app}");
                 }
                 _ => assert!(!b.contains("<iframe") && !has(&format!("apps/{app}/suite.json")), "{app} does not run on the website"),
@@ -402,7 +408,7 @@ mod tests {
         let (files, entry) = preview_site(&a, "loans", &pkg("loan-planner")).unwrap();
         let has = |p: &str| files.iter().any(|(q, _)| q == p);
         assert_eq!(entry, "run/loans/");
-        assert!(has("run/loans/index.html") && has("frame/loans/index.html") && has("apps/loans/suite.json"));
+        assert!(has("run/loans/index.html") && has("apps/loans/suite.json"));
         assert!(has("state.js") && has("channels.js") && has("ui/arrange.js") && has("ui/theme.css") && has("ui/surface.css"));
         let s: serde_json::Value = serde_json::from_slice(&pkg("loan-planner").into_iter().find(|(r, _)| r == "suite.json").unwrap().1).unwrap();
         for part in s["apps"].as_array().unwrap().iter().filter_map(|p| p["name"].as_str()) {

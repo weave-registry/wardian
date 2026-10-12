@@ -16,7 +16,6 @@
   "scripts": [
     "shared/text.js"
   ],
-  "header": "header.html",
   "surface": "glass",
   "apps": [
     {

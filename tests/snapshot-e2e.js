@@ -112,7 +112,7 @@ async function offline(browser, file, check) {
   ok(/Everything on screen goes into the file/.test(loan.warn), 'the button warns before saving: ' + loan.warn.slice(0, 80));
   const lr = await inspect(page, loan.html);
   safe(lr, 'loan planner');
-  ok(lr.parts.join() === 'header,inputs,summary,chart', 'the visible panels, in the viewer\'s order, and not the hidden one: ' + lr.parts.join());
+  ok(lr.parts.join() === 'inputs,summary,chart', 'the visible panels, in the viewer\'s order, and not the hidden one: ' + lr.parts.join());
   ok(!/Download schedule/.test(lr.text), 'the hidden export panel\'s text is not in the file');
   const firstTile = tiles.slice(0, 30);
   ok(tiles.length > 10 && lr.text.includes(firstTile), 'the summary shows what was on screen: ' + firstTile);

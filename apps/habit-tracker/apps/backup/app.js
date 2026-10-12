@@ -9,23 +9,28 @@ Kernel.register({
   caps: ['claude:downloads'],
   init(ctx) {
     const $ = ctx.$, note = $('#note'), MAX_BYTES = 5 * 1024 * 1024;
-    let habits = null, days = {}, downloads = null, pending = null;
+    let habits = null, days = {}, downloads = null, pending = null, busy = false;
 
     const say = (text, warn) => { note.textContent = text; note.classList.toggle('warn', !!warn); };
     function sync() {
       const n = habits ? habits.length : 0, c = habits ? Model.count(Model.backup(habits, days).days) : 0;
       $('#sub').textContent = n ? Stats.plural(n, 'habit') + ', ' + Stats.plural(c, 'check-in') : '';
-      $('#save').disabled = !(downloads && n);
+      $('#save').disabled = busy || !(downloads && n);
+      $('#save').textContent = busy ? 'Saving…' : 'Download backup';
+      // Disabled only with its reason beside it.
+      $('#why').textContent = busy ? '' : !downloads ? 'Downloads are not available in this Wardian.' : !n ? 'Add a habit to back it up.' : '';
     }
-    ctx.cap('downloads').then(d => { downloads = d; if (!d) say('Downloads are not available in this host.', true); sync(); }, () => say('Downloads are not available in this host.', true));
+    ctx.cap('downloads').then(d => { downloads = d; sync(); }, () => sync());
 
     $('#save').addEventListener('click', async () => {
       const data = Model.backup(habits, days);
       const name = 'habits-' + Days.today() + '.json';
+      busy = true; sync();
       try {
         await downloads.save({ filename: name, data: JSON.stringify(data, null, 2) + '\n' });
         say('Saved ' + name + ': ' + Stats.plural(data.habits.length, 'habit') + ', ' + Stats.plural(Model.count(data.days), 'check-in') + '.');
-      } catch (e) { say('Could not save the backup: ' + e.message, true); }
+      } catch (e) { say('Could not save the backup: ' + e.message + '. Try again.', true); }
+      busy = false; sync();
     });
 
     $('#open').addEventListener('click', () => $('#file').click());

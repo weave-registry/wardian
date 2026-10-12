@@ -68,6 +68,9 @@ Kernel.register({
       catch (e){ if (mine === drawing){ out.replaceChildren(empty('Could not read the rows: ' + Data.errText(e))); pager.hidden = true; } return; }
       if (mine !== drawing) return;
       total = page.total;
+      // A filter's problem is marked once you leave the field (or press Enter), and clears when it is right.
+      if (!filter.problems.length) findShown = false;
+      $('#find').setAttribute('aria-invalid', filter.problems.length && findShown ? 'true' : 'false');
       if (filter.problems.length) hint(filter.problems.join(' '), true);
       else hint(filter.active ? Data.count(total) + ' of ' + Data.rows(data.total) + ' match.' : Filter.HINT);
       if (pageAt > 0 && pageAt >= total){ pageAt = Math.max(0, Math.floor((total - 1) / PAGE) * PAGE); return draw(); }
@@ -88,7 +91,8 @@ Kernel.register({
     $('#next').addEventListener('click', () => go(pageAt + PAGE));
     $('#last').addEventListener('click', () => go(Math.floor((total - 1) / PAGE) * PAGE));
 
-    let timer = null;
+    let timer = null, findShown = false;
+    $('#find').addEventListener('change', () => { findShown = true; clearTimeout(timer); view.find = $('#find').value.trim(); pageAt = 0; tell(); draw(); });
     $('#find').addEventListener('input', () => {
       clearTimeout(timer);
       timer = setTimeout(() => { view.find = $('#find').value.trim(); pageAt = 0; tell(); draw(); }, 250);

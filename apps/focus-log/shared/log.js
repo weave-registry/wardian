@@ -56,6 +56,16 @@ const Log = (() => {
   const date = ymd => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, {weekday: 'short', day: 'numeric', month: 'short'}); };
   const errText = e => String((e && e.message) || e || 'unknown error');
   const empty = (ctx, text) => Object.assign(ctx.el('p'), {className: 'empty', textContent: text});
+  /** The daily goal as typed: {value} in minutes, or {error} saying what is allowed. */
+  function parseGoal(text){
+    const t = String(text).trim(), v = Number(t);
+    if (t === '') return {error: 'Enter a goal in minutes, from 5 to 1,440.'};
+    if (!Number.isInteger(v) || v < 5 || v > 1440) return {error: 'Enter a whole number of minutes from 5 to 1,440 (24 hours).'};
+    return {value: v};
+  }
+  /** The period of the labels view: 7, 30 or 0 (all time). */
+  const PERIODS = [7, 30, 0];
+  const parsePeriod = text => PERIODS.includes(Number(text)) ? {value: Number(text)} : {error: 'Choose a period.'};
 
-  return Object.freeze({TABLE, COLUMNS, db, day, daysAgo, clean, what, insert, minutes, time, date, errText, empty});
+  return Object.freeze({TABLE, COLUMNS, db, day, daysAgo, clean, what, insert, minutes, time, date, errText, empty, parseGoal, parsePeriod});
 })();

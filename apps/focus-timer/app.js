@@ -11,13 +11,43 @@
   const NAMES = {work: 'Focus', short: 'Short break', long: 'Long break'};
   const toast = (text, opts) => window.WardianUI && WardianUI.toast ? WardianUI.toast(text, opts) : null;
 
+  // ---------- the inputs: one parser each, as the README's field spec says ----------
+  // A parser takes the field's text and gives {value} or {error}, never a guess.
+  const wholeMinutes = (min, max) => text => {
+    const t = String(text).trim();
+    const n = Number(t);
+    if (t === '' || !Number.isInteger(n) || n < min || n > max) return {error: 'Enter whole minutes from ' + min + ' to ' + max + '.'};
+    return {value: n};
+  };
+  const PARSE = {
+    label: text => ({value: String(text).trim().slice(0, 80)}),
+    work: wholeMinutes(1, 180), short: wholeMinutes(1, 60), long: wholeMinutes(1, 90),
+    every: text => { const n = Number(text); return [2, 3, 4, 5, 6].includes(n) ? {value: n} : {error: 'Choose 2 to 6 focus sessions.'}; },
+  };
+  // The last good value of each length: the timer runs on these while a field is being fixed.
+  const good = {work: 25, short: 5, long: 15};
+  const hints = {};
+  // Checks a length field: marks it and says what is allowed, or clears the mark. Returns whether it is good.
+  function check(id){
+    const input = $(id), hint = $(id + '-hint'), r = PARSE[id](input.value);
+    hints[id] = hints[id] || hint.textContent;
+    if (r.error){
+      input.setAttribute('aria-invalid', 'true');
+      hint.textContent = r.error + ' The timer keeps ' + good[id] + ' min until then.';
+      return false;
+    }
+    input.removeAttribute('aria-invalid'); hint.textContent = hints[id];
+    good[id] = r.value;
+    return true;
+  }
+  const every = () => PARSE.every(document.querySelector('input[name="every"]:checked').value).value;
+
   const S = {
     phase: 'work', running: false, endsAt: 0, left: 0, round: 0,   // round: focus sessions done this cycle
     started: null, worked: 0, resumed: 0,                          // the current focus session
     fresh: true,                                                   // the phase has not started yet
   };
-  const minutesOf = id => Math.max(1, Math.min(180, Math.round(Number($(id).value)) || 1));
-  const length = phase => minutesOf(phase) * 60000;
+  const length = phase => good[phase] * 60000;
   S.left = length('work');
 
   // ---------- sound: a soft two-note chime, made with WebAudio ----------
@@ -40,13 +70,13 @@
 
   // ---------- drawing ----------
   const clock = ms => { const s = Math.ceil(ms / 1000); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
-  const label = () => $('label').value.trim();
+  const label = () => PARSE.label($('label').value).value;
   function draw(){
     const left = S.running ? Math.max(0, S.endsAt - Date.now()) : S.left, total = length(S.phase);
     $('time').textContent = clock(left);
     const arc = $('arc'), c = 2 * Math.PI * 88;
     arc.style.strokeDasharray = c; arc.style.strokeDashoffset = c * (1 - (total - left) / total);
-    document.querySelectorAll('.phase').forEach(p => p.classList.toggle('on', p.dataset.phase === S.phase));
+    document.querySelectorAll('.phase').forEach(p => { if (p.dataset.phase === S.phase) p.setAttribute('aria-current', 'step'); else p.removeAttribute('aria-current'); });
     $('timerCard').dataset.phase = S.phase;
     const fresh = S.fresh;
     $('what').textContent = S.phase === 'work'
@@ -54,11 +84,11 @@
       : (S.running ? NAMES[S.phase] + ': rest' : fresh ? NAMES[S.phase] + ' next' : 'Break paused');
     $('go').textContent = S.running ? 'Pause' : fresh ? 'Start' : 'Resume';
     $('skip').textContent = S.phase === 'work' ? 'Skip to break' : 'Skip break';
-    const every = Number($('every').value);
-    $('rounds').replaceChildren(...Array.from({length: every}, (_, i) => {
+    const n = every();
+    $('rounds').replaceChildren(...Array.from({length: n}, (_, i) => {
       const d = document.createElement('span'); d.className = 'dot' + (i < S.round ? ' done' : ''); return d;
     }));
-    $('rounds').title = S.round + ' of ' + every + ' focus sessions before the long break';
+    $('rounds').setAttribute('aria-label', S.round + ' of ' + n + ' focus sessions done before the long break');
   }
 
   // ---------- the clock ----------
@@ -89,7 +119,7 @@
     if (was === 'work'){
       endWork(completed);
       S.round += 1;
-      S.phase = S.round >= Number($('every').value) ? 'long' : 'short';
+      S.phase = S.round >= every() ? 'long' : 'short';
     } else {
       if (was === 'long') S.round = 0;
       S.phase = 'work';
@@ -175,14 +205,24 @@
   $('skip').addEventListener('click', () => next(false));
   $('reset').addEventListener('click', reset);
   $('test').addEventListener('click', () => {
-    const now = Date.now(), mins = minutesOf('work');
+    const now = Date.now(), mins = good.work;
     log({label: label() || 'Test session', minutes: mins, started: new Date(now - mins * 60000).toISOString(), ended: new Date(now).toISOString(), completed: true});
   });
+  // A length is checked when the field is left, and its error clears as soon as it is good again.
   // A new length shows at once when the phase it belongs to has not started yet.
-  ['work', 'short', 'long', 'every'].forEach(id => $(id).addEventListener('change', () => {
-    if (S.fresh && id === S.phase) S.left = length(S.phase);
-    draw();
-  }));
+  ['work', 'short', 'long'].forEach(id => {
+    $(id).addEventListener('change', () => {
+      if (check(id) && S.fresh && id === S.phase) S.left = length(S.phase);
+      draw();
+    });
+    $(id).addEventListener('input', () => { if ($(id).hasAttribute('aria-invalid') && !PARSE[id]($(id).value).error) $(id).dispatchEvent(new Event('change')); });
+  });
+  document.querySelectorAll('input[name="every"]').forEach(r => r.addEventListener('change', draw));
+  $('settings').addEventListener('submit', e => {
+    e.preventDefault();
+    const bad = ['work', 'short', 'long'].filter(id => !check(id));
+    if (bad.length) $(bad[0]).focus();
+  });
   $('label').addEventListener('input', draw);
   document.addEventListener('keydown', e => {
     if (e.code !== 'Space' || /INPUT|SELECT|TEXTAREA|BUTTON/.test(document.activeElement.tagName)) return;

@@ -53,7 +53,8 @@ Kernel.register({
       $('#next').disabled = last >= page.total;
     }
     async function remove(d, id, label){
-      if (!window.confirm('Remove the session “' + label + '” from the log?')) return;
+      const sure = await WardianUI.confirm('It goes from the log, the totals and the export. This cannot be undone.', {title: 'Remove the session “' + label + '”?', ok: 'Remove', cancel: 'Keep it', destructive: true});
+      if (!sure) return;
       try { await d.query({sql: 'DELETE FROM sessions WHERE id = ?', params: [id]}); }
       catch (e){ $('#pageInfo').textContent = 'Could not remove it: ' + Log.errText(e); return; }
       ctx.emit('log:changed', {at: Date.now()});

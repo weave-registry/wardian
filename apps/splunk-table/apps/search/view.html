@@ -1,7 +1,7 @@
 <h2>Search</h2>
 <div class="w-field">
   <label class="w-label" for="preset">Start from</label>
-  <select class="w-input" id="preset">
+  <select class="w-input size-lg" id="preset">
     <option value="">My own search</option>
     <option value="find">Find words in all my data</option>
     <option value="loadtest">A load test (template, for the USL lab)</option>
@@ -9,15 +9,16 @@
   </select>
 </div>
 <div class="grid range-more" id="findWords" hidden>
-  <div class="w-field"><label class="w-label" for="words">Words to find</label><input class="w-input" type="text" id="words" placeholder="For example: timeout checkout"></div>
-  <div class="w-field"><label class="w-label" for="wordsIndex">In index (empty means all)</label><input class="w-input" type="text" id="wordsIndex" spellcheck="false" placeholder="main"></div>
+  <div class="w-field"><label class="w-label" for="words">Words to find</label><input class="w-input size-lg" type="text" id="words" maxlength="200" placeholder="For example: timeout checkout" aria-describedby="wordsHint"><p class="w-hint" id="wordsHint">Each word must appear; put a phrase in "quotes".</p></div>
+  <div class="w-field"><label class="w-label" for="wordsIndex">In index</label><input class="w-input size-md" type="text" id="wordsIndex" spellcheck="false" maxlength="80" placeholder="main" aria-describedby="wordsIndexHint"><p class="w-hint" id="wordsIndexHint">Optional. Empty searches every index.</p></div>
 </div>
 <div class="w-field">
   <label class="w-label" for="spl">Splunk search</label>
-  <textarea class="w-input" id="spl" spellcheck="false" rows="5" placeholder="index=main | stats count BY sourcetype"></textarea>
+  <textarea class="w-input size-full" id="spl" spellcheck="false" rows="5" maxlength="10000" placeholder="index=main | stats count BY sourcetype" aria-describedby="splHint"></textarea>
+  <p class="w-hint" id="splHint">In Splunk's search language, up to 10,000 characters.</p>
 </div>
 <div class="w-field"><label class="w-label" for="range">Time range</label>
-  <select class="w-input" id="range">
+  <select class="w-input size-md" id="range" aria-describedby="rangeHint">
     <optgroup label="Recent">
       <option value="-15m|">Last 15 minutes</option>
       <option value="-60m|">Last 60 minutes</option>
@@ -44,9 +45,9 @@
     <option value="|">All time</option>
   </select></div>
 <div class="grid range-more" id="rangeRel" hidden>
-  <div class="w-field"><label class="w-label" for="relN">How many</label><input class="w-input" type="number" id="relN" min="1" step="1" value="3"></div>
+  <div class="w-field"><label class="w-label" for="relN">How many</label><input class="w-input size-xs num" type="number" id="relN" min="1" max="100000" step="1" inputmode="numeric" required value="3" aria-describedby="rangeHint"></div>
   <div class="w-field"><label class="w-label" for="relUnit">Unit</label>
-    <select class="w-input" id="relUnit">
+    <select class="w-input size-sm" id="relUnit">
       <option value="m">Minutes</option>
       <option value="h">Hours</option>
       <option value="d" selected>Days</option>
@@ -55,21 +56,24 @@
     </select></div>
 </div>
 <div class="grid range-more" id="rangeAbs" hidden>
-  <div class="w-field"><label class="w-label" for="absFrom">From</label><input class="w-input" type="datetime-local" id="absFrom"></div>
-  <div class="w-field"><label class="w-label" for="absTo">To (empty means now)</label><input class="w-input" type="datetime-local" id="absTo"></div>
+  <div class="w-field"><label class="w-label" for="absFrom">From</label><input class="w-input size-md" type="datetime-local" id="absFrom" required aria-describedby="rangeHint"></div>
+  <div class="w-field"><label class="w-label" for="absTo">To</label><input class="w-input size-md" type="datetime-local" id="absTo" aria-describedby="absToHint rangeHint"><p class="w-hint" id="absToHint">Optional. Empty means now.</p></div>
 </div>
 <div class="grid range-more" id="rangeAdv" hidden>
-  <div class="w-field"><label class="w-label" for="advE">Earliest</label><input class="w-input" type="text" id="advE" spellcheck="false" placeholder="-2d@d"></div>
-  <div class="w-field"><label class="w-label" for="advL">Latest (empty means now)</label><input class="w-input" type="text" id="advL" spellcheck="false" placeholder="@d"></div>
+  <div class="w-field"><label class="w-label" for="advE">Earliest</label><input class="w-input size-sm" type="text" id="advE" spellcheck="false" maxlength="40" placeholder="-2d@d" aria-describedby="rangeHint"></div>
+  <div class="w-field"><label class="w-label" for="advL">Latest</label><input class="w-input size-sm" type="text" id="advL" spellcheck="false" maxlength="40" placeholder="@d" aria-describedby="advLHint rangeHint"><p class="w-hint" id="advLHint">Optional. Empty means now.</p></div>
 </div>
 <p class="w-hint range-hint" id="rangeHint"></p>
-<div class="w-field"><label class="w-label" for="title">Name of this table</label><input class="w-input" type="text" id="title" placeholder="For example: checkout requests, last 7 days"></div>
+<div class="w-field"><label class="w-label" for="title">Name of this table</label><input class="w-input size-lg" type="text" id="title" maxlength="120" placeholder="For example: checkout requests, last 7 days" aria-describedby="titleHint"><p class="w-hint" id="titleHint">Optional. Shown with the table in other apps.</p></div>
 <div class="btnrow">
   <button class="w-button" id="btnRun" type="button">Run search</button>
   <button class="w-button" data-variant="outline" id="btnSaveSearch" type="button">Save search</button>
 </div>
 <wardian-progress id="bar" hidden></wardian-progress>
 <div class="status" id="status" role="status"></div>
+<div class="btnrow" id="sampleRow" hidden>
+  <button class="w-button" data-variant="outline" id="btnSample" type="button">Show a sample table</button>
+</div>
 
 <details class="saved" id="savedBox">
   <summary>Saved searches <span class="count" id="savedCount"></span></summary>

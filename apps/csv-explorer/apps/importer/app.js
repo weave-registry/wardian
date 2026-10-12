@@ -24,8 +24,11 @@ Kernel.register({
       if (!current){ box.replaceChildren(); return; }
       const d = current, el = (tag, cls, text) => { const e = ctx.el(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
       const head = el('div', 'current-head');
-      head.append(el('b', 'current-name', d.name), el('span', 'current-meta', Data.rows(d.total) + ' · ' + d.columns.length + ' columns · loaded ' + Data.when(d.loadedAt)));
+      head.append(el('b', 'current-name', d.name));
+      if (d.sample){ const b = el('span', 'w-badge', 'Sample data'); b.dataset.variant = 'outline'; head.append(b); }
+      head.append(el('span', 'current-meta', Data.rows(d.total) + ' · ' + d.columns.length + ' columns · loaded ' + Data.when(d.loadedAt)));
       const list = el('ul', 'columns');
+      list.setAttribute('aria-label', 'Columns and their types'); list.tabIndex = 0;   // it scrolls, so it is a stop with a name
       d.fields.forEach((f, i) => {
         const li = el('li'), badge = el('span', 'w-badge', d.types[i]);
         badge.dataset.variant = d.types[i] === 'number' ? 'secondary' : 'outline';
@@ -39,7 +42,10 @@ Kernel.register({
     }
 
     async function removeData(){
-      if (!current || busy || !window.confirm('Remove “' + current.name + '” from this app? The file on your computer stays.')) return;
+      if (!current || busy) return;
+      const ask = window.WardianUI && WardianUI.confirm ? WardianUI.confirm('“' + current.name + '” is removed from this app. The file on your computer stays.', {title: 'Remove the data?', ok: 'Remove', destructive: true})
+        : Promise.resolve(window.confirm('Remove “' + current.name + '” from this app? The file on your computer stays.'));
+      if (!(await ask)) return;
       try {
         await sql('DELETE FROM csv_meta WHERE k = ?1', ['current']);
         await sql('DROP TABLE IF EXISTS ' + Data.q(current.table));
@@ -51,7 +57,7 @@ Kernel.register({
     // ---------- loading a file ----------
     // Reads the text, creates a new table typed from the file, and inserts the rows in batches.
     // The table shown before stays until the new one is complete, so a failed load loses nothing.
-    async function load(text, name){
+    async function load(text, name, sample){
       if (busy || !db) return;
       setBusy(true); stop = false; status('');
       bar.start('Reading ' + name, {cancelable: true});
@@ -79,7 +85,7 @@ Kernel.register({
           const done = Math.min(at + per, total);
           bar.update({value: done, detail: Data.count(done) + ' of ' + Data.rows(total)});
         }
-        const d = {table, name, fields: csv.fields, columns, types: csv.types, total, loadedAt: new Date().toISOString(), delimiter: csv.delimiter};
+        const d = {table, name, fields: csv.fields, columns, types: csv.types, total, loadedAt: new Date().toISOString(), delimiter: csv.delimiter, sample: !!sample};
         await sql('INSERT OR REPLACE INTO csv_meta (k, v) VALUES (?1, ?2)', ['current', JSON.stringify(d)]);
         const old = current;
         announce(d);
@@ -106,9 +112,10 @@ Kernel.register({
     $('#choose').addEventListener('click', () => $('#file').click());
     $('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
     $('#sample').addEventListener('click', async () => {
-      try { await load(new TextDecoder().decode(await ctx.asset('sample/cities.csv')), 'cities.csv'); }
+      try { await loadSample(); }
       catch (e){ status('Could not read the sample: ' + Data.errText(e), true); }
     });
+    const loadSample = async () => load(new TextDecoder().decode(await ctx.asset('sample/cities.csv')), 'cities.csv', true);
     const drop = $('#drop');
     drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
@@ -130,7 +137,12 @@ Kernel.register({
         // Tables left by a load that was interrupted (the page closed half-way) are dropped.
         for (const t of await db.tables()) if (Data.TABLE.test(t.name) && (!d || t.name !== d.table)) await sql('DROP TABLE IF EXISTS ' + Data.q(t.name));
         announce(d);
-        if (!d) status('No data yet. Open a CSV file, or press Load sample.');
+        // The first start shows the point of the app: the sample, marked as such. Once someone has had
+        // data here (or removed it), an empty app stays empty.
+        const seen = await sql('SELECT v FROM csv_meta WHERE k = ?1', ['seen']);
+        if (!d && !seen.rows.length){ setBusy(false); await loadSample().catch(() => {}); }
+        else if (!d) status('No data yet. Drop a CSV file above, choose one, or press Load sample.');
+        await sql('INSERT OR REPLACE INTO csv_meta (k, v) VALUES (?1, ?2)', ['seen', '1']);
       } catch (e){ status('Could not read the database: ' + Data.errText(e), true); announce(null); }
       finally { setBusy(false); }
     })();

@@ -15,6 +15,16 @@ const Model = Object.freeze({
   newId() { return 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); },
   colorName(hex) { const c = Model.COLORS.find(c => c[0] === hex); return c ? c[1] : hex; },
 
+  /** Parses a habit's name as typed: { value } or { error } saying what is allowed. `habits` is the
+      list it joins; `except` is the id of the habit being renamed. Shared by adding and renaming. */
+  parseName(text, habits = [], except = null) {
+    const name = String(text).trim().replace(/\s+/g, ' ');
+    if (!name) return { error: 'Give the habit a name.' };
+    if (name.length > Model.MAX_NAME) return { error: 'Use up to ' + Model.MAX_NAME + ' characters.' };
+    if (habits.some(h => h.id !== except && h.name.toLowerCase() === name.toLowerCase())) return { error: 'You already have “' + name + '”. Choose another name.' };
+    if (!except && habits.length >= Model.MAX_HABITS) return { error: 'You can keep up to ' + Model.MAX_HABITS + ' habits. Delete one to add another.' };
+    return { value: name };
+  },
   /** Checks one habit. Returns a clean copy, or throws an Error that says what is wrong. */
   habit(h, where = 'A habit') {
     if (!h || typeof h !== 'object') throw new Error(where + ' is not an object.');

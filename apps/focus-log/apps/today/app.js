@@ -32,12 +32,21 @@ Kernel.register({
       $('#goalText').textContent = mins >= goal ? 'Goal met' : Log.minutes(goal - mins) + ' to your goal';
     }
 
+    // The goal is checked when the user leaves the field; a wrong value is said, not replaced, and
+    // the last valid goal keeps working until it is fixed.
+    const HINT = $('#goal-hint').textContent;
+    function mark(error){
+      const input = $('#goal'), hint = $('#goal-hint');
+      if (error){ input.setAttribute('aria-invalid', 'true'); hint.textContent = error + ' Until then, the goal stays ' + Log.minutes(goal) + '.'; hint.classList.add('error'); }
+      else { input.removeAttribute('aria-invalid'); hint.textContent = HINT; hint.classList.remove('error'); }
+    }
     $('#goal').addEventListener('change', () => {
-      const v = Math.round(Number($('#goal').value));
-      if (v >= 5 && v <= 1440){ goal = v; ctx.store.set('goal', goal); }
-      $('#goal').value = goal;
-      draw();
+      const r = Log.parseGoal($('#goal').value);
+      if ('error' in r){ mark(r.error); return; }
+      mark(''); goal = r.value; ctx.store.set('goal', goal); draw();
     });
+    $('#goal').addEventListener('input', () => { if ($('#goal').getAttribute('aria-invalid') && !('error' in Log.parseGoal($('#goal').value))) mark(''); });
+    $('#goal').addEventListener('keydown', e => { if (e.key === 'Enter') $('#goal').dispatchEvent(new Event('change')); });
     ctx.on('log:changed', draw);
     // A new day starts at midnight, with the app still open.
     setInterval(() => { if (Log.day(new Date()) !== shownDay) draw(); }, 60000);

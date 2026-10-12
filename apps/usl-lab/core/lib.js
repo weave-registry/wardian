@@ -60,5 +60,37 @@ const Lib = (() => {
     return Math.max(hi, 2);
   }
 
-  return Object.freeze({esc, clamp, model, peakInfo, fmt, fmtTick, niceTicks, fmtRange, wiActive, whatIf, describe, domainMax});
+  /* One parser per input, shared by the box, a file and a table from the Splunk table app. */
+  // Runs, one per line: load, throughput and, optionally, response time. A first line of words is a
+  // header. Returns the rows sorted by load, the lines skipped (with why), and whether a fit can run.
+  const MIN_RUNS = 4, MIN_LOADS = 3;
+  function parseMeasurements(text){
+    const rows = [], skipped = [];
+    let seen = 0;
+    String(text || '').split(/\r?\n/).forEach((raw, i) => {
+      const line = raw.trim(); if (!line) return;
+      const nums = line.split(/[,;\t ]+/).filter(Boolean).map(Number);
+      if (isNaN(nums[0]) && !seen && /[a-z]/i.test(line)){ seen++; return; }   // a header line
+      seen++;
+      if (nums.length < 2 || nums.slice(0, 2).some(v => !isFinite(v))) skipped.push({line: i + 1, why: 'needs two numbers: a load and a throughput'});
+      else if (!(nums[0] > 0)) skipped.push({line: i + 1, why: 'the load must be above 0'});
+      else if (!(nums[1] > 0)) skipped.push({line: i + 1, why: 'the throughput must be above 0'});
+      else rows.push({n: nums[0], x: nums[1], r: nums.length > 2 && nums[2] > 0 && isFinite(nums[2]) ? nums[2] : null});
+    });
+    rows.sort((p, q) => p.n - q.n);
+    const loads = new Set(rows.map(r => r.n)).size;
+    const enough = rows.length >= MIN_RUNS && loads >= MIN_LOADS;
+    const need = enough ? '' : 'Add at least ' + MIN_RUNS + ' runs at ' + MIN_LOADS + ' or more different loads to fit the curve.';
+    return {rows, skipped, enough, need};
+  }
+  // A target throughput: a number above 0.
+  function parseTarget(text){
+    const s = String(text == null ? '' : text).trim();
+    if (s === '') return {value: null};
+    const v = Number(s);
+    if (!isFinite(v) || !(v > 0)) return {error: 'Enter a throughput above 0, like 10000.'};
+    return {value: v};
+  }
+
+  return Object.freeze({esc, clamp, model, peakInfo, fmt, fmtTick, niceTicks, fmtRange, wiActive, whatIf, describe, domainMax, parseMeasurements, parseTarget, MIN_RUNS, MIN_LOADS});
 })();

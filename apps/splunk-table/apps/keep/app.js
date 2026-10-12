@@ -20,7 +20,12 @@ Kernel.register({
     const SAVED_NAME = /^saved_[a-z0-9]{1,40}$/;
     let db = null, downloads = null, table = null, view = Find.view(null);
     function status(text, kind){ const st = $('#status'); st.className = 'status' + (kind ? ' ' + kind : ''); st.textContent = text; }
-    function buttons(){ $('#btnSend').disabled = !table; $('#btnKeep').disabled = !table; $('#btnCsv').disabled = !table || !downloads; }
+    // A disabled button always has its reason beside it.
+    function buttons(){
+      $('#btnSend').disabled = !table; $('#btnKeep').disabled = !table; $('#btnCsv').disabled = !table || !downloads;
+      $('#keepHint').hidden = !!table && !!downloads;
+      $('#keepHint').textContent = !table ? 'Run a search, or open a saved table, to use it here.' : 'Download CSV is not available in this host.';
+    }
 
     // ---------- sending to other apps ----------
     // The message carries the rows and everything needed to judge them: the search, the time range,

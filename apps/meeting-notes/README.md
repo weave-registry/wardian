@@ -1,8 +1,59 @@
 # Meeting notes
 
-A Wardian **suite**: five sealed apps that turn raw meeting notes into a summary, decisions, a
-checklist and open questions. It is plain JavaScript, with no WebAssembly. It shows `claude:sample`
-(AI inside an app) and what an app does when AI is not there.
+For anyone who leaves a meeting with a page of notes or a transcript: get a short summary, the
+decisions, a checklist of who does what by when, and the questions left open, ready to paste into a
+wiki, a ticket or an email. Claude reads the notes when it is set up; a quick reader works when not.
+
+## What you put in
+
+| Field | Type | Unit | Allowed | Default | Required |
+|---|---|---|---|---|---|
+| Meeting | short text | — | up to 120 characters | the sample's name on a first visit | no |
+| Notes or transcript | long text | — | plain text or Markdown, up to 200,000 characters | the sample meeting on a first visit | yes, to read |
+| Open a file | file | — | `.txt` or `.md`, up to 2 MB, text only | — | — |
+| An action item's task | short text | — | up to 500 characters | what the reader found | yes |
+| Its owner | short text | — | up to 80 characters | what the reader found | no |
+| Its due date | short text | — | up to 80 characters, as said ("Friday", "Oct 22") | what the reader found | no |
+| Done | on or off | — | — | off | — |
+
+## What it shows
+
+- **Reader:** whether Claude or the quick reader is reading, a progress bar with Stop while Claude
+  reads, and how to turn AI on when it is off.
+- **Summary:** a few sentences, the decisions and the open questions, and who read them.
+- **Action items:** a checklist you own: tick, edit, remove, add.
+- **Export:** everything as Markdown, to download or copy.
+
+## How it behaves
+
+- A first visit opens on a sample meeting, labelled as a sample, so every panel shows what it does.
+  **Clear** empties it; typing, pasting, dropping or opening a file replaces it. The notes are kept
+  in this Wardian as you type.
+- The quick reader reads the notes as they change. **Read with Claude** sends them to Claude when
+  it is set up; the other buttons are disabled while it reads, the progress bar says so and offers
+  Stop, and a failure says why and falls back to the quick reader's results.
+- A file that is too large or not text is refused with a message saying what is allowed; nothing
+  already typed is lost.
+- Download and Copy are disabled only with the reason beside them (nothing to export yet, or
+  downloads not available); Download says "Saving…" while it saves.
+
+## Layout
+
+Two columns: the notes and the reader on the left, the results on the right; one column on a phone.
+Tab order is the reading order.
+
+| Panel | Holds |
+|---|---|
+| Notes (aside) | Meeting (`text`, `size-lg`, hint); Notes or transcript (`textarea`, 8 rows, `size-full`, hint and a word count); Open a file…, Try the sample, Clear. |
+| Reader (aside) | Its mode, Read with Claude or Use the quick reader, the progress bar, and How to turn on AI. |
+| Summary | The summary, Decisions and Open questions; empty: how to start. |
+| Action items | The checklist (a box, the task, owner and due, Remove), then Add an item. |
+| Export | Download Markdown and Copy, with their reason when disabled; the Markdown itself. |
+
+## How it is built
+
+A Wardian **suite** of five sealed apps, plain JavaScript. It shows `claude:sample` (AI inside an
+app) and what an app does when AI is not there.
 
 | App | Slot | Job | Contract |
 |---|---|---|---|

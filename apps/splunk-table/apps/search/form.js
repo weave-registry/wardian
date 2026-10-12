@@ -43,10 +43,12 @@ function SearchForm($){
   function showRange(){
     const v = $('#range').value, hint = $('#rangeHint');
     $('#rangeRel').hidden = v !== 'rel'; $('#rangeAbs').hidden = v !== 'abs'; $('#rangeAdv').hidden = v !== 'adv';
+    for (const id of ['relN', 'absFrom', 'absTo', 'advE', 'advL']) $('#' + id).setAttribute('aria-invalid', 'false');
     if (!TimeRange.KINDS.includes(v)){ hint.textContent = ''; hint.className = 'w-hint range-hint'; return; }
     const r = range();
     hint.className = 'w-hint range-hint' + (r.error ? ' warn' : '');
     hint.textContent = r.error || ('Searches: ' + r.label + '.');
+    if (r.error && r.field) $('#' + r.field).setAttribute('aria-invalid', 'true');
   }
   // Picks the time range for a Splunk "earliest" code (from a ready-made search or from Claude).
   function setEarliest(e){
@@ -71,6 +73,17 @@ function SearchForm($){
     $('#title').value = w.length ? 'Events with: ' + w.join(', ').slice(0, 80) : 'Events with words';
     meta = null;
   }
-  return Object.freeze({apply, state, range, showRange, use, words, fillFind,
+  // A field's problem shows when you leave it (or press Run search); typing only clears one that is
+  // fixed. Every change is kept with persist.
+  function watch(persist){
+    const mark = (id, bad) => $(id).setAttribute('aria-invalid', bad ? 'true' : 'false');
+    $('#spl').addEventListener('input', () => { meta = null; if ($('#spl').value.trim()) mark('#spl', false); persist(); });
+    $('#words').addEventListener('input', () => { if (words().length) mark('#words', false); });
+    for (const id of ['#range', '#relN', '#relUnit', '#absFrom', '#absTo', '#advE', '#advL']){
+      $(id).addEventListener('change', () => { showRange(); persist(); });
+      $(id).addEventListener('input', () => { if (!range().error) showRange(); persist(); });
+    }
+  }
+  return Object.freeze({apply, state, range, showRange, use, words, fillFind, watch,
     meta: () => meta || {}, forget(){ meta = null; }});
 }

@@ -99,7 +99,7 @@ pub const GUIDE: &str = r#"Classes and helpers of the Wardian component library.
 - table: <table class="w-table"> with <thead>/<tbody>; class "num" on number cells right-aligns them.
 - switch: <input type="checkbox" class="w-switch" role="switch">
 - tabs: <div class="w-tabs"><div role="tablist"><button role="tab" aria-controls="p1">One</button>…</div><div role="tabpanel" id="p1">…</div>…</div> (tabs.js wires keys and ARIA: arrow keys move between tabs, aria-selected marks the open one).
-- dialog: <dialog class="w-dialog">…</dialog> with showModal(); await WardianUI.confirm({title, text, confirm: 'Delete', destructive: true}). Escape closes it; when it closes, focus goes back to what opened it.
+- dialog: <dialog class="w-dialog">…</dialog> with showModal(); await WardianUI.confirm('Delete this habit?', {title: 'Delete habit', ok: 'Delete', destructive: true}) (true or false). Escape closes it; when it closes, focus goes back to what opened it.
 - toast: WardianUI.toast('Saved', {variant: 'success'|'destructive'}).
 - tooltip: data-tooltip="Hint" on any element.
 - progress: <wardian-progress label="Loading"></wardian-progress>; .start(label), .update({value, max}), .done(text), .fail(text).

@@ -4,9 +4,7 @@
 @media (prefers-color-scheme: dark) { :root { --page: #111113; } }
 * { box-sizing: border-box; }
 body { margin: 0; font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
-h1 { margin: 0; font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.02em; }
 h2 { margin: 0 0 var(--w-space-3); font: 600 var(--w-text-lg)/1.3 var(--w-font); }
-.top { margin-bottom: var(--w-space-5); } .top p { margin: 10px 0 0; max-width: 64ch; }
 .panel { padding: var(--w-space-4) var(--w-space-5); margin-bottom: var(--w-space-4); }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 var(--w-space-3); }
 textarea.w-input { font-family: var(--w-font-mono); font-size: var(--w-text-sm); }
@@ -61,3 +59,6 @@ details.saved[open] summary { margin-bottom: var(--w-space-2); }
 .shared { margin-top: var(--w-space-4); }
 .shared h3 { margin: 0 0 var(--w-space-2); font-size: var(--w-text); font-weight: 600; }
 .shared-empty { margin: 0; font-size: var(--w-text-sm); color: var(--w-muted); }
+
+/* A panel's opening sentence keeps its distance from the first field under it. */
+h2 + .w-hint { margin: 0 0 var(--w-space-4); }

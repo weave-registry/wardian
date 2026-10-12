@@ -4,10 +4,8 @@
 @media (prefers-color-scheme: dark) { :root { --page: #111113; --accent: #51cf66; } }
 * { box-sizing: border-box; }
 body { margin: 0; font: var(--w-text-lg)/1.5 var(--w-font); color: var(--w-fg); background: var(--page); }
-h1 { margin: 0; font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.02em; }
 h2 { margin: 0; font: 600 var(--w-text-lg)/1.3 var(--w-font); }
 h3 { margin: 0; font: 600 var(--w-text)/1.3 var(--w-font); display: flex; align-items: center; gap: 8px; }
-.top { margin-bottom: var(--w-space-5); } .top p { margin: 10px 0 0; max-width: 64ch; }
 .panel { padding: var(--w-space-4) var(--w-space-5); margin-bottom: var(--w-space-4); }
 aside.panel h2 { margin-bottom: var(--w-space-3); }
 .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin-bottom: var(--w-space-3); }
@@ -102,3 +100,10 @@ aside.panel h2 { margin-bottom: var(--w-space-3); }
 /* backup */
 .confirm-box { margin-top: var(--w-space-3); padding: var(--w-space-3); border: 1px solid var(--w-destructive); border-radius: var(--w-radius); }
 .confirm-box p { margin: 0 0 var(--w-space-3); font-size: var(--w-text); overflow-wrap: anywhere; }
+
+/* Errors under their field, and a disabled button's reason beside it (the house style). */
+.w-hint.error { color: var(--w-destructive); }
+.why { color: var(--w-muted); font-size: var(--w-text-sm); align-self: center; }
+.add .w-field { display: grid; gap: var(--w-space-1); }
+/* A hint inside a field sits right under it. */
+.w-field .w-hint, .habit .w-hint { margin-top: 0; }

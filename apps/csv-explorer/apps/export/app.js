@@ -14,7 +14,7 @@ Kernel.register({
     // Says in words what the file will hold.
     function describe(){
       $('#csv').disabled = busy || !data || !db || !downloads;
-      if (!data){ $('#what').textContent = 'No data yet.'; return; }
+      if (!data){ $('#what').textContent = 'No data yet. Download CSV opens once a file is loaded.'; return; }
       const v = Filter.view(view, data), parts = [];
       parts.push(v.find ? 'The rows that match “' + v.find + '”' : 'All ' + Data.rows(data.total));
       const ways = {number: ['smallest first', 'largest first'], date: ['oldest first', 'newest first'], text: ['A to Z', 'Z to A']};

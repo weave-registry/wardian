@@ -1,5 +1,52 @@
 # CSV explorer
 
+For anyone with a spreadsheet export too big or awkward to read: open a CSV file and page, sort,
+filter, summarise, chart and save the rows you keep. The file stays on your computer, in the app's
+own database, so 100,000 rows stay fast and are still there after a reload.
+
+## What you put in
+
+| Field | Type | Allowed | Default | Required |
+|---|---|---|---|---|
+| A CSV file | file: `.csv`, `.tsv`, `.tab` or `.txt`, chosen or dropped | up to 150 MB; values separated by commas, semicolons, tabs or bars; the first line names the columns | the sample cities file on a first start | yes |
+| Filter rows | search text | up to 200 characters: words, or `column=text`, `column!=text`, `column>value` (also `<`, `>=`, `<=`), `column=` for empty cells, spaces inside quotes | empty (every row) | no |
+| Sort | a click on a column heading | ascending, then descending | the file's order | no |
+| Count rows by (chart) | one of the file's columns | — | the first number column that is not an id | yes, when there is data |
+
+## What it shows
+
+- **Data:** the file loaded, its row and column counts, each column's detected type (number, date or
+  text), and Remove data.
+- **Rows:** 100 rows at a time, with the filter and sort applied, and how many rows match.
+- **Column summaries:** per column, how many cells are filled, empty and distinct, then the minimum,
+  mean and maximum, the date range, or the most common values, for the rows the filter keeps.
+- **Chart:** a bar chart of one column (number ranges, months, years or decades, or the top 15 text
+  values), readable with the keyboard and as a table.
+- **Export:** the rows the filter keeps, in the table's order, as a CSV file.
+
+## How it behaves
+
+- The first start loads the **sample** (world cities), marked as sample data, so every panel has
+  something to show. Removing it, or loading your own file, ends that; an empty app then says what to
+  do next.
+- A file loads in batches with a progress bar and Stop; a stopped load keeps the data from before.
+- The filter applies as you type. A filter it can't read (an unknown column, a number expected) is
+  explained under the field, and marked once you leave it; the rows then show what still matches.
+- Remove data asks first. Everything is kept in this app's own database.
+
+## Layout
+
+1. **Data** (the side column): the drop area with Choose a file and Load sample, the hint, the
+   progress bar, then what is loaded.
+2. **Rows** (Filter rows, `size-full`, the table, the pager), **Column summaries**, **Chart** (Count
+   rows by, `size-md`) and **Export**, in the main column.
+
+The tab order follows that reading order. The filter's problems are announced through
+`aria-invalid` and its hint (`aria-describedby`). Export's button is disabled, with the reason next
+to it, until there is data.
+
+## How it is built
+
 A Wardian **suite**: five sealed apps that open a CSV file and let you page, sort, filter, summarise,
 chart and export it. The rows live in the app's own SQLite database (the `db` capability), so
 100,000 rows stay fast and are still there after a reload. It needs no WebAssembly. Every part is

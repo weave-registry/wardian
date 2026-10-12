@@ -16,7 +16,6 @@
 [hidden]{display:none!important}
 body{margin:0;padding-bottom:16px;background:var(--w-muted-bg);color:var(--w-fg);font:400 var(--w-text)/1.55 var(--w-font);-webkit-font-smoothing:antialiased}
 h1,h2,h3{margin:0;font-family:var(--w-font);letter-spacing:-.015em}
-h1{font-size:clamp(26px,3.6vw,36px);line-height:1.1;font-weight:700}
 h2{font-size:17px;line-height:1.25;font-weight:600}
 h3{font-size:15px;font-weight:600}
 p{margin:0}
@@ -24,24 +23,23 @@ p{margin:0}
 
 /* layout */
 .app{max-width:1280px;margin:0 auto;padding:28px clamp(16px,3vw,40px) 72px;display:grid;grid-template-columns:minmax(280px,340px) minmax(0,1fr);gap:0 28px}
-.top{grid-column:1/-1;margin-bottom:22px;max-width:72ch}
-.top p{margin-top:10px}
 .inputs{display:grid;gap:16px;align-content:start}
 .lab-card{padding:20px 22px;margin:0}
 .lab-card h2{margin-bottom:6px}
 .hint{margin-bottom:10px}
 .note{margin-top:8px}
-#data{height:230px;font:13px/1.5 var(--w-font-mono);white-space:pre}
-#ctx{height:112px}
+#data{font:13px/1.5 var(--w-font-mono);white-space:pre}
 .status{font-size:var(--w-text-sm);color:var(--w-muted);margin:8px 0 12px;min-height:20px}
 .status.warn{color:var(--watch)}
 .example-note{font-size:var(--w-text-sm);color:var(--fit);margin-bottom:8px}
 .btnrow{display:flex;flex-wrap:wrap;gap:8px}
-.filebtn{position:relative}
-.units{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
-.units .w-label,.field .w-label{display:block;margin-bottom:4px;font-size:var(--w-text-sm);color:var(--w-muted)}
+.units{display:grid;grid-template-columns:1fr 1fr;gap:0 var(--w-space-4);align-items:start}
 .units .wide{grid-column:1/-1}
-.field{margin-bottom:4px}
+@media (max-width:30rem){.units{grid-template-columns:1fr}}
+/* A group of related fields: the fieldset groups and names them, with no box of its own. */
+fieldset.group{border:0;margin:0 0 var(--w-space-2);padding:0;min-inline-size:0}
+fieldset.group>legend{padding:0;margin-bottom:var(--w-space-3);font:600 var(--w-text)/1.3 var(--w-font)}
+.example-note .w-badge{margin-right:4px}
 .tbl-name{font-size:var(--w-text-sm);margin:0 0 10px;overflow-wrap:anywhere}
 
 .sec-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 18px;margin-bottom:10px}
@@ -94,8 +92,9 @@ p{margin:0}
 .slider small{display:block;color:var(--w-muted);font-size:12.5px;line-height:1.35;margin-top:2px}
 input[type=range]{width:100%;accent-color:var(--whatif);margin:4px 0}
 .wi-sum{margin-top:12px;font-size:14.5px;min-height:22px}
-.wi-ask{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-.wi-ask input{flex:1 1 260px;width:auto}
+.wi-ask{margin-top:14px}
+.wi-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.wi-row .w-input{flex:1 1 260px}
 
 /* readouts */
 .rows{border-top:1px solid var(--w-border)}
@@ -124,9 +123,7 @@ input[type=range]{width:100%;accent-color:var(--whatif);margin:4px 0}
 .mean-out li{margin:4px 0}
 .target{margin-top:20px;padding:14px 16px;border:1px solid var(--w-glass-edge,var(--w-border));border-radius:var(--w-radius);background:color-mix(in srgb,var(--w-bg) 55%,transparent)}
 .target h3{margin:0 0 4px}
-.target-row{display:flex;flex-wrap:wrap;gap:8px;max-width:520px}
-.target-row input{flex:1 1 140px;width:auto;font-variant-numeric:tabular-nums}
-.target-row select{flex:0 1 150px;width:auto}
+.target-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .glossary{margin-top:20px;max-width:78ch}
 .glossary summary{cursor:pointer;font-weight:600;font-size:15px}
 .glossary dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 18px;margin:12px 0}

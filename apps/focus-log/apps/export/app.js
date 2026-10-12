@@ -17,10 +17,11 @@ Kernel.register({
       } catch { total = 0; }
       $('#sub').textContent = total ? total.toLocaleString() + (total === 1 ? ' session' : ' sessions') : '';
       $('#csv').disabled = !total || !downloads;
-      if (!downloads) note('Downloads are not available in this host.');
+      // Disabled only with its reason beside it.
+      $('#why').textContent = !downloads ? 'Downloads are not available in this Wardian.' : !total ? 'No sessions to export yet.' : '';
     }
     $('#csv').addEventListener('click', async () => {
-      $('#csv').disabled = true;
+      $('#csv').disabled = true; $('#csv').textContent = 'Exporting…'; $('#why').textContent = '';
       const lines = [COLS.join(',')];
       try {
         const d = await Log.db(ctx);
@@ -39,7 +40,7 @@ Kernel.register({
       } catch (e){
         if (bar.fail) bar.fail('Could not save the file');
         note('Could not save the file: ' + Log.errText(e));
-      } finally { $('#csv').disabled = !total || !downloads; }
+      } finally { $('#csv').textContent = 'Download CSV'; $('#csv').disabled = !total || !downloads; }
     });
     ctx.cap('downloads').then(d => { downloads = d; count(); }).catch(() => count());
     ctx.on('log:changed', count);

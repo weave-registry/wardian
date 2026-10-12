@@ -1,13 +1,17 @@
     <section class="w-card w-glass lab-card">
       <h2>Measurements</h2>
-      <p class="w-hint hint">One run per line: load, throughput, and optionally response time. Commas, tabs, or spaces all work.</p>
-      <div class="example-note" id="exampleNote" hidden>Example data is loaded. Paste your own runs to replace it.</div>
-      <textarea class="w-input" id="data" spellcheck="false" aria-label="Measurements, one run per line"></textarea>
-      <div class="status" id="parseStatus" role="status"></div>
+      <div class="example-note" id="exampleNote" hidden><span class="w-badge" data-variant="outline">Example data</span> Made up, to show how the lab works. Paste your own runs to replace it.</div>
+      <div class="w-field">
+        <label class="w-label" for="data">Runs, one per line</label>
+        <textarea class="w-input size-full" id="data" rows="8" spellcheck="false" aria-describedby="dataHint parseStatus"></textarea>
+        <p class="w-hint" id="dataHint">Load, throughput and, if you have it, response time, separated by commas, tabs or spaces. At least 4 runs at 3 or more different loads.</p>
+        <p class="status" id="parseStatus" role="status"></p>
+      </div>
       <div class="btnrow">
         <button class="w-button" data-variant="outline" id="btnExample" type="button">Use example</button>
-        <label class="w-button filebtn" data-variant="outline" id="fileLbl" tabindex="0">Open file<input type="file" id="file" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden></label>
-        <button class="w-button" data-variant="outline" id="btnClear" type="button">Clear</button>
+        <button class="w-button" data-variant="outline" id="fileBtn" type="button">Open file…</button>
+        <input type="file" id="file" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
+        <button class="w-button" data-variant="ghost" id="btnClear" type="button">Clear</button>
       </div>
     </section>
     <section class="w-card w-glass lab-card" id="tableSec">
@@ -15,11 +19,13 @@
       <p class="w-hint hint">Run a search in the <strong>Splunk table</strong> app. You see every row there first. Its latest table arrives here, and you choose the columns.</p>
       <div id="tblPick" hidden>
         <div class="tbl-name" id="tblName"></div>
-        <div class="units">
-          <div><label class="w-label" for="colN">Load column</label><select class="w-input" id="colN"></select></div>
-          <div><label class="w-label" for="colX">Throughput column</label><select class="w-input" id="colX"></select></div>
-          <div class="wide"><label class="w-label" for="colR">Response time column</label><select class="w-input" id="colR"></select></div>
-        </div>
+        <fieldset class="group">
+          <legend>Columns to use</legend>
+          <div class="w-field"><label class="w-label" for="colN">Load</label><select class="w-input size-md" id="colN"></select></div>
+          <div class="w-field"><label class="w-label" for="colX">Throughput</label><select class="w-input size-md" id="colX"></select></div>
+          <div class="w-field"><label class="w-label" for="colR">Response time</label><select class="w-input size-md" id="colR" aria-describedby="colRHint"></select>
+            <p class="w-hint" id="colRHint">Optional.</p></div>
+        </fieldset>
       </div>
       <div class="status" id="tblStatus" role="status"></div>
       <div class="btnrow">
@@ -30,14 +36,18 @@
     <section class="w-card w-glass lab-card">
       <h2>Units and context</h2>
       <div class="units">
-        <div><label class="w-label" for="nUnit">Load unit</label><input type="text" class="w-input" id="nUnit" value="threads"></div>
-        <div><label class="w-label" for="xUnit">Throughput unit</label><input type="text" class="w-input" id="xUnit" value="req/s"></div>
-        <div class="wide"><label class="w-label" for="rUnit">Response time column is in</label>
-          <select class="w-input" id="rUnit"><option value="1000">milliseconds</option><option value="1">seconds</option></select></div>
+        <div class="w-field"><label class="w-label" for="nUnit">Load unit</label>
+          <input type="text" class="w-input size-sm" id="nUnit" value="threads" maxlength="24" autocomplete="off" aria-describedby="nUnitHint">
+          <p class="w-hint" id="nUnitHint">What the load counts, like threads or users.</p></div>
+        <div class="w-field"><label class="w-label" for="xUnit">Throughput unit</label>
+          <input type="text" class="w-input size-sm" id="xUnit" value="req/s" maxlength="24" autocomplete="off" aria-describedby="xUnitHint">
+          <p class="w-hint" id="xUnitHint">Include the time, like req/s or orders/min.</p></div>
+        <div class="w-field wide"><label class="w-label" for="rUnit">Response times are in</label>
+          <select class="w-input size-sm" id="rUnit"><option value="1000">milliseconds</option><option value="1">seconds</option></select></div>
       </div>
-      <div class="field">
+      <div class="w-field">
         <label class="w-label" for="ctx">Describe your system</label>
-        <textarea class="w-input" id="ctx" placeholder="For example: Java API on a 32-core host, one Postgres primary with a pool of 20 connections, Redis cache in front."></textarea>
-        <p class="w-hint note">Used only by the AI diagnosis and the plain-language what-if.</p>
+        <textarea class="w-input size-full" id="ctx" rows="4" maxlength="1000" aria-describedby="ctxHint" placeholder="For example: Java API on a 32-core host, one Postgres primary with a pool of 20 connections, Redis cache in front."></textarea>
+        <p class="w-hint" id="ctxHint">Optional, up to 1,000 characters. Used only by the AI diagnosis and the plain-language what-if.</p>
       </div>
     </section>

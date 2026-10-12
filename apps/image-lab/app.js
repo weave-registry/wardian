@@ -15,6 +15,26 @@ let undo = [];                    // [{ pixels, label }], oldest first; labels s
 let pending = null;               // the tool shown as a preview and not applied yet, or null
 let buffer = { ptr: 0, len: 0 };  // the pixel buffer inside wasm memory, reused between calls
 
+// ---- The inputs: one parser each, as the README's field spec says ----
+
+// A parser gives {value} or {error} with what is allowed.
+const PARSE = {
+  file: f => !f ? { error: 'Choose a picture file.' }
+    : !f.type.startsWith('image/') ? { error: `${f.name} is not a picture. Choose a PNG, JPEG, WebP, GIF or other image file.` }
+    : { value: f },
+  // A slider's value as a number within its own min, max and step (the control allows nothing else).
+  param: input => {
+    const n = Number(input.value), min = Number(input.min), max = Number(input.max);
+    return Number.isFinite(n) && n >= min && n <= max ? { value: n } : { error: `Set ${input.id} from ${min} to ${max}.` };
+  },
+};
+const FILE_HINT = 'PNG, JPEG, WebP, GIF or any picture your browser reads. Over 12 megapixels is scaled down.';
+function fileNote(message, isError) {
+  const hint = $('fileHint');
+  hint.textContent = message || FILE_HINT;
+  if (isError) hint.dataset.error = ''; else delete hint.dataset.error;
+}
+
 // ---- The buffer in WebAssembly memory ----
 
 function ensureBuffer(len) {
@@ -80,22 +100,29 @@ function open(source, w, h, name) {
   g.drawImage(source, 0, 0, sw, sh);
   const original = g.getImageData(0, 0, sw, sh).data;
   img = { w: sw, h: sh, name, original, current: original.slice() };
+  $('source').textContent = opening === 'sample' ? 'Sample picture' : name;
+  opening = null;
   undo = []; pending = null;
   // The stage keeps the picture's shape and fits the screen's height.
   stage.style.aspectRatio = `${sw} / ${sh}`;
   stage.style.width = `min(100%, calc(74vh * ${sw / sh}))`;
   copyIn(img.current); show(); listSteps();
+  fileNote(scale < 1 ? `Scaled from ${w}×${h} to ${sw}×${sh} so filters stay quick.` : '');
   if (scale < 1) WardianUI.toast(`Scaled to ${sw}×${sh} so filters stay quick.`, { title: 'Large picture' });
 }
 
-async function openFile(file) {
-  if (!file || !file.type.startsWith('image/')) { WardianUI.toast('That file is not a picture.', { variant: 'destructive' }); return; }
+let opening = null;               // 'sample' while the sample picture is being opened
+// A refused file leaves the open picture as it was, and says why under the drop area.
+function refuse(message) { fileNote(message, true); WardianUI.toast(message, { variant: 'destructive' }); }
+async function openFile(f) {
+  const r = PARSE.file(f);
+  if (r.error) return refuse(r.error);
   try {
-    const bitmap = await createImageBitmap(file);
-    open(bitmap, bitmap.width, bitmap.height, file.name.replace(/\.[^.]+$/, ''));
+    const bitmap = await createImageBitmap(r.value);
+    open(bitmap, bitmap.width, bitmap.height, r.value.name.replace(/\.[^.]+$/, ''));
     bitmap.close();
   } catch {
-    WardianUI.toast('This browser cannot read that picture.', { variant: 'destructive' });
+    refuse(`This browser cannot read ${r.value.name}. Save it as PNG or JPEG and open it again.`);
   }
 }
 
@@ -122,13 +149,14 @@ function samplePicture() {
     for (let k = 0; k < 3; k++) p[i + k] = p[i + k] * shade + grain;
   }
   g.putImageData(d, 0, 0);
+  opening = 'sample';
   open(c, c.width, c.height, 'sample');
 }
 
 // ---- Filters, preview, undo ----
 
 const QUICK = { grayscale: 'Grayscale', sepia: 'Sepia', invert: 'Invert', sobel: 'Edge detect' };
-const num = id => Number($(id).value);
+const num = id => PARSE.param($(id)).value;
 // Each tool: how to run it with the current slider values, and how to name it in History.
 const TOOLS = {
   bc:        { go: () => run('brightness_contrast', num('p-bright'), num('p-contrast')), label: () => `Brightness ${num('p-bright')}, contrast ${num('p-contrast')}` },
@@ -211,7 +239,7 @@ function save() {
 // ---- Wiring ----
 
 function showValues() {
-  for (const input of document.querySelectorAll('[data-param]')) input.nextElementSibling.textContent = input.value;
+  for (const input of document.querySelectorAll('[data-param]')) input.nextElementSibling.textContent = input.value + (input.dataset.unit ? ' ' + input.dataset.unit : '');
 }
 for (const input of document.querySelectorAll('[data-param]')) input.addEventListener('input', () => { showValues(); preview(); });
 $('tool').addEventListener('change', () => {

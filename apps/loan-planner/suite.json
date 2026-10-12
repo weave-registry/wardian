@@ -13,9 +13,9 @@
     "style.css"
   ],
   "scripts": [
-    "shared/format.js"
+    "shared/format.js",
+    "shared/loan.js"
   ],
-  "header": "header.html",
   "surface": "glass",
   "apps": [
     {

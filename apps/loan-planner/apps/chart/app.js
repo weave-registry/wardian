@@ -16,7 +16,7 @@ Kernel.register({
 
     function draw() {
       host.replaceChildren();
-      if (!plan || !plan.ok) { readout.textContent = ''; return; }
+      if (!plan || !plan.ok) { readout.textContent = plan ? 'Fix the highlighted field to see the chart.' : ''; return; }
       const W = Math.max(320, host.clientWidth), H = W < 560 ? 240 : 300;
       const m = { l: 64, r: 14, t: 12, b: 30 };
       const months = Math.max(plan.baseline.months, plan.months);

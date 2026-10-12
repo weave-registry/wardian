@@ -1,4 +1,4 @@
-<h2>Your habits</h2>
+<h2 class="w-heading">Your habits</h2>
 <ol class="habits" id="list" aria-label="Habits"></ol>
 <div class="empty" id="empty" hidden>
   <p>No habits yet. Add one below.</p>
@@ -7,7 +7,8 @@
 <form id="add" class="add" novalidate>
   <div class="w-field">
     <label class="w-label" for="name">New habit</label>
-    <input class="w-input" id="name" maxlength="60" autocomplete="off" placeholder="For example: Read 20 pages">
+    <input class="w-input size-lg" id="name" type="text" maxlength="60" required autocomplete="off" placeholder="For example: Read 20 pages" aria-describedby="name-hint">
+    <p class="w-hint" id="name-hint">Up to 60 characters.</p>
   </div>
   <fieldset class="palette-field"><legend class="w-label">Colour</legend><div id="palette"></div></fieldset>
   <button class="w-button" id="addBtn" type="submit">Add habit</button>

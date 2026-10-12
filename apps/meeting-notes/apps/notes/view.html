@@ -1,12 +1,15 @@
-<h2>Notes</h2>
+<h2 class="w-heading">Notes</h2>
+<p class="w-hint" id="sampleNote" hidden>A sample meeting is loaded so you can see what the app does. <b>Clear</b> it, paste your own notes, or open a file.</p>
 <div class="w-field">
   <label class="w-label" for="title">Meeting</label>
-  <input class="w-input" id="title" maxlength="120" autocomplete="off" placeholder="For example: Weekly product sync">
+  <input class="w-input size-lg" id="title" type="text" maxlength="120" autocomplete="off" placeholder="For example: Weekly product sync" aria-describedby="title-hint">
+  <p class="w-hint" id="title-hint">Optional. Up to 120 characters; names the summary and the export.</p>
 </div>
 <div class="w-field">
   <label class="w-label" for="text">Notes or transcript</label>
-  <textarea class="w-input" id="text" rows="14" spellcheck="true" placeholder="Paste your notes here, or open a .txt or .md file."></textarea>
-  <p class="w-hint" id="count"></p>
+  <textarea class="w-input size-full" id="text" rows="8" maxlength="200000" spellcheck="true" placeholder="Paste your notes here, or open a .txt or .md file." aria-describedby="count text-hint"></textarea>
+  <p class="w-hint" id="text-hint">Plain text or Markdown, up to 200,000 characters. Lines such as “Action: …”, “Decision: …” and questions are picked up.</p>
+  <p class="w-hint" id="count" aria-live="polite"></p>
 </div>
 <div class="btnrow">
   <button class="w-button" data-variant="outline" data-size="sm" id="open" type="button">Open a file…</button>

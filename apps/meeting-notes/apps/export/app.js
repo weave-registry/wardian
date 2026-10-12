@@ -8,7 +8,7 @@ Kernel.register({
   caps: ['claude:downloads'],
   init(ctx) {
     const $ = ctx.$;
-    let reading = null, items = null, downloads = null, md = '';
+    let reading = null, items = null, downloads = null, md = '', busy = false;
     const say = (text, warn) => { $('#note').textContent = text; $('#note').classList.toggle('warn', !!warn); };
     // Markdown would read a leading "#", "-" or "1." in someone's text as formatting.
     const esc = s => String(s).replace(/\s+/g, ' ').trim().replace(/^([#>*+-]|\d+\.)\s/, '\\$1 ').replace(/([*_`[\]])/g, '\\$1');
@@ -38,19 +38,23 @@ Kernel.register({
       $('#md').value = md;
       $('#md').hidden = !md;
       $('#copy').disabled = !md;
-      $('#save').disabled = !(md && downloads);
+      $('#save').disabled = busy || !(md && downloads);
+      $('#save').textContent = busy ? 'Saving…' : 'Download Markdown';
+      // A disabled button has its reason beside it.
+      $('#why').textContent = !md ? 'Read some notes first: there is nothing to export yet.' : !downloads ? 'Downloads are not available in this Wardian; Copy works.' : '';
       $('#sub').textContent = md ? Text.plural(md.split('\n').length, 'line') : '';
     }
 
-    ctx.cap('downloads').then(d => { downloads = d; if (!d) say('Downloads are not available in this host. Copy the text instead.', true); sync(); },
-      () => say('Downloads are not available in this host. Copy the text instead.', true));
+    ctx.cap('downloads').then(d => { downloads = d; sync(); }, () => sync());
     ctx.on('notes:extracted', r => { reading = r; sync(); });
     ctx.on('actions:changed', p => { items = p.items; sync(); });
 
     $('#save').addEventListener('click', async () => {
       const name = Text.slug(reading.title) + '-' + Text.today() + '.md';
+      busy = true; sync();
       try { await downloads.save({ filename: name, data: md }); say('Saved ' + name + '.'); }
-      catch (e) { say('Could not save: ' + e.message, true); }
+      catch (e) { say('Could not save it: ' + e.message + '. Try again, or use Copy.', true); }
+      busy = false; sync();
     });
     // The frame is sandboxed, so the clipboard API may be refused; then select the text and use the
     // older copy command, and as a last resort ask the viewer to press the keys.

@@ -7,13 +7,17 @@ Kernel.register({
   init(ctx) {
     let plan = null, downloads = null;
     const button = ctx.$('#csv'), note = ctx.$('#note');
+    let busy = false, said = '';
+    // The button is disabled only with its reason beside it.
     const sync = () => {
-      button.disabled = !(plan && plan.ok && downloads);
+      button.disabled = busy || !(plan && plan.ok && downloads);
+      button.textContent = busy ? 'Saving…' : 'Download schedule (CSV)';
       ctx.$('#sub').textContent = plan && plan.ok ? `${plan.months} rows` : '';
-      if (!downloads) note.textContent = 'Downloads are not available in this host.';
+      note.textContent = said || (!downloads ? 'Downloads are not available in this Wardian.'
+        : !(plan && plan.ok) ? 'Fix the loan details to download the schedule.' : '');
     };
-    ctx.cap('downloads').then(d => { downloads = d; sync(); });
-    ctx.on('plan:ready', p => { plan = p; note.textContent = ''; sync(); });
+    ctx.cap('downloads').then(d => { downloads = d; sync(); }, () => sync());
+    ctx.on('plan:ready', p => { plan = p; said = ''; sync(); });
 
     const cents = v => v.toFixed(2);
     button.addEventListener('click', async () => {
@@ -23,12 +27,14 @@ Kernel.register({
         lines.push([i + 1, Fmt.month(loan.start, i).replace(',', ''), cents(interest + principal), cents(interest), cents(principal), cents(balance)].join(','));
       });
       const name = `loan-${loan.amount}-${loan.rate}pct-${loan.years}y.csv`.replace(/[^\w.-]/g, '_');
+      busy = true; said = ''; sync();
       try {
         await downloads.save({ filename: name, data: lines.join('\n') + '\n' });
-        note.textContent = `Saved ${name}.`;
+        said = `Saved ${name}.`;
       } catch (e) {
-        note.textContent = 'Could not save: ' + e.message;
+        said = 'Could not save it: ' + e.message + '. Try again.';
       }
+      busy = false; sync();
     });
   }
 });

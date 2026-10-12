@@ -7,14 +7,18 @@
       <div class="target">
         <h3>Plan for a target</h3>
         <p class="w-hint hint">Type the throughput you need. The lab finds the load that delivers it, and says whether one system can.</p>
-        <div class="target-row">
-          <input type="text" class="w-input" id="tgtVal" inputmode="decimal" placeholder="10000" aria-label="Target throughput">
-          <select class="w-input" id="tgtPer" aria-label="Per">
-            <option value="1">per second</option>
-            <option value="60">per minute</option>
-            <option value="3600">per hour</option>
-          </select>
-          <button class="w-button" data-variant="outline" id="tgtClear" type="button">Clear</button>
+        <div class="w-field">
+          <label class="w-label" for="tgtVal">Target throughput</label>
+          <div class="target-row">
+            <input type="number" class="w-input size-sm num" id="tgtVal" inputmode="decimal" min="0" step="any" placeholder="10000" aria-describedby="tgtHint">
+            <select class="w-input size-sm" id="tgtPer" aria-label="Time unit of the target">
+              <option value="1">per second</option>
+              <option value="60">per minute</option>
+              <option value="3600">per hour</option>
+            </select>
+            <button class="w-button" data-variant="ghost" id="tgtClear" type="button">Clear</button>
+          </div>
+          <p class="w-hint" id="tgtHint">A number above 0.</p>
         </div>
         <div class="mean-out" id="tgtOut" aria-live="polite"></div>
       </div>

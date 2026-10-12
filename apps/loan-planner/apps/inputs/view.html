@@ -1,17 +1,37 @@
-<h2>Your loan</h2>
+<h2 class="w-heading">Your loan</h2>
+<p class="w-hint" id="sample" hidden>Sample loan shown. Change any field to plan your own.</p>
 <form id="form" novalidate>
-  <div class="w-field"><label class="w-label" for="amount">Amount borrowed</label><input class="w-input" id="amount" type="number" min="1" step="1000" inputmode="decimal"></div>
-  <div class="w-field"><label class="w-label" for="rate">Interest rate (% a year)</label><input class="w-input" id="rate" type="number" min="0" max="50" step="0.05" inputmode="decimal"></div>
-  <div class="w-field"><label class="w-label" for="years">Term (years)</label><input class="w-input" id="years" type="number" min="1" max="50" step="1" inputmode="numeric"></div>
-  <div class="w-field"><label class="w-label" for="extra">Extra payment each month</label><input class="w-input" id="extra" type="number" min="0" step="50" inputmode="decimal"></div>
-  <div class="two">
-    <div class="w-field"><label class="w-label" for="start">First payment</label><input class="w-input" id="start" type="month"></div>
-    <div class="w-field"><label class="w-label" for="currency">Currency</label>
-      <select class="w-input" id="currency">
-        <option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option>
-        <option>AUD</option><option>CHF</option><option>JPY</option><option>INR</option>
-      </select></div>
-  </div>
+  <fieldset class="group">
+    <legend>The loan</legend>
+    <div class="w-field"><label class="w-label" for="amount">Amount borrowed</label>
+      <div class="w-affix"><input class="w-input size-sm num" id="amount" name="amount" type="number" inputmode="numeric" min="1" max="100000000" step="1" required aria-describedby="amount-hint"><span class="cur" aria-hidden="true">USD</span></div>
+      <p class="w-hint" id="amount-hint">A whole amount, from 1 to 100,000,000.</p></div>
+    <div class="row">
+      <div class="w-field"><label class="w-label" for="rate">Interest rate</label>
+        <div class="w-affix"><input class="w-input size-xs num" id="rate" name="rate" type="number" inputmode="decimal" min="0" max="50" step="0.01" required aria-describedby="rate-hint"><span>% a year</span></div>
+        <p class="w-hint" id="rate-hint">From 0 to 50.</p></div>
+      <div class="w-field"><label class="w-label" for="years">Term</label>
+        <div class="w-affix"><input class="w-input size-xs num" id="years" name="years" type="number" inputmode="numeric" min="1" max="50" step="1" required aria-describedby="years-hint"><span>years</span></div>
+        <p class="w-hint" id="years-hint">From 1 to 50.</p></div>
+    </div>
+  </fieldset>
+  <fieldset class="group">
+    <legend>Payments</legend>
+    <div class="w-field"><label class="w-label" for="extra">Extra payment each month</label>
+      <div class="w-affix"><input class="w-input size-sm num" id="extra" name="extra" type="number" inputmode="decimal" min="0" max="10000000" step="0.01" aria-describedby="extra-hint"><span class="cur" aria-hidden="true">USD</span></div>
+      <p class="w-hint" id="extra-hint">Optional. On top of the regular payment.</p></div>
+    <div class="row">
+      <div class="w-field"><label class="w-label" for="start">First payment</label>
+        <input class="w-input size-sm" id="start" name="start" type="month" min="1950-01" max="2100-12" required aria-describedby="start-hint">
+        <p class="w-hint" id="start-hint">Month and year.</p></div>
+      <div class="w-field"><label class="w-label" for="currency">Currency</label>
+        <select class="w-input size-xs" id="currency" name="currency" aria-describedby="currency-hint">
+          <option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option>
+          <option>AUD</option><option>CHF</option><option>JPY</option><option>INR</option>
+        </select>
+        <p class="w-hint" id="currency-hint">For the figures.</p></div>
+    </div>
+  </fieldset>
 </form>
 <p class="note" id="problem" role="alert"></p>
 <p class="w-hint">Saved in this browser for next time.</p>

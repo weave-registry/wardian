@@ -21,8 +21,9 @@ select.w-input { appearance: none; padding-right: 32px; cursor: pointer;
 
 /* Field widths that say what goes in them, in characters plus the field's padding and border; on a
    narrow screen every field takes the full width. */
-.w-input[class*="size-"] { inline-size: calc(var(--w-chars) + 2 * var(--w-space-3) + 2px); max-inline-size: 100%; }
-select.w-input[class*="size-"] { inline-size: calc(var(--w-chars) + var(--w-space-3) + 34px); }
+/* min(…, 100%), not max-inline-size: a select in a grid field would otherwise outgrow it. */
+.w-input[class*="size-"] { inline-size: min(calc(var(--w-chars) + 2 * var(--w-space-3) + 2px), 100%); }
+select.w-input[class*="size-"] { inline-size: min(calc(var(--w-chars) + var(--w-space-3) + 34px), 100%); }
 .w-input.size-xs { --w-chars: 7ch; }
 .w-input.size-sm { --w-chars: 11ch; }
 .w-input.size-md { --w-chars: 20ch; }

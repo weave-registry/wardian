@@ -16,6 +16,12 @@ Kernel.register({
     let days = {}, editing = null, deleting = null;
 
     const say = (text, warn) => { note.textContent = text; note.classList.toggle('warn', !!warn); };
+    // A field's error goes under the field, in its hint; the hint comes back once the value is valid.
+    function mark(input, hint, error, usual) {
+      if (error) { input.setAttribute('aria-invalid', 'true'); hint.textContent = error; hint.classList.add('error'); }
+      else { input.removeAttribute('aria-invalid'); hint.textContent = usual; hint.classList.remove('error'); }
+    }
+    const NAME_HINT = 'Up to ' + Model.MAX_NAME + ' characters.';
     const save = () => { ctx.store.set('habits', habits); ctx.emit('habits:changed', { habits }); render(); };
     const nextColor = () => (Model.COLORS.find(c => !habits.some(h => h.color === c[0])) || Model.COLORS[habits.length % Model.COLORS.length])[0];
 
@@ -53,12 +59,15 @@ Kernel.register({
         if (editing === h.id) {
           const f = ctx.el('form'), input = ctx.el('input');
           f.className = 'edit'; f.dataset.id = h.id;
-          input.className = 'w-input'; input.value = h.name; input.maxLength = Model.MAX_NAME;
+          input.className = 'w-input size-full'; input.value = h.name; input.maxLength = Model.MAX_NAME; input.required = true;
           input.setAttribute('aria-label', 'Name of ' + h.name);
+          const hint = ctx.el('p'); hint.className = 'w-hint'; hint.id = 'edit-hint'; hint.textContent = NAME_HINT;
+          input.setAttribute('aria-describedby', 'edit-hint');
+          input.addEventListener('input', () => { if (input.getAttribute('aria-invalid') && !('error' in Model.parseName(input.value, habits, h.id))) mark(input, hint, '', NAME_HINT); });
           const row = ctx.el('div');
           row.className = 'btnrow';
           row.append(button('Save', 'save', h.id, null, 'default'), button('Cancel', 'cancel', h.id, null, 'outline'));
-          f.append(input, palette('c-' + h.id, h.color), row);
+          f.append(input, hint, palette('c-' + h.id, h.color), row);
           li.append(f);
           list.append(li);
           if (focus !== false) input.focus();
@@ -90,24 +99,33 @@ Kernel.register({
       if (focus) { const b = list.querySelector('[data-act="' + focus.act + '"][data-id="' + focus.id + '"]'); if (b && !b.disabled) b.focus(); }
     }
 
-    function add(name, color) {
-      name = name.trim();
-      if (!name) { say('Give the habit a name.', true); $('#name').focus(); return false; }
-      if (habits.length >= Model.MAX_HABITS) { say('You can keep up to ' + Model.MAX_HABITS + ' habits.', true); return false; }
-      if (habits.some(h => h.name.toLowerCase() === name.toLowerCase())) { say('You already have “' + name + '”.', true); return false; }
-      habits = [...habits, { id: Model.newId(), name: name.slice(0, Model.MAX_NAME), color, created: Days.today() }];
+    function add(text, color, quiet) {
+      const r = Model.parseName(text, habits);
+      if ('error' in r) {
+        if (!quiet) { mark($('#name'), $('#name-hint'), r.error, NAME_HINT); say(''); $('#name').focus(); }
+        return false;
+      }
+      const name = r.value;
+      mark($('#name'), $('#name-hint'), '', NAME_HINT);
+      habits = [...habits, { id: Model.newId(), name, color, created: Days.today() }];
       say('Added “' + name + '”.');
       save();
       return true;
     }
 
+    $('#name').addEventListener('input', () => {
+      if ($('#name').getAttribute('aria-invalid') && !('error' in Model.parseName($('#name').value, habits))) mark($('#name'), $('#name-hint'), '', NAME_HINT);
+    });
+    $('#name').addEventListener('change', () => {   // leaving the field: a repeat is worth saying now
+      const v = $('#name').value; if (v.trim()) { const r = Model.parseName(v, habits); mark($('#name'), $('#name-hint'), r.error || '', NAME_HINT); }
+    });
     $('#add').addEventListener('submit', e => {
       e.preventDefault();
       if (add($('#name').value, chosen($('#add'), 'newColor'))) { $('#name').value = ''; resetAdd(); $('#name').focus(); }
     });
     $('#examples').addEventListener('click', () => {
       [['Read 20 pages', 1], ['Walk 30 minutes', 0], ['No phone after 10pm', 2]]
-        .forEach(([name, c]) => add(name, Model.COLORS[c][0]));
+        .forEach(([name, c]) => add(name, Model.COLORS[c][0], true));
       say('Added three examples. Edit or delete them as you like.');
       resetAdd();
     });
@@ -138,10 +156,10 @@ Kernel.register({
       } else if (what === 'edit') { editing = id; deleting = null; render(); }
       else if (what === 'cancel') { editing = null; render({ act: 'edit', id }); }
       else if (what === 'save') {
-        const f = $('#list form.edit'), name = f.querySelector('input.w-input').value.trim();
-        if (!name) { say('A habit needs a name.', true); return; }
-        if (habits.some(o => o.id !== id && o.name.toLowerCase() === name.toLowerCase())) { say('You already have “' + name + '”.', true); return; }
-        habits = habits.map(o => o.id === id ? { ...o, name: name.slice(0, Model.MAX_NAME), color: chosen(f, 'c-' + id) } : o);
+        const f = $('#list form.edit'), input = f.querySelector('input.w-input'), r = Model.parseName(input.value, habits, id);
+        if ('error' in r) { mark(input, f.querySelector('.w-hint'), r.error, NAME_HINT); input.focus(); return; }
+        const name = r.value;
+        habits = habits.map(o => o.id === id ? { ...o, name, color: chosen(f, 'c-' + id) } : o);
         editing = null; say('Saved “' + name + '”.');
         ctx.store.set('habits', habits); ctx.emit('habits:changed', { habits });
         render({ act: 'edit', id });

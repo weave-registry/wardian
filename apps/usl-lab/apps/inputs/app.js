@@ -22,18 +22,7 @@ Kernel.register({
       return lines.join('\n');
     })();
 
-    function parse(text){
-      const rows = []; let skipped = 0;
-      for (const raw of text.split(/\r?\n/)){
-        const line = raw.trim(); if (!line) continue;
-        const nums = line.split(/[,;\t ]+/).filter(Boolean).map(Number);
-        if (isNaN(nums[0])){ if (rows.length || skipped) skipped++; else if (!/[a-z]/i.test(line)) skipped++; continue; }
-        if (nums.length < 2 || !(nums[0] > 0) || !(nums[1] > 0) || !isFinite(nums[1])){ skipped++; continue; }
-        rows.push({n: nums[0], x: nums[1], r: nums.length > 2 && nums[2] > 0 && isFinite(nums[2]) ? nums[2] : null});
-      }
-      rows.sort((p, q) => p.n - q.n);
-      return {rows, skipped};
-    }
+    const parse = text => Lib.parseMeasurements(text);   // one parser for the box, files and tables
 
     // Where the measurements came from and what each column means, shown above the chart.
     // {title, load, throughput, response, method, range, at, edited}
@@ -50,19 +39,23 @@ Kernel.register({
 
     const persist = () => ctx.store.set('state', {d: $('#data').value, c: $('#ctx').value, n: $('#nUnit').value, x: $('#xUnit').value, r: $('#rUnit').value, src: source});
 
+    // Whether the box shows its problem: from when you leave it (or load a file or table) until it is right.
+    let dataShown = false;
     function publishData(){
-      const {rows, skipped} = parse($('#data').value);
-      const st = $('#parseStatus');
+      const {rows, skipped, enough, need} = parse($('#data').value);
+      const st = $('#parseStatus'), box = $('#data');
       st.className = 'status';
-      if (!rows.length && !skipped) st.textContent = 'No runs yet.';
-      else {
-        st.textContent = rows.length + (rows.length === 1 ? ' run' : ' runs') + ' read' + (skipped ? '; ' + skipped + ' line' + (skipped === 1 ? '' : 's') + ' skipped (need positive numbers)' : '.');
-        if (skipped) st.classList.add('warn');
-      }
+      const lines = skipped.slice(0, 3).map(s => 'line ' + s.line + ' ' + s.why).join('; ') + (skipped.length > 3 ? '; and ' + (skipped.length - 3) + ' more' : '');
+      if (!rows.length && !skipped.length) st.textContent = 'No runs yet. ' + need;
+      else st.textContent = rows.length + (rows.length === 1 ? ' run' : ' runs') + ' read' + (skipped.length ? '. Skipped ' + lines + '.' : '.') + (enough ? '' : ' ' + need);
+      if (enough && !skipped.length) dataShown = false;
+      const bad = dataShown && (!enough || skipped.length > 0);
+      box.setAttribute('aria-invalid', bad ? 'true' : 'false');
+      if (bad || skipped.length) st.classList.add('warn');
       const isExample = $('#data').value.trim() === EXAMPLE.trim();
       $('#exampleNote').hidden = !isExample;
       ctx.emit('data:changed', {
-        rows, skipped, isExample,
+        rows, skipped: skipped.length, isExample,
         units: {n: $('#nUnit').value.trim() || 'units', x: $('#xUnit').value.trim() || 'per second'},
         rdiv: +$('#rUnit').value || 1,
         source: isExample ? EXAMPLE_SOURCE : source
@@ -78,16 +71,17 @@ Kernel.register({
     const dData = debounce(publishData, 280), dCtx = debounce(publishContext, 280);
     ['#data', '#nUnit', '#xUnit', '#rUnit'].forEach(id => { $(id).addEventListener('input', dData); $(id).addEventListener('change', dData); });
     $('#ctx').addEventListener('input', dCtx);
+    $('#data').addEventListener('change', () => { dataShown = true; publishData(); persist(); });
 
     $('#btnExample').addEventListener('click', () => { $('#data').value = EXAMPLE; publishData(); persist(); });
-    $('#btnClear').addEventListener('click', () => { $('#data').value = ''; source = null; publishData(); persist(); $('#data').focus(); });
+    $('#btnClear').addEventListener('click', () => { $('#data').value = ''; source = null; dataShown = false; publishData(); persist(); $('#data').focus(); });
     $('#file').addEventListener('change', e => {
       const file = e.target.files && e.target.files[0]; if (!file) return;
       const fr = new FileReader();
-      fr.onload = () => { $('#data').value = String(fr.result || ''); source = {title: 'File: ' + file.name, method: 'Loaded from a file. The first column is the load, the second the throughput.'}; publishData(); persist(); };
+      fr.onload = () => { $('#data').value = String(fr.result || ''); source = {title: 'File: ' + file.name, method: 'Loaded from a file. The first column is the load, the second the throughput.'}; dataShown = true; publishData(); persist(); };
       fr.readAsText(file); e.target.value = '';
     });
-    $('#fileLbl').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('#file').click(); } });
+    $('#fileBtn').addEventListener('click', () => $('#file').click());
 
     // ---------- the Splunk table app: its latest table arrives on the channel "splunk.table" ----------
     // A cell can hold commas or spaces ("1,200"); keep only the number so the parser reads one value per column.
@@ -185,7 +179,7 @@ Kernel.register({
       source = Object.assign({}, about, {title: about.title || table.title, range: table.rangeLabel, at: table.at, points: rows.length,
         search: String(table.search || '').slice(0, 2000),
         method: (about.method ? about.method + ' ' : '') + 'The rows came from the Splunk table app, where you can see every one.'});
-      publishData(); persist();
+      dataShown = true; publishData(); persist();
       const capped = got.total > rows.length ? ' (the first ' + rows.length.toLocaleString() + ' of ' + got.total.toLocaleString() + '; the fit reads at most ' + MAX_FIT_ROWS.toLocaleString() + ')' : '';
       tblStatus((got.problem ? got.problem + ' ' : '') + 'Using ' + rows.length.toLocaleString() + ' rows' + capped + ': load = ' + f[iN] + ', throughput = ' + f[iX] + (iR >= 0 ? ', response time = ' + f[iR] : '') + '.', got.problem || capped ? 'warn' : '');
     });

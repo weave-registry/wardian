@@ -7,25 +7,30 @@ Kernel.register({
   caps: ['storage'],
   init(ctx) {
     const $ = ctx.$, MAX_FILE = 2 * 1024 * 1024;
-    const saved = ctx.store.get('notes') || {};
+    // First visit: a sample meeting, labelled as such, so every panel shows what it does.
+    const stored = ctx.store.get('notes');
+    const saved = stored || { title: SAMPLE_NOTES.title, text: SAMPLE_NOTES.text };
     $('#title').value = saved.title || '';
     $('#text').value = saved.text || '';
+    $('#sampleNote').hidden = !!stored;
 
     const say = (text, warn) => { $('#note').textContent = text; $('#note').classList.toggle('warn', !!warn); };
     function publish() {
       const title = $('#title').value.trim(), text = $('#text').value;
       const words = (text.match(/\S+/g) || []).length, lines = text ? text.split('\n').length : 0;
-      $('#count').textContent = text.trim() ? Text.plural(words, 'word') + ', ' + Text.plural(lines, 'line') : '';
+      $('#count').textContent = text.trim() ? Text.plural(words, 'word') + ', ' + Text.plural(lines, 'line') : 'No notes yet: paste them, open a file, or press Try the sample.';
       ctx.store.set('notes', { title, text });
       ctx.emit('notes:changed', { title, text, hash: Text.hash(title + '\n' + text) });
     }
     let timer = null;
     const soon = () => { clearTimeout(timer); timer = setTimeout(publish, 400); };
-    $('#title').addEventListener('input', soon);
-    $('#text').addEventListener('input', soon);
+    const typed = () => { $('#sampleNote').hidden = true; soon(); };
+    $('#title').addEventListener('input', typed);
+    $('#text').addEventListener('input', typed);
 
     function replace(title, text, what) {
       $('#title').value = title; $('#text').value = text;
+      $('#sampleNote').hidden = true;
       clearTimeout(timer); publish();
       say(what);
     }

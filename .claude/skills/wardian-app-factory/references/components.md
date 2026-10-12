@@ -306,7 +306,7 @@ the full width. `.num` right-aligns a number with even-width digits.
   |---|---|
   | other views of the same thing | `tabs` |
   | an on/off setting | `switch`, not a checkbox |
-  | a destructive action | `WardianUI.confirm({ …, destructive: true })` |
+  | a destructive action | `WardianUI.confirm(text, { title, ok, destructive: true })` |
   | saying something worked | `WardianUI.toast('Saved', { variant: 'success' })` |
   | a state or a category | `badge` |
   | work over a second | `<wardian-progress>` |

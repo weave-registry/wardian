@@ -12,14 +12,15 @@
     "ui/badge.css",
     "ui/type.css",
     "ui/surface.css",
+    "ui/dialog.css",
     "style.css"
   ],
   "scripts": [
+    "ui/dialog.js",
     "shared/fmt.js",
     "shared/project.js",
     "shared/simbar.js"
   ],
-  "header": "header.html",
   "surface": "glass",
   "columns": "minmax(440px, 520px) minmax(0, 1fr)",
   "apps": [

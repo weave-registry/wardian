@@ -43,15 +43,21 @@ pub extern "C" fn f_to_c(f: f64) -> f64 {
     r4((f - 32.0) * 5.0 / 9.0)
 }
 
-/// Celsius to kelvin.
+/// Celsius to kelvin. Below absolute zero (−273.15 °C) there is no answer: NaN, never a made-up one.
 #[no_mangle]
 pub extern "C" fn c_to_k(c: f64) -> f64 {
+    if c < -273.15 {
+        return f64::NAN;
+    }
     r4(c + 273.15)
 }
 
-/// Kelvin to Celsius.
+/// Kelvin to Celsius. A negative kelvin is no temperature: NaN.
 #[no_mangle]
 pub extern "C" fn k_to_c(k: f64) -> f64 {
+    if k < 0.0 {
+        return f64::NAN;
+    }
     r4(k - 273.15)
 }
 
@@ -165,11 +171,12 @@ pub extern "C" fn mph_to_kmh(mph: f64) -> f64 {
     r4(mph * KM_PER_MILE)
 }
 
-/// US miles per gallon to litres per 100 km. The same formula works both ways.
+/// US miles per gallon to litres per 100 km. The same formula works both ways. Fuel use of 0 or
+/// less has no answer: NaN.
 #[no_mangle]
 pub extern "C" fn mpg_to_l_per_100km(mpg: f64) -> f64 {
     if mpg <= 0.0 {
-        return 0.0;
+        return f64::NAN;
     }
     r4(100.0 * L_PER_US_GALLON / (mpg * KM_PER_MILE))
 }
@@ -229,11 +236,11 @@ pub extern "C" fn kj_to_kcal(kj: f64) -> f64 {
 // Body
 
 /// Body mass index from weight in kilograms and height in metres, to 1 decimal place.
-/// Returns 0 when the height is not above zero.
+/// A height of 0 or less, or a weight below 0, has no answer: NaN, never a made-up 0.
 #[no_mangle]
 pub extern "C" fn bmi_kg_m(weight_kg: f64, height_m: f64) -> f64 {
-    if height_m <= 0.0 {
-        return 0.0;
+    if height_m <= 0.0 || weight_kg < 0.0 {
+        return f64::NAN;
     }
     round(weight_kg / (height_m * height_m), 1)
 }
@@ -263,7 +270,11 @@ mod tests {
         assert_eq!(mpg_to_l_per_100km(30.0), 7.8405);
         assert_eq!(l_per_100km_to_mpg(5.0), 47.0429);
         assert_eq!(bmi_kg_m(70.0, 1.75), 22.9);
-        assert_eq!(bmi_kg_m(70.0, 0.0), 0.0);
+        assert!(bmi_kg_m(70.0, 0.0).is_nan(), "no BMI without a height");
+        assert!(bmi_kg_m(-1.0, 1.7).is_nan(), "no BMI for a negative weight");
+        assert!(mpg_to_l_per_100km(0.0).is_nan() && l_per_100km_to_mpg(-2.0).is_nan(), "no fuel use from 0 or less");
+        assert!(c_to_k(-300.0).is_nan() && k_to_c(-1.0).is_nan(), "nothing below absolute zero");
+        assert_eq!(k_to_c(0.0), -273.15);
         assert_eq!(bmi_lb_in(154.0, 69.0), 22.7);
     }
 }

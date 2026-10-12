@@ -11,15 +11,16 @@
     "ui/table.css",
     "ui/badge.css",
     "ui/receipt.css",
+    "ui/dialog.css",
     "ui/type.css",
     "ui/surface.css",
     "style.css"
   ],
   "scripts": [
+    "ui/dialog.js",
     "ui/receipt.js",
     "shared/log.js"
   ],
-  "header": "header.html",
   "surface": "glass",
   "apps": [
     {

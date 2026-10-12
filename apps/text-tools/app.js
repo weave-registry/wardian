@@ -33,17 +33,45 @@ Whenever I find myself growing grim about the mouth; whenever it is a damp, driz
 — Herman Melville, Moby-Dick (1851)
 `;
 
+// ---------------------------------------------------------------- the inputs: one parser each
+
+// A parser gives {value} or {error} with what is allowed, as the README's field spec says.
+const MAX_FILE = 25 * 1024 * 1024;
+const LIMITS = [10, 25, 50, 100];
+const PARSE = {
+  limit: (v) => (LIMITS.includes(Number(v)) ? { value: Number(v) } : { error: 'Choose 10, 25, 50 or 100 words.' }),
+  // A file: its size first (no reading a 2 GB file to refuse it), then its bytes as UTF-8.
+  fileSize: (f) => (f.size > MAX_FILE ? { error: `${f.name} is ${size(f.size)}. Open a text file up to ${size(MAX_FILE)}.` } : { value: f }),
+  fileText: (name, bytes) => {
+    const decoded = decoder.decode(bytes);
+    const bad = (decoded.match(/\uFFFD/g) || []).length;
+    return { value: decoded, warning: bad > 16 && bad > decoded.length / 100 ? `${name} does not look like UTF-8 text: some characters show as \uFFFD. Open a UTF-8 text file for exact counts.` : '' };
+  },
+};
+const limit = () => PARSE.limit(document.querySelector('input[name="limit"]:checked').value).value;
+
+// The text box's hint: what it takes, or what went wrong with the last file.
+const HINT = 'Type or paste any text, or drop a text file on the box (up to 25 MB). Nothing leaves this computer.';
+function textNote(message, isError) {
+  const hint = $('textHint');
+  hint.textContent = message || HINT;
+  if (isError) { hint.dataset.error = ''; text.setAttribute('aria-invalid', 'true'); }
+  else { delete hint.dataset.error; text.removeAttribute('aria-invalid'); }
+}
+
 // ---------------------------------------------------------------- the file, if one is open
 
 // While the text is exactly what the file held, the hash is of the file's own bytes, so it
 // matches `shasum -a 256 file` even when the file has \r\n line ends, which a text box drops.
 let file = null; // { name, size, bytes, text }
 const fromFile = () => file && text.value === file.text;
+const fromSample = () => !file && text.value === SAMPLE;
 
 function showSource() {
   const src = $('source');
   if (fromFile()) src.textContent = `${file.name} · ${size(file.size)}`;
   else if (file) src.textContent = `${file.name} · edited`;
+  else if (fromSample()) src.textContent = 'Sample text';
   else src.textContent = 'Typed text';
 }
 
@@ -53,21 +81,21 @@ function size(n) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-const MAX_FILE = 25 * 1024 * 1024;
 async function open(f) {
   if (!f) return;
-  if (f.size > MAX_FILE) {
-    toast(`${f.name} is ${size(f.size)}. Text tools opens files up to ${size(MAX_FILE)}.`, { variant: 'destructive', title: 'Too big' });
+  const sized = PARSE.fileSize(f);
+  if (sized.error) {
+    // Refused: what is in the box stays as it was.
+    textNote(sized.error, true);
+    toast(sized.error, { variant: 'destructive', title: 'Too big' });
     return;
   }
   const bytes = new Uint8Array(await f.arrayBuffer());
-  const decoded = decoder.decode(bytes);
-  const bad = (decoded.match(/�/g) || []).length;
-  if (bad > 16 && bad > decoded.length / 100) {
-    toast(`${f.name} does not look like UTF-8 text. Some characters show as �.`, { title: 'Not plain text?' });
-  }
-  text.value = decoded;
+  const read = PARSE.fileText(f.name, bytes);
+  text.value = read.value;
   file = { name: f.name, size: f.size, bytes, text: text.value };
+  textNote(read.warning, !!read.warning);
+  if (read.warning) toast(read.warning, { title: 'Not plain text?' });
   update(true);
 }
 
@@ -82,6 +110,8 @@ function duration(sec) {
 }
 
 function drawCounts(s) {
+  $('countsEmpty').hidden = s.chars > 0;
+  $('tiles').hidden = s.chars === 0;
   const tiles = [
     ['Words', nf.format(s.words), 'big'],
     ['Characters', nf.format(s.chars), 'big'],
@@ -122,7 +152,7 @@ function drawWords({ total, rows }) {
   }));
   $('wordsCaption').textContent = rows.length
     ? `${nf.format(total)} words counted${$('skip').checked ? ', common English words left out' : ''}. Bars are relative to the top word.`
-    : 'No words yet.';
+    : 'No words yet: type, paste or open a text.';
 }
 
 const CASES = ['upper', 'lower', 'title', 'sentence', 'slug'];
@@ -136,7 +166,7 @@ function update(fileJustOpened = false) {
   const bytes = encoder.encode(text.value);
   withBytes(bytes, (ptr, len) => {
     drawCounts(JSON.parse(answer(wasm.stats(ptr, len))));
-    drawWords(JSON.parse(answer(wasm.top_words(ptr, len, Number($('limit').value), $('skip').checked ? 1 : 0))));
+    drawWords(JSON.parse(answer(wasm.top_words(ptr, len, limit(), $('skip').checked ? 1 : 0))));
     caseOutputs[caseMode].textContent = answer(wasm.change_case(ptr, len, caseMode));
     if (!fromFile()) $('hash').textContent = answer(wasm.sha256(ptr, len));
   });
@@ -193,15 +223,15 @@ const baseName = () => (file ? file.name.replace(/\.[^.]+$/, '') : 'text');
 
 // ---------------------------------------------------------------- wiring
 
-text.addEventListener('input', schedule);
-$('limit').addEventListener('change', () => update());
+text.addEventListener('input', () => { if (text.hasAttribute('aria-invalid') && !file) textNote(); schedule(); });
+document.querySelectorAll('input[name="limit"]').forEach((r) => r.addEventListener('change', () => update()));
 $('skip').addEventListener('change', () => update());
 $('caseTabs').addEventListener('w-tab-change', (e) => { caseMode = e.detail.index; update(); });
 
 $('open').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', (e) => { open(e.target.files[0]); e.target.value = ''; });
-$('sample').addEventListener('click', () => { file = null; text.value = SAMPLE; update(); });
-$('clear').addEventListener('click', () => { file = null; text.value = ''; update(); text.focus(); });
+$('sample').addEventListener('click', () => { file = null; text.value = SAMPLE; textNote(); update(); });
+$('clear').addEventListener('click', () => { file = null; text.value = ''; textNote(); update(); text.focus(); });
 
 const drop = $('drop');
 drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });

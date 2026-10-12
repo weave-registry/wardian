@@ -6,10 +6,14 @@ Kernel.register({
   caps: ['db', 'storage'],
   init(ctx){
     const $ = ctx.$, TOP = 12;
-    $('#period').value = String(ctx.store.get('period') ?? 7);
+    // The period: a radio group (three choices are best seen at once). Arrow keys move between them.
+    const start = Log.parsePeriod(ctx.store.get('period') ?? 7);
+    const set = v => { for (const r of ctx.$$('input[name=period]')) r.checked = Number(r.value) === v; };
+    set('value' in start ? start.value : 7);
+    const chosen = () => { const r = ctx.$('input[name=period]:checked'); return r ? Log.parsePeriod(r.value).value : 7; };
 
     async function draw(){
-      const days = Number($('#period').value), list = $('#list');
+      const days = chosen(), list = $('#list');
       let rows = [];
       try {
         const d = await Log.db(ctx);
@@ -37,7 +41,7 @@ Kernel.register({
         return li;
       }));
     }
-    $('#period').addEventListener('change', () => { ctx.store.set('period', Number($('#period').value)); draw(); });
+    $('#period').addEventListener('change', () => { ctx.store.set('period', chosen()); draw(); });
     ctx.on('log:changed', draw);
   }
 });

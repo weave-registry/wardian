@@ -18,7 +18,13 @@ Kernel.register({
     let table = null, pageAt = 0, drawing = 0;
     let sort = {col: -1, dir: 1};
     const empty = text => Object.assign(ctx.el('p'), {className: 'empty', textContent: text});
-    const hint = (text, warn) => { $('#findHint').className = 'w-hint' + (warn ? ' warn' : ''); $('#findHint').textContent = text; };
+    // A filter's problem is marked once you leave the field (or press Enter), and clears when it is right.
+    let findShown = false;
+    const hint = (text, warn) => {
+      if (!warn) findShown = false;
+      $('#find').setAttribute('aria-invalid', warn && findShown ? 'true' : 'false');
+      $('#findHint').className = 'w-hint' + (warn ? ' warn' : ''); $('#findHint').textContent = text;
+    };
     function tellView(){
       RowsNow.view = {find: $('#find').value.trim(), sort};
       ctx.emit('table:view', RowsNow.view);
@@ -95,6 +101,7 @@ Kernel.register({
 
     let findTimer = null;
     $('#find').addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(() => { pageAt = 0; tellView(); draw(); }, 200); });
+    $('#find').addEventListener('change', () => { findShown = true; clearTimeout(findTimer); pageAt = 0; tellView(); draw(); });
     // A new table starts unsorted and unfiltered.
     const key = t => t ? [t.at, t.savedAt, t.dataset && t.dataset.table, t.title].join('|') : '';
     ctx.on('table:ready', m => {

@@ -13,26 +13,27 @@ const TimeRange = Object.freeze({
   },
 
   // v: {range, label (of the chosen option), relN, relUnit, absFrom, absTo, advE, advL}.
-  // Returns {earliest, latest, label}, or {error} with a short message.
+  // Returns {earliest, latest, label}, or {error, field}: a message that says what is allowed, and the
+  // id of the field it is about.
   read(v){
     const U = TimeRange.UNITS;
     if (v.range === 'rel'){
       const n = Number(v.relN), u = v.relUnit;
-      if (!Number.isInteger(n) || n < 1 || n > 100000 || !U[u]) return {error: 'Type a whole number of 1 or more under How many.'};
+      if (!Number.isInteger(n) || n < 1 || n > 100000 || !U[u]) return {error: 'Enter a whole number from 1 to 100,000 under How many.', field: 'relN'};
       return {earliest: '-' + n + u, latest: '', label: 'Last ' + n + ' ' + U[u][n === 1 ? 0 : 1]};
     }
     if (v.range === 'abs'){
       const a = v.absFrom, b = v.absTo;
       const ta = a ? new Date(a).getTime() : NaN, tb = b ? new Date(b).getTime() : Date.now();
-      if (!a || isNaN(ta)) return {error: 'Choose the date and time to start from.'};
-      if (isNaN(tb)) return {error: 'The end date is not valid.'};
-      if (tb <= ta) return {error: 'The end must be after the start.'};
+      if (!a || isNaN(ta)) return {error: 'Choose the date and time to start from.', field: 'absFrom'};
+      if (isNaN(tb)) return {error: 'Choose a valid end date, or leave it empty for now.', field: 'absTo'};
+      if (tb <= ta) return {error: 'Choose an end after the start.', field: 'absTo'};
       return {earliest: String(Math.floor(ta / 1000)), latest: b ? String(Math.floor(tb / 1000)) : '',
         label: TimeRange.fmt(ta) + ' to ' + (b ? TimeRange.fmt(tb) : 'now')};
     }
     if (v.range === 'adv'){
       const e = String(v.advE || '').trim(), l = String(v.advL || '').trim();
-      if ((e && !TimeRange.CODE.test(e)) || (l && !TimeRange.CODE.test(l))) return {error: 'Splunk time codes look like -2d@d, @w1, -90m or now.'};
+      if ((e && !TimeRange.CODE.test(e)) || (l && !TimeRange.CODE.test(l))) return {error: 'Use Splunk time codes, like -2d@d, @w1, -90m or now.', field: e && !TimeRange.CODE.test(e) ? 'advE' : 'advL'};
       return {earliest: e, latest: l, label: 'Splunk time ' + (e || 'all time') + ' to ' + (l || 'now')};
     }
     const [e = '', l = ''] = String(v.range || '').split('|');

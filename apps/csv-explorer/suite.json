@@ -12,14 +12,15 @@
     "ui/badge.css",
     "ui/type.css",
     "ui/surface.css",
+    "ui/dialog.css",
     "style.css"
   ],
   "scripts": [
+    "ui/dialog.js",
     "shared/data.js",
     "shared/csv.js",
     "shared/filter.js"
   ],
-  "header": "header.html",
   "surface": "glass",
   "apps": [
     {

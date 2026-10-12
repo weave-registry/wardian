@@ -33,9 +33,9 @@ const Project = (() => {
     tasks.forEach((t, i) => {
       const nums = [t.o, t.m, t.p];
       if (!nums.every(v => typeof v === 'number' && isFinite(v))) rows[i] = 'Enter all three durations.';
-      else if (t.o < 0) rows[i] = 'Durations cannot be negative.';
-      else if (!(t.o <= t.m && t.m <= t.p)) rows[i] = 'Use optimistic ≤ likely ≤ pessimistic.';
-      else if (t.after.some(id => !index.has(id))) rows[i] = 'It waits for a task that is not in the list.';
+      else if (t.o < 0) rows[i] = 'Use 0 or more for each duration.';
+      else if (!(t.o <= t.m && t.m <= t.p)) rows[i] = 'Best must be at most Likely, and Likely at most Worst.';
+      else if (t.after.some(id => !index.has(id))) rows[i] = 'Under After, use the numbers of tasks in this list.';
       else if (t.after.includes(t.id)) rows[i] = 'A task cannot wait for itself.';
     });
     // Topological order (Kahn). Tasks left over sit on a loop.
@@ -56,6 +56,32 @@ const Project = (() => {
     return {ok: bad < 0, problem, rows, order};
   }
 
+  /* One parser per input, shared by the task table and anything saved: each turns what was typed into
+     a typed value or a message that says what is allowed. */
+  const MAX_SEED = 2147483647;
+  function parseDuration(text){
+    const s = String(text == null ? '' : text).trim();
+    if (s === '') return {error: 'Enter a duration.'};
+    const v = Number(s);
+    if (!Number.isFinite(v)) return {error: 'Enter a number, like 4 or 2.5.'};
+    if (v < 0) return {error: 'Enter 0 or more.'};
+    return {value: v};
+  }
+  function parseSeed(text){
+    const s = String(text == null ? '' : text).trim();
+    const v = Number(s);
+    if (s === '' || !Number.isInteger(v) || v < 1 || v > MAX_SEED) return {error: 'Enter a whole number from 1 to 2,147,483,647.'};
+    return {value: v};
+  }
+  /* Which of a task's fields a check message is about, so only those are marked. */
+  function fieldsOf(t, message){
+    if (!message) return [];
+    if (/three durations/.test(message)) return ['o', 'm', 'p'].filter(k => !(typeof t[k] === 'number' && isFinite(t[k])));
+    if (/0 or more/.test(message)) return ['o', 'm', 'p'].filter(k => t[k] < 0);
+    if (/at most/.test(message)) return t.o > t.m ? ['o', 'm'] : ['m', 'p'];
+    return ['aft'];
+  }
+
   /* Finish time of the whole project when every task takes `dur(task)`, in the given order. */
   function finish(tasks, order, dur){
     const index = new Map(tasks.map((t, i) => [t.id, i]));
@@ -70,5 +96,5 @@ const Project = (() => {
     return last;
   }
 
-  return Object.freeze({sample, check, finish, MAX_TASKS});
+  return Object.freeze({sample, check, finish, parseDuration, parseSeed, fieldsOf, MAX_TASKS, MAX_SEED});
 })();

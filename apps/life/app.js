@@ -124,6 +124,8 @@ function tick(t) {
 function setPlaying(on) {
   playing = on;
   $('play').textContent = on ? 'Pause' : 'Play';
+  $('play').setAttribute('aria-pressed', String(on));
+  if (on) $('motion').textContent = '';
   cancelAnimationFrame(frame);
   if (on) { last = performance.now(); owed = 0; frame = requestAnimationFrame(tick); }
 }
