@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.21] - 2026-10-13
+
 ### Changed
 
 - An app's AI gets a skill and tools, planned before it is built (ADR-2610131000):
@@ -23,7 +25,6 @@ Wardian 1.0") is done or written down there as left out.
   - **The `agent` component:** `WardianUI.agent()` runs the tool loop: it checks each tool's input,
     tells the model about errors, stops at the answer or a step limit, and keeps requests under
     Claude's size limit. `wardian add agent` lists it in the `ai` app only.
-
 - The Splunk table says whether a table is ready for the USL lab, by Neil Gunther's rules:
   - **Columns:** it shows which are the load, the throughput and the response time, and sends them
     to the lab with the table.
@@ -38,6 +39,16 @@ Wardian 1.0") is done or written down there as left out.
   and the curve's CSV in full. Its 90% ranges come from 1000 refits instead of 240, and the chart's
   band is interpolated like them. `tests/usl-math.js` checks the fit recovers known parameters to
   1e-6. ADR-2610121300.
+
+### Live checks
+
+2026-10-13, Linux on x86_64, no service credentials on the machine that ran them:
+
+- PASS export-100mb: exported 95 MB with data in 2 s, imported it into an empty Wardian intact; over the limit is refused
+- SKIP bedrock-api-key: AWS_BEARER_TOKEN_BEDROCK is not set
+- SKIP bedrock-sigv4: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are not both set
+- SKIP splunk: SPLUNK_URL is not set
+- SKIP drive: GDRIVE_SA_KEY (the path of a service account key) is not set
 
 ## [0.4.20] - 2026-10-11
 
