@@ -17,7 +17,7 @@ PORT=${PORT:-8773}
 mkdir -p "$TMP/apps" "$TMP/data"
 cp -R tests/fixtures/ai-hosts "$TMP/apps/hosts"
 mkdir -p "$TMP/apps/hosts/ui" && cp static/ui/agent.js "$TMP/apps/hosts/ui/"
-cp -R apps/meeting-notes "$TMP/apps/"
+cp -R apps/meeting-notes apps/splunk-table apps/usl-lab "$TMP/apps/"
 # The user has already allowed these apps to use Claude.
 printf '[{"app":"hosts","channel":"ai","mode":"use","allow":true,"at":1},{"app":"meeting-notes","channel":"ai","mode":"use","allow":true,"at":1}]' > "$TMP/data/grants.json"
 python3 tests/fixtures/fake-ai-claude.py "$FPORT" "$TMP/claude.log" &

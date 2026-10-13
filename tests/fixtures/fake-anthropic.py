@@ -27,17 +27,24 @@ class H(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         prompt = body["messages"][0]["content"]
         PROMPTS.append({"model": body["model"], "prompt": prompt})
-        if "Pick the one index" in prompt:
-            text = '{"index":"loadtest","sourcetype":"jmeter","why":"It holds the load-test steps."}'
-        elif "Write a Splunk search" in prompt:
-            text = json.dumps({"search": 'index="loadtest" sourcetype="jmeter" | stats avg(throughput) AS x BY concurrency | table concurrency x r',
+        # The apps' AI runs a tool loop (the agent component, ADR-2610131300): each request carries the
+        # skill, the task and the steps so far, and the reply is one JSON object, a tool or the answer.
+        steps = prompt.split("<steps>", 1)[1].split("</steps>", 1)[0] if "<steps>" in prompt else ""
+        if "Write a Splunk search (SPL)" in prompt and "3. sample_events" not in steps:
+            if "2. field_summary" in steps: text = json.dumps({"tool": "sample_events", "input": {"index": "loadtest", "sourcetype": "jmeter"}})
+            elif "1. list_data" in steps: text = json.dumps({"tool": "field_summary", "input": {"index": "loadtest", "sourcetype": "jmeter"}})
+            else: text = json.dumps({"tool": "list_data", "input": {}})
+        elif "Write a Splunk search (SPL)" in prompt:
+            text = json.dumps({"answer": {"search": 'index="loadtest" sourcetype="jmeter" | stats avg(throughput) AS x BY concurrency | table concurrency x r',
                                "loadUnit": "users", "throughputUnit": "req/s", "responseUnit": "ms", "earliest": "-7d",
                                "explanation": "Average throughput at each concurrency step of the load test.",
                                "title": "JMeter load test steps", "load": "Virtual users running in each step.",
                                "throughput": "Requests finished per second in that step.", "response": "Average response time, in milliseconds.",
-                               "method": "One point per concurrency step, averaged over the step."})
-        elif "Convert it into multiplicative factors" in prompt:
-            text = '{"alphaFactor":0.5,"betaFactor":1,"lambdaFactor":1,"rationale":"Halving lock time halves contention."}'
+                               "method": "One point per concurrency step, averaged over the step."}})
+        elif "Turn this proposed change into factors" in prompt:
+            text = '{"answer": {"alphaFactor":0.5,"betaFactor":1,"lambdaFactor":1,"rationale":"Halving lock time halves contention."}}'
+        elif "Write the diagnosis of this USL fit" in prompt:
+            text = json.dumps({"answer": "## What the curve says\nThroughput peaks near 48 users.\n## Likely causes\n- a hypothesis"})
         else:
             text = "## What the curve says\nThroughput peaks near 48 users.\n## Likely causes\n- a hypothesis"
         # Usage as the real API reports it, so Wardian can count it (ADR-2610081500).

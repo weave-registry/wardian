@@ -78,15 +78,17 @@ data before an app uses it. The latest table goes out on the channel `splunk.tab
 receives it and lets you choose which columns are load, throughput and response time.
 
 A suite of five small parts (ADR-2610080900), each with one job and its own panel, so each viewer can
-arrange them: put the table full width, hide the AI helper, or move the facts below the table.
+arrange them: put the table full width, hide the AI helper, or move the facts below the table. A
+sixth part, `ai`, has no panel: it is the app's AI.
 
 | Part | Slot | Job | Contract |
 |---|---|---|---|
 | `search` | aside | Start from, words to find, the search, time range, name, Run, progress, **Save search** and the saved searches. Runs the search as a background job and picks it up again when the app opens. Keeps the current table, so it comes back next time. | emits `table:ready` (retained); listens `search:use`, `table:ready`; `storage`, `splunk`, `db` |
-| `ask` | aside | Claude writes the search from a description, then `search` runs it. Hidden when Claude or Splunk is not set up. | emits `search:use`; `splunk`, `claude:sample` |
+| `ask` | aside | Claude writes the search from a description, through `ai`, then `search` runs it; the progress bar names each step. Off, saying why, when Claude or Splunk is not set up. | emits `search:use`; listens `ai:step`; needs `ai.status`, `ai.write` |
 | `about` | main | What the table is: name, rows, time range, when it was fetched or saved, the search; and whether the USL lab can use it (`shared/usl.js`). | listens `table:ready`; `db` |
 | `rows` | main | Find in results, sort by any column, the table, the pager. | emits `table:view` (retained); listens `table:ready`; `db` |
 | `keep` | main | Send to other apps, Download CSV, **Save table** and the saved tables. | emits `table:ready` (retained); listens `table:ready`, `table:view`; `storage`, `db`, `claude:downloads`; sends `splunk.table` |
+| `ai` | — | The app's AI, out of sight: the only part with Claude. Its skill and tools are in `skill.md` and `tools.json`; it writes searches for `ask` and answers Wardian's **Ask**. | emits `ai:step`; provides `status`, `write`, `chat`; `claude:sample`, `asset`, `splunk`, `db` |
 
 How a search flows: **search** (or **ask** → `search:use` → **search**) runs it and emits
 `table:ready` `{table, send: true}` → **about** and **rows** draw it, and **keep** sends it on
@@ -98,6 +100,24 @@ saves the rows on screen. Opening a saved table in **keep** emits `table:ready` 
 copy: `cells.js` (number tests, CSV cells, row counts), `find.js` ("Find in results" in memory and
 as SQL, the sort), `range.js` (reading the time range) and `saved.js` (the saved lists).
 `apps/search/presets.js` and `apps/search/form.js` are the search part's own scripts.
+
+## How the AI works
+
+The AI is the out-of-sight **ai** part, and its skill and tools are data (ADR-2610131300):
+
+- `apps/ai/skill.md`, the skill: look at the data before writing, use only fields that exist, and
+  the rules for a plain table and for a USL table (load, throughput and response time, steady
+  state, Little's Law for production traffic); and how to answer questions about the tables.
+- `apps/ai/tools.json`, five read-only tools: `list_data` (the indexes and sourcetypes with
+  events), `field_summary` and `sample_events` (one index's fields and a few raw events, emails
+  replaced with `<email>`), and `list_tables` and `read_rows` (the tables kept here, run by
+  Wardian's agent component). The Splunk tools run fixed searches that take only an index and a
+  sourcetype, checked as names, so Claude never runs a search of its own; the search it writes goes
+  to **search**, where you see it run.
+
+In Wardian, open the app, then **⋯ → AI skill and tools** to read, edit or improve them; each save
+is a version in History. **Ask**, beside the app's title, is a chat that the same AI answers about
+the tables you kept and what is in Splunk.
 
 **Find in results** filters the rows on the page. Plain words match any cell; `column=text`,
 `column!=text` and `column>number` (also `<`, `>=`, `<=`) look in one column. The CSV then holds

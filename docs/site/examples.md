@@ -148,13 +148,15 @@ from start to end, with your permission at each step.
 
 Fits the Universal Scalability Law to load-test results and shows where a system stops scaling. It
 runs its fitting engine in a worker, from code it reads with `source`, and receives tables from the
-Splunk table app. [How it works](/docs/examples/usl-lab) · [Source](https://github.com/weave-registry/wardian/tree/main/apps/usl-lab)
+Splunk table app. Its AI writes a diagnosis of the fit and answers Ask, with its skill and tools in
+**⋯ → AI skill and tools**. [How it works](/docs/examples/usl-lab) · [Source](https://github.com/weave-registry/wardian/tree/main/apps/usl-lab)
 
 ### splunk-table
 
 Runs a Splunk search on the server, loads up to a million rows into its database, and shows them a
 page at a time. It sends a reference to the table on a channel, so the USL lab can read the rows it
-needs. It needs a Splunk account. [How it works](/docs/examples/splunk-table) · [Source](https://github.com/weave-registry/wardian/tree/main/apps/splunk-table)
+needs. It needs a Splunk account. Its AI looks at your data in Splunk and writes the search, with
+its skill and tools in **⋯ → AI skill and tools**. [How it works](/docs/examples/splunk-table) · [Source](https://github.com/weave-registry/wardian/tree/main/apps/splunk-table)
 
 ## Make your own
 

@@ -84,12 +84,27 @@ test/e2e.js             boots the page in jsdom: all apps, worker + fallback, se
 | whatif | sliders, plain-language box | emits `whatif:changed`; calls diagnosis.parseWhatIf |
 | readouts | parameters and ranges | `analysis:ready` |
 | checks | findings in words | `analysis:ready` -> emits `checks:ready` |
-| diagnosis | Claude (claude:sample) | emits `capability:ai`, `diagnosis:updated` |
+| diagnosis | the Diagnosis panel: Interpret results, Stop, the Markdown; passes what-ifs on | calls ai.status, ai.diagnose, ai.whatIf, ai.cancel; emits `capability:ai`, `diagnosis:updated` |
 | export | report/CSV (claude:downloads) | many listens; calls engine.curve |
+| ai | nothing visible; the lab's AI, the only part with Claude (claude:sample) | `analysis:ready`, `checks:ready`, `context:changed`; provides `diagnose`, `whatIf`, `chat` for Ask |
 
 What makes them "wasm-like": declared imports/exports; nothing shared by reference (every message and call is
 structuredClone'd); no DOM/window/storage/network except through granted capabilities (`build.py` audits this);
 retained topics so a late-joining app gets the latest state; apps can be hot-plugged at runtime.
+
+## How the AI works
+
+The AI is the out-of-sight **ai** part, and its skill and tools are data (ADR-2610131300):
+
+- `apps/ai/skill.md`, the skill: read a USL fit without recomputing it, the diagnosis's four
+  sections and its rules (each hypothesis tied to alpha or beta, an extrapolated peak said to be
+  one), how to turn a proposed change into slider factors, and how to answer questions.
+- `apps/ai/tools.json`, four read-only tools: `fit_results`, `data_checks`, `measurements` and
+  `system_description`, which give Claude the lab's own numbers and what you wrote.
+
+In Wardian, open the lab, then **⋯ → AI skill and tools** to read, edit or improve them; each save
+is a version in History. **Ask**, beside the title, is a chat that the same AI answers: where the
+system peaks, what limits it, whether to trust the data.
 
 Build: `python3 build.py` then `node test/e2e.js` (needs `npm i jsdom`).
 Debug in the browser console: `UslKernel.apps()`, `UslKernel.trace()`, `UslKernel.faults()`.

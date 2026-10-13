@@ -12,6 +12,19 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- The `splunk-table` and `usl-lab` examples' AI has its skill and tools in their settings, and
+  answers Ask, as `meeting-notes` does (ADR-2610131300):
+  - **Splunk table:** **Write with AI** is now Claude using tools: it lists the data in Splunk,
+    reads the fields and a few events of the index it picks, then writes the search, and the
+    progress bar names each step. The rules for a USL table are in its `skill.md`. The Splunk
+    tools run fixed searches that take only an index and a sourcetype. Ask answers about the
+    tables you kept and what is in Splunk.
+  - **USL lab:** **Interpret results** and **Or describe a change** go through the lab's hidden
+    `ai` part, whose tools give Claude the lab's own numbers. Ask answers about the fit: where the
+    system peaks, what limits it, whether to trust the data.
+
 ## [0.4.23] - 2026-10-13
 
 ### Changed

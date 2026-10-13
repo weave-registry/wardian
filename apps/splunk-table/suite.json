@@ -56,9 +56,12 @@
       "emits": {
         "search:use": {}
       },
-      "caps": [
-        "splunk",
-        "claude:sample"
+      "listens": [
+        "ai:step"
+      ],
+      "needs": [
+        "ai.status",
+        "ai.write"
       ]
     },
     {
@@ -111,6 +114,26 @@
           "splunk.table"
         ]
       }
+    },
+    {
+      "name": "ai",
+      "scripts": [
+        "ui/agent.js"
+      ],
+      "emits": {
+        "ai:step": {}
+      },
+      "provides": [
+        "status",
+        "write",
+        "chat"
+      ],
+      "caps": [
+        "claude:sample",
+        "asset",
+        "splunk",
+        "db"
+      ]
     }
   ]
 }

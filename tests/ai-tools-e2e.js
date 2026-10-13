@@ -112,6 +112,18 @@ const post = (p, body) => fetch(BASE + p, { method: 'POST', headers: { 'Content-
   ok(await page.locator('#aiToolList .tool').count() === 3, 'its settings list its three tools');
   ok(!/no code|proposed/.test(await page.locator('#aiToolList').textContent()), 'each has code');
 
+  // The other examples with AI: each has Ask, and settings whose tools all have code.
+  for (const [title, count] of [[/Splunk table/, 5], [/USL/, 4]]) {
+    await page.click('text=Back to the app');
+    await page.locator('#apps li button', { hasText: title }).first().click();
+    await page.locator('#askBtn').waitFor({ timeout: 10000 });
+    await page.click('#moreBtn');
+    await page.click('#aiToolsBtn');
+    await page.locator('#aiSkill').waitFor({ timeout: 5000 });
+    const listed = await page.locator('#aiToolList .tool').count();
+    ok(listed === count && !/no code|proposed/.test(await page.locator('#aiToolList').textContent()), `${title.source}: Ask, and ${listed} tools, each with code`);
+  }
+
   ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join('; ') : ''));
   await browser.close();
   console.log(`${pass} passed, ${fail} failed`);

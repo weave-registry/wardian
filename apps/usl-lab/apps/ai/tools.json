@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "tools": [
+    {
+      "name": "fit_results",
+      "description": "The lab's USL fit as it stands: alpha, beta and lambda with their 90% ranges, the peak load and peak throughput (or the ceiling when there is no peak), R squared, the typical error, the highest measured load and the units. Use it for any question about the curve, the peak or the limits.",
+      "input": { "type": "object", "properties": {}, "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "data_checks",
+      "description": "The lab's checks of the data, each with its level (ok, warn or bad), title and detail: too few runs, a missing steady state, points off the curve and the like. Use it to say how far the fit can be trusted.",
+      "input": { "type": "object", "properties": {}, "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "measurements",
+      "description": "The runs the fit rests on, from the lowest load: load, throughput, response time when given, and whether the fit flags the run as off the curve; at most 50 rows from from_row. Use it to point at particular runs.",
+      "input": { "type": "object", "properties": {
+        "from_row": { "type": "integer", "minimum": 1 },
+        "max_rows": { "type": "integer", "minimum": 1, "maximum": 50 }
+      }, "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "system_description",
+      "description": "What the user wrote about the system under test (up to 1,000 characters), or that they wrote nothing. Use it before naming likely causes.",
+      "input": { "type": "object", "properties": {}, "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    }
+  ]
+}

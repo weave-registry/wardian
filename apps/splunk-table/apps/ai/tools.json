@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "tools": [
+    {
+      "name": "list_data",
+      "description": "The indexes and sourcetypes with events in the last 24 hours, with their event counts, most first (at most 60 lines of \"index  sourcetype  count\"). Use it first, to know where to look.",
+      "input": { "type": "object", "properties": {}, "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "field_summary",
+      "description": "The fields of one index and sourcetype, from 5,000 recent events: each field's name, how many events have it and its number of distinct values, at most 40, most common first. Use it before naming any field in a search.",
+      "input": { "type": "object", "properties": {
+        "index": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "sourcetype": { "type": "string", "maxLength": 80 }
+      }, "required": ["index"], "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "sample_events",
+      "description": "Up to 6 recent raw events of one index and sourcetype, each of a different shape, cut to 600 characters, with email addresses replaced by <email>. Use it to see what the fields hold.",
+      "input": { "type": "object", "properties": {
+        "index": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "sourcetype": { "type": "string", "maxLength": 80 },
+        "count": { "type": "integer", "minimum": 1, "maximum": 6 }
+      }, "required": ["index"], "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "list_tables",
+      "description": "The tables in this app's database, with their columns: the searches the user loaded and kept. Use it first, to know what there is to read.",
+      "input": { "type": "object", "properties": {}, "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "read_rows",
+      "description": "Up to 50 rows of one table, from offset, optionally ordered by a column. Use it to look at the data itself; page through with offset rather than asking for everything.",
+      "input": { "type": "object", "properties": {
+        "table": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "offset": { "type": "integer", "minimum": 0 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "orderBy": { "type": "string", "maxLength": 64 },
+        "desc": { "type": "boolean" }
+      }, "required": ["table"], "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    }
+  ]
+}

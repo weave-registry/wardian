@@ -161,15 +161,16 @@
         }
       },
       "listens": [
-        "analysis:ready",
-        "checks:ready",
-        "context:changed"
+        "analysis:ready"
       ],
       "provides": [
         "parseWhatIf"
       ],
-      "caps": [
-        "claude:sample"
+      "needs": [
+        "ai.status",
+        "ai.diagnose",
+        "ai.whatIf",
+        "ai.cancel"
       ]
     },
     {
@@ -190,6 +191,28 @@
       ],
       "caps": [
         "claude:downloads"
+      ]
+    },
+    {
+      "name": "ai",
+      "scripts": [
+        "ui/agent.js"
+      ],
+      "listens": [
+        "analysis:ready",
+        "checks:ready",
+        "context:changed"
+      ],
+      "provides": [
+        "status",
+        "diagnose",
+        "whatIf",
+        "cancel",
+        "chat"
+      ],
+      "caps": [
+        "claude:sample",
+        "asset"
       ]
     }
   ]

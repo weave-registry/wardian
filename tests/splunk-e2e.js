@@ -118,7 +118,7 @@ async function answer(page, re, yes, what) {
   console.log('== the table app asks before it searches');
   await tab.goto(B + '/run/splunk-table/'); await sleep(2500);
   let { s, a, rw, k } = partsOf(tab);
-  ok((await panels(tab)).join() === 'search,ask,about,rows,keep' && (await tab.evaluate(() => Kernel.started())).length === 5, 'five parts, each its own panel: ' + (await panels(tab)).join());
+  ok((await panels(tab)).join() === 'search,ask,about,rows,keep' && (await tab.evaluate(() => Kernel.started())).length === 6, 'five parts, each its own panel, and the out-of-sight ai part: ' + (await panels(tab)).join());
   const heights = await Promise.all(['search', 'about', 'rows', 'keep'].map(p => frameHeight(tab, p)));
   const askH = await frameHeight(tab, 'ask');
   await frameOf(tab, 'ask').locator('#status', { hasText: 'not set up' }).waitFor({ timeout: 5000 }).catch(() => {});
@@ -437,7 +437,7 @@ async function answer(page, re, yes, what) {
     r = await post('/api/ai/key', { key: 'test-key', workspace: '' });
     ok(r.status === 200 && r.body.ready && r.body.workspace === null, 'the key is tested and saved; an empty workspace removes it');
   }
-  r = await post('/api/ai/sample', { package: 'splunk-table', app: 'ask', prompt: 'hi' });
+  r = await post('/api/ai/sample', { package: 'splunk-table', app: 'ai', prompt: 'hi' });
   ok(/^not_granted/.test(r.body.error), 'no AI before the user allows it');
   r = await post('/api/ai/sample', { package: 'usl-lab', app: 'chart', prompt: 'hi' });
   ok(/does not declare/.test(r.body.error), 'an app without claude:sample is refused');
@@ -449,13 +449,15 @@ async function answer(page, re, yes, what) {
   await ai.locator('#aiWhat').fill('throughput of the load test as users grow');
   await press(ai, '#btnAi');
   await answer(tab, /Claude AI requests/, true, 'the host asks about Claude');
-  await s.locator('#status', { hasText: 'rows from Splunk' }).waitFor({ timeout: 10000 });
+  // Seven background jobs: three looks at Splunk and four requests to Claude, then the search runs.
+  await s.locator('#status', { hasText: 'rows from Splunk' }).waitFor({ timeout: 30000 });
   ok((await s.locator('#spl').inputValue()).startsWith('index="loadtest" sourcetype="jmeter"'), 'Claude\'s search is in the search part\'s box');
   ok(/Average throughput at each concurrency step/.test(await s.locator('#status').textContent()), 'with its explanation');
   ok(await s.locator('#title').inputValue() === 'JMeter load test steps', 'and its name for the table');
   ok(/Claude wrote the search/.test(await ai.locator('#status').textContent()) && await ai.locator('wardian-progress').getAttribute('state') === 'done', 'ask says it handed the search over');
   const prompts = await (await fetch(ANTHROPIC + '/prompts')).json();
-  ok(prompts.length === 2 && prompts[0].model.includes('haiku'), 'two requests: a quick pick, then the search');
+  ok(prompts.length === 4 && ['list_data', 'field_summary', 'sample_events'].every((t, i) => prompts[i + 1].prompt.includes(`${i + 1}. ${t}`)), 'four requests: Claude lists the data, reads the fields and a few events, then writes the search');
+  ok(prompts[0].prompt.includes('Searches for the USL lab') && prompts[0].prompt.includes('Never use a utilisation'), 'with the rules from the ai part\'s skill.md');
   if (process.env.PROVIDER === 'bedrock' && !PROFILE) ok(prompts[0].model.startsWith('us.anthropic.') && (await (await fetch(process.env.BEDROCK + '/seen')).json()).includes('bearer'), 'the requests went through Bedrock with its model ids and the bearer key');
   if (PROFILE) {
     const signed = await (await fetch(process.env.BEDROCK + '/signed')).json();
