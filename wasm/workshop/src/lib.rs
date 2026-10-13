@@ -17,6 +17,13 @@
 //! The skills agent (ADR-2610131000) is a model call the host makes: "skillsRequest" gives its
 //! {"system","messages","maxTokens"} (the host adds the model), or {"error"} for a bad brief, which is
 //! the tool's error; "skillsOutcome" turns the model's reply into {"text","isError","line"?}.
+//! An AI app's skill and tools (ADR-2610131300): {"op":"aiTools","files":{…}} gives what App settings
+//! shows; {"op":"aiToolsApply","files":{…},"repository":{…}} gives {"changes":{"path":"text",…}}, the
+//! ai app's skill.md and tools.json to write (the caller saves through finish, which checks), or
+//! {"error"}; {"op":"aiImproveRequest","files":{…},"repository":{…},"wanted":…} gives Improve with
+//! AI's {"system","messages","maxTokens"} (the host adds the model) or {"error"}; and
+//! {"op":"aiImproveOutcome","reply":{…},"files":{…}} turns the model's reply into
+//! {"repository","notes","proposed"} or {"error"}.
 #![allow(dead_code)]
 
 #[path = "../../../src/domain"]
@@ -38,6 +45,7 @@ mod ports {
 }
 #[path = "../../../src/usecases"]
 mod usecases {
+    pub mod ai_tools;
     pub mod demos;
     pub mod workshop;
 }
@@ -77,7 +85,28 @@ pub fn handle(request: &str) -> Vec<u8> {
             }
             reply
         }
-        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest or skillsOutcome" }),
+        Some("aiTools") => usecases::ai_tools::view(&files_of(&req)),
+        Some("aiToolsApply") => {
+            let before = files_of(&req);
+            let mut after = before.clone();
+            match usecases::ai_tools::apply(&mut after, &req["repository"]) {
+                Ok(()) => {
+                    let changes: Map<String, Value> = after
+                        .into_iter()
+                        .filter(|(k, v)| before.get(k) != Some(v))
+                        .map(|(k, v)| (k, Value::String(String::from_utf8_lossy(&v).into_owned())))
+                        .collect();
+                    json!({ "changes": changes })
+                }
+                Err(e) => json!({ "error": e }),
+            }
+        }
+        Some("aiImproveRequest") => match usecases::ai_tools::improve_request_for(&files_of(&req), &req["repository"], req["wanted"].as_str().unwrap_or("")) {
+            Ok(r) => json!({ "system": r["system"], "messages": r["messages"], "maxTokens": r["max_tokens"] }),
+            Err(e) => json!({ "error": e }),
+        },
+        Some("aiImproveOutcome") => usecases::ai_tools::improve_outcome_for(&req["reply"], &files_of(&req)).unwrap_or_else(|e| json!({ "error": e })),
+        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest, skillsOutcome, aiTools, aiToolsApply, aiImproveRequest or aiImproveOutcome" }),
     };
     reply.to_string().into_bytes()
 }

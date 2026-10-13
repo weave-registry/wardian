@@ -60,7 +60,9 @@ the hosted builder.
 6. **The builder:** Make an app's prompt, the skills agent's prompt and the component guide say to
    put the skill and tools in `skill.md` and `tools.json`, load them with `agentApp`, and provide
    `chat`. Checklist item 11 checks it. The hosted builder gets this with the next vendored
-   `workshop.wasm`.
+   `workshop.wasm`, which also exposes the repository (`aiTools`, `aiToolsApply`) and Improve with
+   AI (`aiImproveRequest`, `aiImproveOutcome`), so the hosted builder applies the same rules and
+   prompt (its ADR in wardian-web).
 
 ## Consequences
 
@@ -79,7 +81,7 @@ the hosted builder.
 
 `domain::ai_tools` (the rules, `builtin_tools`, `ai_app`); `domain::check` (the files' check);
 `usecases::ai_tools` (the Improve prompt, `has_code`, `improve_outcome`); `usecases::studio`
-(`ai_tools`, `save_ai_tools`, `improve_ai_tools`, `save_package` shared with Make an app);
+(`ai_tools`, `save_ai_tools`, `improve_ai_tools`, `save_package` shared with Make an app); `usecases::ai_tools` (`view`, `apply`, `improve_request_for`, `improve_outcome_for`, shared with `wasm/workshop`);
 `ports::service::Builder`; `adapters::primary::http` (the three routes); `static/ui/agent.js`
 (`agentApp`); `static/kernel.html` (the chat bridge); `static/index.html` (the menu item, the
 editor, Ask); `usecases::workshop` and `domain::components` (the prompts and the guide);

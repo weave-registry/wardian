@@ -2,9 +2,77 @@
 //! from the repository as the editor holds it, the app's README and the ai app's code. The answer
 //! goes back to the editor, not to disk: the user reads it and saves it, or not.
 
-use crate::domain::ai_tools::{Repository, BUILTIN_TOOLS, MAX_DESCRIPTION_CHARS, MAX_SKILL_CHARS, MAX_TOOLS, MAX_TOTAL_CHARS};
+use super::workshop::Files;
+use crate::domain::ai_tools::{self, AiApp, Repository, BUILTIN_TOOLS, MAX_DESCRIPTION_CHARS, MAX_SKILL_CHARS, MAX_TOOLS, MAX_TOTAL_CHARS};
+use crate::domain::components::AI_APP;
 use crate::domain::studio::json_in;
 use serde_json::{json, Value};
+
+const NO_AI: &str = "this app has no AI: no suite app named \"ai\" uses claude:sample";
+
+/// The package's ai app, from its suite.json.
+pub fn ai_of(files: &Files) -> Option<AiApp> {
+    let suite = files.get("suite.json").and_then(|b| serde_json::from_slice::<Value>(b).ok())?;
+    ai_tools::ai_app(&suite, AI_APP)
+}
+
+/// The ai app's own code, which implements the tools: every script in its folder.
+fn code_of(files: &Files, ai: &AiApp) -> String {
+    let prefix = format!("{}/", ai.dir);
+    files.iter().filter(|(p, _)| p.starts_with(&prefix) && p.ends_with(".js")).map(|(p, b)| format!("// {p}\n{}\n", String::from_utf8_lossy(b))).collect()
+}
+
+fn paths(ai: &AiApp) -> (String, String) {
+    (format!("{}/{}", ai.dir, ai_tools::SKILL_FILE), format!("{}/{}", ai.dir, ai_tools::TOOLS_FILE))
+}
+
+/// A package's AI skill and tools, as App settings shows them: {ai: false} for a package without an
+/// ai app; else {ai, dir, db, chat, saved, builtins, repository, code: {tool: has code}} or, for
+/// files that break the rules, {…, error}.
+pub fn view(files: &Files) -> Value {
+    let Some(ai) = ai_of(files) else { return json!({ "ai": false, "suite": files.contains_key("suite.json") }) };
+    let (skill_rel, tools_rel) = paths(&ai);
+    let code = code_of(files, &ai);
+    let mut out = json!({ "ai": true, "dir": ai.dir, "db": ai.db, "chat": ai.chat,
+        "saved": files.contains_key(&skill_rel) || files.contains_key(&tools_rel),
+        "builtins": if ai.db { ai_tools::builtin_tools() } else { json!([]) } });
+    match Repository::from_files(files.get(&skill_rel).map(Vec::as_slice), files.get(&tools_rel).map(Vec::as_slice)) {
+        Ok(repo) => {
+            let has: serde_json::Map<String, Value> = repo.tools.iter().map(|t| (t.name.clone(), json!(has_code(&code, &t.name)))).collect();
+            out["code"] = Value::Object(has);
+            out["repository"] = repo.to_json();
+        }
+        Err(e) => out["error"] = json!(e),
+    }
+    out
+}
+
+/// Puts the editor's repository into the package's ai app, checked against the rules. The caller
+/// saves the package through `wardian check`.
+pub fn apply(files: &mut Files, repository: &Value) -> Result<(), String> {
+    let repo = Repository::from_json(repository)?;
+    let ai = ai_of(files).ok_or(NO_AI)?;
+    let (skill_rel, tools_rel) = paths(&ai);
+    let (skill, tools) = repo.to_files();
+    files.insert(skill_rel, skill);
+    files.insert(tools_rel, tools);
+    Ok(())
+}
+
+/// Improve with AI for a package: the request (without the model) from the editor's repository,
+/// the README and the ai app's code.
+pub fn improve_request_for(files: &Files, repository: &Value, wanted: &str) -> Result<Value, String> {
+    let repo = Repository::from_json(repository)?;
+    let ai = ai_of(files).ok_or(NO_AI)?;
+    let readme = files.get("README.md").map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default();
+    improve_request(&repo, &readme, &code_of(files, &ai), wanted)
+}
+
+/// Claude's reply to `improve_request_for`, for the editor.
+pub fn improve_outcome_for(reply: &Value, files: &Files) -> Result<Value, String> {
+    let code = ai_of(files).map(|ai| code_of(files, &ai)).unwrap_or_default();
+    improve_outcome(reply, &code)
+}
 
 /// The most the reply may hold: a whole repository, with room for the notes.
 pub const IMPROVE_MAX_TOKENS: u64 = 16_000;
@@ -40,7 +108,7 @@ fn clipped(s: &str, max: usize) -> String {
 }
 
 /// The request, without the model: {system, messages, max_tokens}.
-pub fn improve_request(repo: &Repository, readme: &str, code: &str, wanted: &str) -> Result<Value, String> {
+fn improve_request(repo: &Repository, readme: &str, code: &str, wanted: &str) -> Result<Value, String> {
     if wanted.chars().count() > MAX_INSTRUCTION_CHARS {
         return Err(format!("say what you want in fewer than {MAX_INSTRUCTION_CHARS} characters"));
     }
@@ -71,7 +139,7 @@ pub fn has_code(code: &str, name: &str) -> bool {
 
 /// The model's reply as the editor's next repository: {repository, notes, proposed}. A tool the
 /// code does not implement is a proposal, whatever the reply says; one that is on stays on.
-pub fn improve_outcome(reply: &Value, code: &str) -> Result<Value, String> {
+fn improve_outcome(reply: &Value, code: &str) -> Result<Value, String> {
     if reply["stop_reason"] == "max_tokens" {
         return Err("Claude's answer was cut off; ask for a smaller change".into());
     }

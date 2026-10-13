@@ -19,9 +19,7 @@ use super::keys::{KeyChecks, KeyEntry, KeyOwner};
 use super::usage::Meter;
 use super::workshop::{self, Files};
 use crate::domain::agent::{AgentSettings, BUILDER, LIMITS};
-use crate::domain::ai_tools;
 use crate::domain::aws_profile;
-use crate::domain::components::AI_APP;
 use crate::domain::package::{safe_segment, SKIP_DIRS};
 use crate::domain::studio::{free_name, json_in, Session, EMPTY_WASM};
 use crate::ports::{
@@ -685,55 +683,27 @@ impl Studio {
         }
     }
 
-    /// A local app's files and its ai app, for App settings (ADR-2610131300).
-    fn ai_package(&self, app: &str) -> Result<(Files, Option<ai_tools::AiApp>), String> {
+    /// A local app's files, for App settings (ADR-2610131300).
+    fn local_files(&self, app: &str) -> Result<Files, String> {
         if !self.hub.serving_local() {
             return Err("App settings change apps in the local apps folder. Switch the source to Local first.".into());
         }
         if !safe_segment(app) || !self.hub.local_app_exists(app) {
             return Err(format!("no local app \"{app}\""));
         }
-        let files = load(&*self.fs, &self.hub.local_root().join(app));
-        let suite = files.get("suite.json").and_then(|b| serde_json::from_slice::<Value>(b).ok());
-        let ai = suite.as_ref().and_then(|s| ai_tools::ai_app(s, AI_APP));
-        Ok((files, ai))
+        Ok(load(&*self.fs, &self.hub.local_root().join(app)))
     }
 
-    /// The ai app's own code, which implements the tools: every script in its folder.
-    fn ai_code(files: &Files, ai: &ai_tools::AiApp) -> String {
-        let prefix = format!("{}/", ai.dir);
-        files.iter().filter(|(p, _)| p.starts_with(&prefix) && p.ends_with(".js")).map(|(p, b)| format!("// {p}\n{}\n", String::from_utf8_lossy(b))).collect()
-    }
-
-    /// An app's AI skill and tools, as App settings shows them: {ai: false} for an app without an
-    /// ai app; else {ai, dir, db, chat, saved, repository, code: {tool: has code}, error?}.
+    /// An app's AI skill and tools, as App settings shows them (`ai_tools::view`).
     pub fn ai_tools(&self, app: &str) -> Result<Value, String> {
-        let (files, ai) = self.ai_package(app)?;
-        let Some(ai) = ai else { return Ok(json!({ "ai": false, "suite": files.contains_key("suite.json") })) };
-        let (skill_rel, tools_rel) = (format!("{}/{}", ai.dir, ai_tools::SKILL_FILE), format!("{}/{}", ai.dir, ai_tools::TOOLS_FILE));
-        let saved = files.contains_key(&skill_rel) || files.contains_key(&tools_rel);
-        let code = Self::ai_code(&files, &ai);
-        let mut out = json!({ "ai": true, "dir": ai.dir, "db": ai.db, "chat": ai.chat, "saved": saved, "builtins": if ai.db { ai_tools::builtin_tools() } else { json!([]) } });
-        match ai_tools::Repository::from_files(files.get(&skill_rel).map(Vec::as_slice), files.get(&tools_rel).map(Vec::as_slice)) {
-            Ok(repo) => {
-                let has: serde_json::Map<String, Value> = repo.tools.iter().map(|t| (t.name.clone(), json!(ai_tools_uc::has_code(&code, &t.name)))).collect();
-                out["code"] = Value::Object(has);
-                out["repository"] = repo.to_json();
-            }
-            Err(e) => out["error"] = json!(e),
-        }
-        Ok(out)
+        Ok(ai_tools_uc::view(&self.local_files(app)?))
     }
 
     /// Saves the skill and tools from App settings, checked like any save and kept in the app's
     /// history. `body`: {repository: {skill, tools}, why?}.
     pub fn save_ai_tools(&self, app: &str, body: &Value) -> Result<Value, String> {
-        let repo = ai_tools::Repository::from_json(&body["repository"])?;
-        let (mut files, ai) = self.ai_package(app)?;
-        let ai = ai.ok_or("this app has no AI: no suite app named \"ai\" uses claude:sample")?;
-        let (skill, tools) = repo.to_files();
-        files.insert(format!("{}/{}", ai.dir, ai_tools::SKILL_FILE), skill);
-        files.insert(format!("{}/{}", ai.dir, ai_tools::TOOLS_FILE), tools);
+        let mut files = self.local_files(app)?;
+        ai_tools_uc::apply(&mut files, &body["repository"])?;
         let why = body["why"].as_str().map(str::trim).filter(|w| !w.is_empty()).unwrap_or("Changed the AI's skill and tools in App settings");
         let why: String = why.chars().take(300).collect();
         let (_, version) = save_package(&*self.fs, &self.hub, &self.checker, &*self.clock, &files, app, "app-settings", &why)?;
@@ -745,17 +715,13 @@ impl Studio {
     /// Improve with AI: Claude rewrites the skill and tools the editor holds, on Make an app's
     /// meter and cap. Nothing is saved. `body`: {repository, wanted}.
     pub fn improve_ai_tools(&self, app: &str, body: &Value) -> Result<Value, String> {
-        let repo = ai_tools::Repository::from_json(&body["repository"])?;
-        let (files, ai) = self.ai_package(app)?;
-        let ai = ai.ok_or("this app has no AI: no suite app named \"ai\" uses claude:sample")?;
+        let files = self.local_files(app)?;
+        let mut req = ai_tools_uc::improve_request_for(&files, &body["repository"], body["wanted"].as_str().unwrap_or(""))?;
         let api = self.api(BUILDER)?;
-        let readme = files.get("README.md").map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default();
-        let code = Self::ai_code(&files, &ai);
-        let mut req = ai_tools_uc::improve_request(&repo, &readme, &code, body["wanted"].as_str().unwrap_or(""))?;
         req["model"] = json!(api.model);
         req["max_tokens"] = json!(api.max_tokens.min(ai_tools_uc::IMPROVE_MAX_TOKENS));
         let reply = api.send(&req, &AtomicBool::new(false))?;
-        ai_tools_uc::improve_outcome(&reply, &code)
+        ai_tools_uc::improve_outcome_for(&reply, &files)
     }
 
     /// Tests a key against the API before saving it, so a bad key never
