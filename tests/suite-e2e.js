@@ -20,9 +20,13 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
     const slow = await ctx.newPage();
     await slow.route('**/api/state/layout**', async r => { await sleep(3000); await r.continue(); });
     await slow.goto(B + '/run/usl-lab/');
-    let n = 0;
-    for (let i = 0; i < 150 && n < 10; i++) { await sleep(100); n = await slow.evaluate(() => Kernel.started().length).catch(() => 0); }
-    ok(n === 10, 'with the layout 3 s late, all 10 apps start: ' + n);
+    // Every app in suite.json, whatever their number: a part without a panel (engine, ai) too.
+    let n = 0, all = -1;
+    for (let i = 0; i < 150 && n !== all; i++) {
+      await sleep(100);
+      [n, all] = await slow.evaluate(() => [Kernel.started().length, Kernel.apps().length]).catch(() => [0, -1]);
+    }
+    ok(n === all && all >= 10, `with the layout 3 s late, all ${all} apps start: ${n}`);
     await slow.close();
   }
 
@@ -32,7 +36,8 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
   const faults = await page.evaluate(() => Kernel.faults());
   ok(faults.length === 0, 'no kernel faults ' + JSON.stringify(faults));
   const boots = await page.evaluate(() => Kernel.trace().filter(t => t.kind === 'boot').map(t => t.app).sort());
-  ok(boots.length === 10, '10 apps booted: ' + boots.join(','));
+  const names = await page.evaluate(() => Kernel.apps().map(a => a.name).sort());
+  ok(boots.join() === names.join() && names.includes('ai'), `all ${names.length} apps booted, the out-of-sight ai part too: ` + boots.join(','));
   let chart = frameOf(page, 'chart');
   ok(await chart.locator('#chart circle.pt').count() === 12, '12 points drawn');
   ok(await chart.locator('#chart circle.pt.flag').count() === 1, '1 point flagged off-curve');
