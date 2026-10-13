@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.22] - 2026-10-13
+
 ### Added
 
 - An app's AI has its skill and tools in its settings, and a chat (ADR-2610131300):
@@ -25,6 +27,18 @@ Wardian 1.0") is done or written down there as left out.
   - **For apps:** `skill.md` and `tools.json` in the `ai` app, loaded by `WardianUI.agentApp`,
     which also gives the `chat` method and, with `db`, the built-in `list_tables` and `read_rows`.
     `wardian check` checks both files. Make an app builds new AI apps this way.
+  - **Hosted builder:** `workshop.wasm` gives the same rules and Improve with AI to the hosted
+    builder, whose build page shows an AI app's skill and tools.
+
+### Live checks
+
+2026-10-13, Linux on x86_64, no service credentials on the machine that ran them:
+
+- PASS export-100mb: exported 95 MB with data in 2 s, imported it into an empty Wardian intact; over the limit is refused
+- SKIP bedrock-api-key: AWS_BEARER_TOKEN_BEDROCK is not set
+- SKIP bedrock-sigv4: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are not both set
+- SKIP splunk: SPLUNK_URL is not set
+- SKIP drive: GDRIVE_SA_KEY (the path of a service account key) is not set
 
 ## [0.4.21] - 2026-10-13
 
