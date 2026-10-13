@@ -12,6 +12,8 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+## [0.4.24] - 2026-10-13
+
 ### Changed
 
 - The `splunk-table` and `usl-lab` examples' AI has its skill and tools in their settings, and
@@ -24,6 +26,16 @@ Wardian 1.0") is done or written down there as left out.
   - **USL lab:** **Interpret results** and **Or describe a change** go through the lab's hidden
     `ai` part, whose tools give Claude the lab's own numbers. Ask answers about the fit: where the
     system peaks, what limits it, whether to trust the data.
+
+### Live checks
+
+2026-10-13, Linux on x86_64, no service credentials on the machine that ran them:
+
+- PASS export-100mb: exported 95 MB with data in 1 s, imported it into an empty Wardian intact; over the limit is refused
+- SKIP bedrock-api-key: AWS_BEARER_TOKEN_BEDROCK is not set
+- SKIP bedrock-sigv4: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are not both set
+- SKIP splunk: SPLUNK_URL is not set
+- SKIP drive: GDRIVE_SA_KEY (the path of a service account key) is not set
 
 ## [0.4.23] - 2026-10-13
 
