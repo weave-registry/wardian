@@ -8,11 +8,15 @@
 //!
 //! Requests: {"op":"tools"} · {"op":"system"} ·
 //!   {"op":"run","name":…,"input":{…},"files":{"path":"text",…},"app":null|"name"} ·
-//!   {"op":"package","name":…,"files":{…}} · {"op":"preview","name":…,"files":{…}}
+//!   {"op":"package","name":…,"files":{…}} · {"op":"preview","name":…,"files":{…}} ·
+//!   {"op":"skillsRequest","input":{…},"files":{…}} · {"op":"skillsOutcome","reply":{…}}
 //! The reply to "run": {"text","isError","line"?,"files":{…},"saved"?:{"name","summary"}}. The
 //! reply to "package" is not JSON: it is the `.wardian` file's bytes. The reply to "preview" is
 //! {"files":{"path":"text",…},"entry":"run/<name>/"|"apps/<name>/<page>"}, or {"error"}: the package
 //! as a static site that runs with no Wardian behind it, under any root (demos.rs).
+//! The skills agent (ADR-2610131000) is a model call the host makes: "skillsRequest" gives its
+//! {"system","messages","maxTokens"} (the host adds the model), or {"error"} for a bad brief, which is
+//! the tool's error; "skillsOutcome" turns the model's reply into {"text","isError","line"?}.
 #![allow(dead_code)]
 
 #[path = "../../../src/domain"]
@@ -57,7 +61,22 @@ pub fn handle(request: &str) -> Vec<u8> {
         Some("run") => run(&req),
         Some("package") => return workshop::package(req["name"].as_str().unwrap_or("app"), &files_of(&req), env!("WARDIAN_VERSION")),
         Some("preview") => preview(&req),
-        _ => json!({ "error": "op must be tools, system, run, package or preview" }),
+        Some("skillsRequest") => match workshop::skills_request(&Embedded, &req["input"], &files_of(&req)) {
+            Ok(mut r) => {
+                r["maxTokens"] = json!(workshop::SKILLS_MAX_TOKENS);
+                r
+            }
+            Err(e) => json!({ "error": e }),
+        },
+        Some("skillsOutcome") => {
+            let out = workshop::skills_outcome(&req["reply"]);
+            let mut reply = json!({ "text": out.text, "isError": out.is_error });
+            if let Some(line) = out.shown {
+                reply["line"] = json!(line);
+            }
+            reply
+        }
+        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest or skillsOutcome" }),
     };
     reply.to_string().into_bytes()
 }

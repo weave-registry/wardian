@@ -43,6 +43,7 @@ component are safe.
 | `surface` | frosted glass panes over a slow greenhouse light | `surface.css` |
 | `bento` | tiles of different widths that follow the grid's own width | `bento.css` |
 | `receipt` | one shared message, shown the same in both apps: `WardianUI.receipt()` | `receipt.css`, `receipt.js` |
+| `agent` | an app's AI with a skill and tools, in the suite's out-of-sight `ai` app: `WardianUI.agent()` | `agent.js` |
 
 Classes start with `w-`. Variants and sizes are attributes:
 
@@ -124,6 +125,37 @@ does not open with its own name (see Design an app).
 ```js
 const sent = await ctx.channel('splunk.table').send(table, { name: 'Checkout latency' });
 box.replaceChildren(WardianUI.receipt({ ...sent, channel: 'splunk.table', data: table }, { direction: 'sent' }));
+```
+
+- **`agent`**: gives an app's AI a skill and tools. `claude:sample` is text in and JSON out, so the
+  agent runs the loop: each step the model sees the skill, the tools and the results so far, and
+  replies with a tool to run or the answer. The app runs each tool on its own data, checks the
+  model's input against the tool's schema first, and tells the model about any error so it can try
+  again. The loop stops at the answer, or after `maxSteps` with the code `max_steps`; without
+  Claude, `run` fails with `unavailable`, so keep a plain path.
+
+  The skill and the tools stay out of sight. They live in one suite app named `ai` with no slot,
+  the only app with `claude:sample`; `add_components` lists `agent.js` in its scripts and nowhere
+  else. The apps people see call it and show the answer. When Make an app builds an app with AI, a
+  skills agent plans the skill, the tools and their tests first (ADR-2610131000).
+
+```json
+{ "name": "ai", "caps": ["claude:sample"], "provides": ["ask"], "needs": ["log.errors"], "scripts": ["ui/agent.js"] }
+```
+
+```js
+// apps/ai/app.js: provide at once, so an early call finds the method; wait for Claude inside it.
+Kernel.register({ name: 'ai', caps: ['claude:sample'], provides: ['ask'], needs: ['log.errors'], init(ctx) {
+  const agent = ctx.cap('sample').then(sample => WardianUI.agent({ sample, skill: SKILL, maxSteps: 6, tools: [{
+    name: 'top_hosts', description: 'The hosts with the most errors. Use it before naming a host.',
+    input: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['limit'] },
+    run: ({ limit }) => ctx.call('log', 'errors', { limit }) }] }));
+  // ask, unlike run, never throws: an error's code would not cross ctx.call.
+  ctx.provide({ ask: async ({ task }) => (await agent).ask(task) });
+} });
+
+// A visible app: { answer, steps }, or { error: { code, message } } to show the plain path.
+const r = await ctx.call('ai', 'ask', { task });
 ```
 
 ### A glass suite

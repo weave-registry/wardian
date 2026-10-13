@@ -14,6 +14,16 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Changed
 
+- An app's AI gets a skill and tools, planned before it is built (ADR-2610131000):
+  - **Skills agent:** when Make an app builds an app that uses Claude, or one that is a step in an
+    AI pipeline, the builder first sends a skills agent to research the AI's skill, its tools and
+    their tests, then builds to that plan. This works in Wardian and in the hosted builder.
+  - **Out of sight:** the skill and the tools live in the suite's own `ai` app, which has no view
+    and is the only part that uses Claude. The parts people see ask it and show the answer.
+  - **The `agent` component:** `WardianUI.agent()` runs the tool loop: it checks each tool's input,
+    tells the model about errors, stops at the answer or a step limit, and keeps requests under
+    Claude's size limit. `wardian add agent` lists it in the `ai` app only.
+
 - The Splunk table says whether a table is ready for the USL lab, by Neil Gunther's rules:
   - **Columns:** it shows which are the load, the throughput and the response time, and sends them
     to the lab with the table.

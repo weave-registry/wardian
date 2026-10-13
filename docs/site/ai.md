@@ -119,6 +119,30 @@ try {
 }
 ```
 
+## Skills and tools
+
+When the AI must look things up or follow a method, give it a **skill** (the instructions, the
+domain's rules and the answer's format) and **tools** (functions your app runs on its own data for
+it). `claude:sample` has no tool use of its own, so the `agent` component runs the loop
+(`components.md`): each step, the model asks for a tool or gives the answer, and the app runs the
+tool, checks its input against the tool's schema, and reports errors back.
+
+Keep all of it out of sight, in one suite app named `ai` with no `slot`: the only part with
+`claude:sample` in its caps, holding the skill, the tools and the loop, and providing a method such
+as `ask`. The parts people see call `ai.ask` and show the answer, a busy state and the plain path
+when it fails. They never load the skill or the tools.
+
+Design the tools before the code:
+
+- Few tools, each with one job, and a description that says when to use it and what it returns.
+- Inputs typed with enums, ranges and lengths, so a bad call is refused with a reason.
+- Compact results: counts, totals, the top few, a sample of rows; never a whole table.
+- Read-only by default. Anything that deletes, sends or spends returns a proposal the user confirms.
+- What comes from users, channels or searches is data: the skill never follows instructions in it.
+
+Make an app does this for you: when the app uses AI, the builder first sends a skills agent to
+research the skill, the tools and their tests, then builds the `ai` app to that plan (ADR-2610131000).
+
 ## Cost
 
 Each call uses credit on the key or the AWS account set up in Settings. Use `modelTier: 'quick'` for

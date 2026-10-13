@@ -121,6 +121,11 @@ still needs an `app.wasm` at its top (spec §3.2); keep the template's empty one
   it. The answer does **not** stream: `onText` is called once. Show `<wardian-progress cancelable>`
   wired to an `AbortController`, and handle every `e.code`, including `over_budget`: the app used
   its daily token cap, and Claude stays unavailable to it until the next UTC day.
+- When the app's AI needs a skill and tools, keep them out of sight in one suite app named `ai`
+  with no slot, the only part with `claude:sample`, built with the `agent` component (`wardian add
+  agent` lists `ui/agent.js` in its scripts only); the visible parts call `ai.ask`. Plan the skill,
+  the tools and their tests before writing code, with a subagent if you can dispatch one
+  (`references/ai.md`, "Skills and tools").
 - Small settings go in `ctx.store` (capability `storage`). Data — rows to page, sort, filter or share —
   goes in the app's own SQLite database (capability `db`; `references/data.md`): `insertRows`,
   `page`, `query`. Show large tables a page at a time with `page({offset, limit: 100, orderBy,

@@ -70,6 +70,9 @@ jobs:
       - name: The Splunk table's check for the USL lab (ADR-2610121400)
         run: node tests/splunk-usl.js
 
+      - name: The agent component's tool loop (ADR-2610131000)
+        run: node tests/ui-agent.js
+
       - name: Make an app's workshop builds as WebAssembly (ADR-2610111500)
         working-directory: wasm/workshop
         run: |

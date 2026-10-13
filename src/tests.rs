@@ -2208,6 +2208,8 @@ fn claim_check_exits_0_or_1_and_warnings_do_not_fail() {
 #[derive(Default)]
 struct FakeClaude {
     bodies: std::sync::Mutex<Vec<Value>>,
+    /// Replies to give first, in order; then the default "hello".
+    script: std::sync::Mutex<std::collections::VecDeque<Value>>,
     tested: std::sync::Mutex<Vec<String>>,
     refuse: std::sync::atomic::AtomicBool,
 }
@@ -2223,6 +2225,9 @@ impl crate::ports::llm::Llm for FakeClaude {
         self.bodies.lock().unwrap().push(body.clone());
         if self.refuse.load(std::sync::atomic::Ordering::Relaxed) {
             return Err(crate::ports::llm::LlmError::Status(401, "invalid x-api-key".into()));
+        }
+        if let Some(reply) = self.script.lock().unwrap().pop_front() {
+            return Ok(reply);
         }
         Ok(serde_json::json!({ "content": [{ "type": "text", "text": "hello" }], "stop_reason": "end_turn",
                                "usage": { "input_tokens": 100, "output_tokens": 50 } }))
@@ -2261,6 +2266,45 @@ fn studio_on(fake: &Arc<FakeClaude>, base: &Path) -> (crate::usecases::studio::S
 }
 
 const GOOD_KEY: &str = "sk-ant-test-0123456789-abcd";
+
+/// ADR-2610131000: when the builder calls research_ai_tools, Make an app sends the skills agent its
+/// own request (its prompt, the brief, no tools, on the builder's meter) and gives the builder the plan.
+#[test]
+fn studio_dispatches_the_skills_agent_and_hands_its_plan_to_the_builder() {
+    use serde_json::json;
+    let base = tmp("skills-agent");
+    let fake = Arc::new(FakeClaude::default());
+    let usage = json!({ "input_tokens": 100, "output_tokens": 50 });
+    fake.script.lock().unwrap().extend([
+        json!({ "content": [{ "type": "tool_use", "id": "t1", "name": "research_ai_tools", "input": { "purpose": "Explain error spikes" } }], "stop_reason": "tool_use", "usage": usage }),
+        json!({ "content": [{ "type": "text", "text": "## Verdict\nTwo read-only tools." }], "stop_reason": "end_turn", "usage": usage }),
+        json!({ "content": [{ "type": "text", "text": "I have the plan." }], "stop_reason": "end_turn", "usage": usage }),
+    ]);
+    let (studio, _, _) = studio_on(&fake, &base);
+    studio.set_key(GOOD_KEY, None).unwrap();
+    let id = studio.send(&json!({ "message": "An app that explains error spikes" })).unwrap()["session"].as_str().unwrap().to_string();
+    for _ in 0..200 {
+        if studio.events(&id, 0).unwrap()["busy"] == false {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let events = studio.events(&id, 0).unwrap();
+    assert_eq!(events["busy"], false, "{events}");
+    let bodies = fake.bodies.lock().unwrap().clone();
+    assert_eq!(bodies.len(), 3, "the builder, the skills agent, the builder again");
+    let agent = &bodies[1];
+    assert!(agent.get("tools").is_none() && agent["system"][0]["text"].as_str().unwrap().starts_with("You are the skills agent"));
+    assert!(agent["messages"][0]["content"][0]["text"].as_str().unwrap().contains("Purpose: Explain error spikes"));
+    assert!(agent["max_tokens"].as_u64().unwrap() <= crate::usecases::workshop::SKILLS_MAX_TOKENS);
+    let last = bodies[2]["messages"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["content"][0]["type"], "tool_result");
+    assert_eq!(last["content"][0]["tool_use_id"], "t1");
+    assert!(last["content"][0]["content"].as_str().unwrap().contains("Two read-only tools"), "{last}");
+    assert!(events.to_string().contains("the skills agent planned"), "{events}");
+    assert_eq!(studio.usage()["totals"][crate::domain::agent::BUILDER]["requests"], 3, "the agent is on Make an app's meter");
+    let _ = fs::remove_dir_all(base);
+}
 
 /// ADR-2610081500 #5 and #6: each app's `claude:sample` tokens are counted, by day and by app,
 /// and past its cap the app gets `over_budget` without a request being sent. Another app is not
@@ -3693,9 +3737,9 @@ mod workshop {
     }
 
     #[test]
-    fn workshop_offers_the_seven_tools_and_a_prompt_with_the_spec_and_an_example() {
+    fn workshop_offers_its_tools_and_a_prompt_with_the_spec_and_an_example() {
         let names: Vec<String> = workshop::tools().as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-        assert_eq!(names, ["list_files", "read_file", "write_file", "delete_file", "add_components", "check", "finish"]);
+        assert_eq!(names, ["list_files", "read_file", "write_file", "delete_file", "add_components", "research_ai_tools", "check", "finish"]);
         let system = workshop::system(&Embedded).to_string();
         assert!(system.contains("You build apps for Wardian"));
         assert!(system.contains("<spec>") && system.contains("<example-suite>"));
@@ -3832,5 +3876,58 @@ mod workshop {
         // A change to an existing app keeps its name.
         let out = run("finish", json!({ "name": "other", "summary": "s" }), &mut page_app(), Some("counter"));
         assert_eq!(out.saved.unwrap().name, "counter");
+    }
+
+    /// ADR-2610131000: an app with AI gets a skills agent's plan, and its AI stays out of sight.
+    #[test]
+    fn workshop_skills_agent_is_asked_for_an_app_with_ai_and_keeps_it_out_of_sight() {
+        let intro = workshop::system(&Embedded)[0]["text"].as_str().unwrap().to_string();
+        for must in ["research_ai_tools", "out-of-sight app named \"ai\"", "How the AI works", "(11) an app with AI"] {
+            assert!(intro.contains(must), "the prompt does not teach {must}");
+        }
+        let tool = workshop::tools().as_array().unwrap().iter().find(|t| t["name"] == workshop::SKILLS_TOOL).cloned().unwrap();
+        assert_eq!(tool["input_schema"]["required"], json!(["purpose"]));
+
+        // The request: the agent's method and the references, cached; the brief and what the
+        // package says about itself and its AI, not its other files.
+        let mut f = Files::new();
+        f.insert("README.md".into(), b"# Incident helper\nExplains error spikes.".to_vec());
+        f.insert("suite.json".into(), br#"{"format":1,"title":"Incidents","apps":[{"name":"ai","caps":["claude:sample"]}]}"#.to_vec());
+        f.insert("apps/ai/app.js".into(), b"const sample = await ctx.cap('sample');".to_vec());
+        f.insert("apps/chart/app.js".into(), b"// draws the chart".to_vec());
+        f.insert("logo.png".into(), vec![0x89, 0x50, 0xff, 0xfe]);
+        assert!(workshop::skills_request(&Embedded, &json!({ "purpose": "  " }), &f).unwrap_err().contains("purpose"));
+        let req = workshop::skills_request(&Embedded, &json!({ "purpose": "Explain error spikes", "pipeline": "splunk.table in" }), &f).unwrap();
+        let system = req["system"].to_string();
+        assert!(system.contains("You are the skills agent") && system.contains("<spec>") && system.contains("WardianUI.agent"), "{}", &system[..200]);
+        assert_eq!(req["system"][1]["cache_control"], json!({ "type": "ephemeral" }));
+        assert!(req.get("tools").is_none() && req.get("model").is_none(), "the host adds the model; the agent has no tools");
+        let brief = req["messages"][0]["content"][0]["text"].as_str().unwrap();
+        for must in ["Purpose: Explain error spikes", "Pipeline: splunk.table in", "<file path=\"README.md\">", "<file path=\"suite.json\">", "<file path=\"apps/ai/app.js\">", "logo.png"] {
+            assert!(brief.contains(must), "the brief lacks {must}");
+        }
+        assert!(!brief.contains("draws the chart") && !brief.contains("<file path=\"logo.png\">"), "only the files about the app and its AI");
+
+        // The reply becomes the tool's result; nothing usable is an error the builder works around.
+        let plan = workshop::skills_outcome(&json!({ "content": [{ "type": "text", "text": "## Verdict\nTools." }], "stop_reason": "end_turn" }));
+        assert!(!plan.is_error && plan.text.contains("## Verdict") && plan.text.contains("out-of-sight \"ai\" app"), "{}", plan.text);
+        let cut = workshop::skills_outcome(&json!({ "content": [{ "type": "text", "text": "## Verdict" }], "stop_reason": "max_tokens" }));
+        assert!(cut.text.contains("cut off"));
+        assert!(workshop::skills_outcome(&json!({ "content": [], "stop_reason": "refusal" })).is_error);
+        assert!(run(workshop::SKILLS_TOOL, json!({ "purpose": "x" }), &mut f, None).is_error, "the host dispatches it, not run");
+
+        // The agent loop is listed only in the out-of-sight ai app, never for every frame.
+        let mut f = Files::new();
+        f.insert("suite.json".into(), br#"{"format":1,"title":"T","apps":[{"name":"chat","slot":"main"},{"name":"ai","caps":["claude:sample"]}]}"#.to_vec());
+        let out = run("add_components", json!({ "components": ["button", "agent"] }), &mut f, None);
+        assert!(!out.is_error, "{}", out.text);
+        let suite: Value = serde_json::from_slice(&f["suite.json"]).unwrap();
+        assert_eq!(suite["apps"][1]["scripts"], json!(["ui/agent.js"]));
+        assert!(!suite["scripts"].to_string().contains("agent.js") && suite["apps"][0].get("scripts").is_none(), "{suite}");
+        assert!(f.contains_key("ui/agent.js"));
+        let mut g = Files::new();
+        g.insert("suite.json".into(), br#"{"format":1,"title":"T","apps":[{"name":"chat","slot":"main"}]}"#.to_vec());
+        let out = run("add_components", json!({ "components": ["agent"] }), &mut g, None);
+        assert!(out.text.contains("not wired") && !String::from_utf8_lossy(&g["suite.json"]).contains("agent.js"), "{}", out.text);
     }
 }

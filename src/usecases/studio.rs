@@ -96,12 +96,39 @@ impl Api {
             "tools": workshop::tools(),
             "messages": messages,
         });
+        self.send(&body, cancel)
+    }
+
+    /// The skills agent (ADR-2610131000): research_ai_tools as its own request, with its own
+    /// prompt and no tools, on Make an app's meter and cap. A failure is the tool's error, for the
+    /// builder to work around, not the end of the turn; only a stop ends it.
+    fn skills(&self, input: &Value, files: &Files, cancel: &AtomicBool) -> Result<workshop::Outcome, String> {
+        let mut body = match workshop::skills_request(&*self.assets, input, files) {
+            Ok(b) => b,
+            Err(e) => return Ok(workshop::Outcome { text: e, is_error: true, ..Default::default() }),
+        };
+        body["model"] = json!(self.model);
+        body["max_tokens"] = json!(self.max_tokens.min(workshop::SKILLS_MAX_TOKENS));
+        match self.send(&body, cancel) {
+            Ok(reply) => Ok(workshop::skills_outcome(&reply)),
+            Err(e) if e == "stopped" => Err(e),
+            Err(e) => Ok(workshop::Outcome {
+                text: format!("The skills agent could not answer ({e}). Design the AI yourself from the agent component's guide and rule (11) of the checklist."),
+                is_error: true,
+                shown: Some("the skills agent could not answer".into()),
+                saved: None,
+            }),
+        }
+    }
+
+    /// Sends one request of Make an app, under its daily cap, retrying rate limits and overloads.
+    fn send(&self, body: &Value, cancel: &AtomicBool) -> Result<Value, String> {
         if let Some(cap) = self.cap.filter(|&c| self.meter.used_today(&self.payer) >= c) {
             return Err(format!("Make an app used its {cap} tokens for today. An admin can raise the cap in Settings → Claude."));
         }
         let mut wait = 2;
         loop {
-            match self.call(&body) {
+            match self.call(body) {
                 Ok(v) => return Ok(v),
                 Err(LlmError::Status(code, _)) if matches!(code, 429 | 500 | 502 | 503 | 529) && wait <= 16 => {
                     for _ in 0..wait * 10 {
@@ -916,8 +943,15 @@ impl Workshop<'_> {
 
     /// Runs one tool. Returns the text for Claude, whether it is an error, and
     /// the line to show the user (if any).
-    fn run_tool(&self, name: &str, input: &Value, files: &mut Files, session: &Mutex<Session>) -> (String, bool, Option<String>) {
+    fn run_tool(&self, name: &str, input: &Value, files: &mut Files, session: &Mutex<Session>, cancel: &AtomicBool) -> (String, bool, Option<String>) {
         match name {
+            workshop::SKILLS_TOOL => {
+                push_event(session, json!({ "kind": "tool", "text": "asked the skills agent how to give the app's AI its skill and tools" }));
+                match self.api.skills(input, files, cancel) {
+                    Ok(out) => (out.text, out.is_error, out.shown),
+                    Err(e) => (e, true, None),
+                }
+            }
             "finish" => {
                 let app = session.lock().unwrap().app.clone();
                 let wanted = input["name"].as_str().unwrap_or("my-app");
@@ -1003,7 +1037,7 @@ fn run_turn(shop: &Workshop, session: &Mutex<Session>, cancel: &AtomicBool) -> R
                 let (text, is_error, shown) = if cut_off && name != "finish" {
                     ("Your reply was cut off at the length limit, so this call was not run. Write large files in smaller parts with append.".to_string(), true, None)
                 } else {
-                    shop.run_tool(name, &call["input"], &mut files, session)
+                    shop.run_tool(name, &call["input"], &mut files, session, cancel)
                 };
                 match name {
                     "write_file" | "delete_file" if !is_error => saved_since_change = false,

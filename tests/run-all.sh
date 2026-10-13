@@ -25,6 +25,9 @@ node tests/usl-math.js
 step "node tests/splunk-usl.js"
 node tests/splunk-usl.js
 
+step "node tests/ui-agent.js"
+node tests/ui-agent.js
+
 # ADR-2610071106 and ADR-2610071219 promise a self-contained binary under 12 MB (ADR-2610081041).
 step "release binary under 12 MB"
 cargo build --release -q --bin wardian

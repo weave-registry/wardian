@@ -33,6 +33,7 @@ const FILES: &[(&str, &str)] = &[
     ui!("bento.css"),
     ui!("receipt.css"),
     ui!("receipt.js"),
+    ui!("agent.js"),
 ];
 
 /// The script that plays `Kernel` inside each suite frame, with the default rendering for Save as web
