@@ -40,6 +40,10 @@ Kernel.register({
           '- If the data is a load test with a load or concurrency field, group by it.',
           '- If it is production traffic with one event per finished request and a duration field, use Little\'s Law: per 1-minute bucket, throughput x = count/60, response time r = average duration, load n = x * r (in seconds); round n to a step that gives 10 to 30 levels; average x and r per level, and count the minutes per level; keep levels seen in at least 10 minutes.',
           '- Leave out requests that are not normal work, such as long-polls, event streams, health checks or failures, when the fields show them.',
+          '- The load is the independent variable: what the test sets or what is counted (users, threads, processes, requests in progress). Never use a utilisation, a CPU percentage, a load average or a queue length as the load: those are results of the load.',
+          '- Measure near steady state: when a field gives the load at each moment (such as allThreads or vus), bucket by minute and keep only the minutes in which it did not change, so ramps between steps are left out.',
+          '- Throughput is a rate per second, over windows of the same length at every load.',
+          '- Aim for at least 6 load levels, from low to past the highest throughput if the data has it.',
         ] : [
           '- It must start with ' + where + ' and end with "| table <columns>", naming the columns the user wants.',
           '- Keep the result small: aggregate with stats or timechart rather than return raw events, unless the user asks for events.',

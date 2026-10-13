@@ -53,6 +53,8 @@ Kernel.register({
         } catch { rows = []; }
         msg = fit(Object.assign({}, table, {rows, cut: rows.length < d.total, dataset: {package: 'splunk-table', table: d.table, total: d.total, columns: d.columns, fields: table.fields}}), rows);
       } else msg = fit(Object.assign({}, table, {cut: false}), table.rows);
+      // The columns the USL lab should use, when the search did not say (ADR-2610121400).
+      if (!msg.use){ const u = UslReady.assess(msg.fields, msg.rows).use; if (u) msg = Object.assign({}, msg, {use: u}); }
       try {
         const name = (table.title || 'Splunk table') + (table.rangeLabel ? ', ' + table.rangeLabel : '');
         const sent = await ctx.channel('splunk.table').send(msg, {name: name.slice(0, 120)});

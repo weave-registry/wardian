@@ -8,7 +8,7 @@ lets you choose the load, throughput and response time columns.
 
 | Field | Type | Allowed | Default | Required |
 |---|---|---|---|---|
-| Start from | one of: my own search, find words, a load test template, a live traffic template | — | my own search | yes |
+| Start from | one of: my own search, find words, a load test template, a JMeter template, a live traffic template | — | my own search | yes |
 | Words to find (find words only) | short text | up to 200 characters; a phrase in quotes | empty | yes, for that choice |
 | In index (find words only) | short text | up to 80 characters of letters, digits, `- _ * .` | every index | no |
 | Splunk search | long text in Splunk's search language | up to 10,000 characters | the last search | yes |
@@ -24,8 +24,24 @@ lets you choose the load, throughput and response time columns.
 ## What it shows
 
 - **About this table:** what the rows are, the search, the time range, when it ran and how long it took.
+- **Ready for the USL lab?** Under About: which columns are the load, the throughput and the response
+  time, and what to watch, by Neil Gunther's rules for the Universal Scalability Law
+  ([How to Quantify Scalability](https://www.perfdynamics.com/Manifesto/USLscalability.html)):
+  - **Problems:**
+    - no load or no throughput column;
+    - a load that is a utilisation, a CPU percentage or a load average, which is a result of the load;
+    - fewer than 3 load levels.
+  - **Things to watch:**
+    - a count rather than a rate;
+    - several rows per load, or `_time`, where the USL wants one steady-state value per load;
+    - fewer than 6 load levels, or loads spanning less than ×4;
+    - throughput per unit of load that rises (superlinear) or never peaks;
+    - load that disagrees with throughput × response time (Little's Law);
+    - loads resting on little data.
+  It is open when the table names a load and a throughput, or came from a template. A table in the
+  database is checked from its first 1,000 rows.
 - **Result:** every row, 100 at a time, sortable, with Find in results and how many rows match.
-- **Use this table:** Send to other apps, Download CSV, Save table, what was sent, and the saved tables.
+- **Use this table:** Send to other apps (with the columns found for the USL lab), Download CSV, Save table, what was sent, and the saved tables.
 - **Ask Claude:** a search Claude writes from your description, from your index and field names.
 
 ## How it behaves
@@ -68,7 +84,7 @@ arrange them: put the table full width, hide the AI helper, or move the facts be
 |---|---|---|---|
 | `search` | aside | Start from, words to find, the search, time range, name, Run, progress, **Save search** and the saved searches. Runs the search as a background job and picks it up again when the app opens. Keeps the current table, so it comes back next time. | emits `table:ready` (retained); listens `search:use`, `table:ready`; `storage`, `splunk`, `db` |
 | `ask` | aside | Claude writes the search from a description, then `search` runs it. Hidden when Claude or Splunk is not set up. | emits `search:use`; `splunk`, `claude:sample` |
-| `about` | main | What the table is: name, rows, time range, when it was fetched or saved, the search. | listens `table:ready` |
+| `about` | main | What the table is: name, rows, time range, when it was fetched or saved, the search; and whether the USL lab can use it (`shared/usl.js`). | listens `table:ready`; `db` |
 | `rows` | main | Find in results, sort by any column, the table, the pager. | emits `table:view` (retained); listens `table:ready`; `db` |
 | `keep` | main | Send to other apps, Download CSV, **Save table** and the saved tables. | emits `table:ready` (retained); listens `table:ready`, `table:view`; `storage`, `db`, `claude:downloads`; sends `splunk.table` |
 

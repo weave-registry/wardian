@@ -67,6 +67,9 @@ jobs:
       - name: The USL lab's maths (ADR-2610121300)
         run: node tests/usl-math.js
 
+      - name: The Splunk table's check for the USL lab (ADR-2610121400)
+        run: node tests/splunk-usl.js
+
       - name: Make an app's workshop builds as WebAssembly (ADR-2610111500)
         working-directory: wasm/workshop
         run: |

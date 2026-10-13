@@ -148,6 +148,10 @@ async function answer(page, re, yes, what) {
   ok(await bar.getAttribute('state') === 'done' && /^8 rows in \d+ s$/.test(await bar.getAttribute('label')) && await bar.getAttribute('role') === 'progressbar',
     'the standard progress bar ends as done: ' + await bar.getAttribute('label'));
   ok(/stats avg\(tput\)/.test(await a.locator('#facts').textContent()) && /Last 24 hours/.test(await a.locator('#facts').textContent()), 'with the search and the time range above it');
+  // Ready for the USL lab? (ADR-2610121400): checked from the rows in the database, open because a load and a throughput are named.
+  await a.locator('#uslVerdict', { hasText: /\S/ }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok(await a.locator('#usl').isVisible() && /^Yes: load concurrency, throughput x/.test(await a.locator('#uslVerdict').textContent()) && await a.locator('#uslFindings li').count() > 0,
+    'about says the USL lab can use it, and which columns: ' + await a.locator('#uslVerdict').textContent() + ' | ' + (await a.locator('#uslFindings li').allTextContents()).join(' | '));
   await inView(tab, rw, '#out th:first-child');
   await rw.locator('#out th', { hasText: 'concurrency' }).dispatchEvent('click');
   await rw.locator('#out th .arrow', { hasText: '▲' }).waitFor({ timeout: 5000 });
@@ -207,6 +211,8 @@ async function answer(page, re, yes, what) {
   ok(/Splunk search/.test(aboutText) && /The column “concurrency”/.test(aboutText) && /Splunk table app/.test(aboutText), 'the chart says where the data came from');
 
   console.log('== a ready-made search: the lab updates live, with labels and the minutes column');
+  await s.locator('#preset').selectOption('jmeter');
+  ok(/where lo=n/.test(await s.locator('#spl').inputValue()) && /allThreads/.test(await s.locator('#spl').inputValue()), 'the JMeter template keeps only the minutes when the thread count held');
   await s.locator('#preset').selectOption('traffic');
   ok((await s.locator('#spl').inputValue()).includes('table n x r minutes') && await s.locator('#range').inputValue() === '-7d|', 'the traffic template search keeps the minutes column, over 7 days');
   await press(s, '#btnRun');
@@ -214,6 +220,8 @@ async function answer(page, re, yes, what) {
   ok(await tab.locator('.wardian-perm').count() === 0, 'no second question');
   await rw.locator('#out th', { hasText: 'minutes' }).waitFor({ timeout: 5000 }).catch(() => {});
   ok((await rw.locator('#out th').allTextContents()).join(',') === 'n,x,r,minutes', 'the minutes behind each row are visible');
+  await a.locator('#uslVerdict', { hasText: 'load n' }).waitFor({ timeout: 5000 }).catch(() => {});
+  ok(/^Yes: load n, throughput x, response time r/.test(await a.locator('#uslVerdict').textContent()), 'the traffic table is ready for the lab: ' + await a.locator('#uslVerdict').textContent());
   await inputs.locator('#tblName', { hasText: 'Requests in production' }).waitFor({ timeout: 5000 });
   ok(await inputs.locator('#colN').inputValue() === 'n' && await inputs.locator('#colR').inputValue() === 'r', 'the lab picks n, x, r');
   await useTable(inputs); await sleep(1500);

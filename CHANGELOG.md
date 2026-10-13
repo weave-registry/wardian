@@ -14,6 +14,15 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Changed
 
+- The Splunk table says whether a table is ready for the USL lab, by Neil Gunther's rules:
+  - **Columns:** it shows which are the load, the throughput and the response time, and sends them
+    to the lab with the table.
+  - **Warnings:** a load that is a utilisation or a load average, a count instead of a rate, more
+    than one row per load, fewer than six loads or a narrow range, superlinear scaling, no peak,
+    Little's Law not holding, and loads resting on little data.
+  - **JMeter template:** keeps only the minutes in which the thread count held steady.
+  - **Ask Claude:** gets the same rules.
+  ADR-2610121400.
 - The USL lab shows the precision its fit has: α and β to 4 significant figures, λ and peak
   throughput to 5, N* to 4 (they were 2 and 3, and every value under 0.001 had 2), the report to 6,
   and the curve's CSV in full. Its 90% ranges come from 1000 refits instead of 240, and the chart's

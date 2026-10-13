@@ -62,3 +62,14 @@ details.saved[open] summary { margin-bottom: var(--w-space-2); }
 
 /* A panel's opening sentence keeps its distance from the first field under it. */
 h2 + .w-hint { margin: 0 0 var(--w-space-4); }
+
+/* Ready for the USL lab? (about, ADR-2610121400): the verdict on one line, what to watch under it. */
+.usl { margin-top: var(--w-space-2); border-top: 1px solid var(--w-border); padding-top: var(--w-space-3); font-size: var(--w-text-sm); }
+.usl[hidden] { display: none; }
+.usl summary { cursor: pointer; }
+.usl .usl-head { font-weight: 600; font-size: var(--w-text); }
+.usl .findings { margin: var(--w-space-2) 0 0; padding-left: 1.2em; }
+.usl .findings li { margin: 4px 0; }
+.usl .findings li.problem strong { color: var(--w-destructive); }
+.usl .findings li.ok strong { color: var(--w-success, var(--w-fg)); }
+.usl .note { margin: var(--w-space-2) 0 0; }

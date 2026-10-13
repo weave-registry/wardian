@@ -21,7 +21,8 @@
     "shared/find.js",
     "shared/range.js",
     "shared/saved.js",
-    "shared/sample.js"
+    "shared/sample.js",
+    "shared/usl.js"
   ],
   "surface": "glass",
   "apps": [
@@ -66,6 +67,9 @@
       "wrap": "<section class=\"w-card w-glass panel\">",
       "listens": [
         "table:ready"
+      ],
+      "caps": [
+        "db"
       ]
     },
     {
