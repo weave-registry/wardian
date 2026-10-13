@@ -94,6 +94,9 @@ impl Builder for NoBuilder {
     fn set_agent(&self, _: &Value) -> Result<Value, String> { Err("no".into()) }
     fn usage(&self) -> Value { Value::Null }
     fn aws_profiles(&self) -> Value { Value::Null }
+    fn ai_tools(&self, _: &str) -> Result<Value, String> { Err("no".into()) }
+    fn save_ai_tools(&self, _: &str, _: &Value) -> Result<Value, String> { Err("no".into()) }
+    fn improve_ai_tools(&self, _: &str, _: &Value) -> Result<Value, String> { Err("no".into()) }
 }
 
 /// The real job runner, on the browser's clock and task queue.
