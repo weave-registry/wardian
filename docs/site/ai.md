@@ -5,7 +5,8 @@ through the Claude provider set up in Settings: the Anthropic API or Amazon Bedr
 sees a key.
 
 The example [`meeting-notes`](/docs/examples#meeting-notes) turns raw notes into a summary,
-decisions and action items, and still works when no provider is set up.
+decisions and action items, and still works when no provider is set up. Its AI keeps its skill and
+tools as data you can edit, and answers questions about the meeting in Ask.
 
 ## Set up a provider
 

@@ -1,102 +1,83 @@
-/* ai: the only part that reads the notes. It owns every call to Claude (claude:sample) and the
-   quick reader that works without AI, and publishes one reading for the views.
-   Without a Claude provider, ctx.cap('sample') is null: the quick reader then reads the notes as
-   they change, and the panel says how to turn AI on.
-   Listens: notes:changed.  Emits: notes:extracted (retained).  Capabilities: storage, claude:sample. */
+/* ai: the app's AI, out of sight (ADR-2610131300). Its skill (skill.md) and its tools (tools.json)
+   are data that Wardian's App settings show, edit and improve; this code holds only each tool's run,
+   on the notes and the reading it hears. It is the only part with claude:sample.
+   Without a Claude provider, ctx.cap('sample') is null: status says so, and the reader panel uses
+   the quick reader instead.
+   Listens: notes:changed, notes:extracted, actions:changed.
+   Provides: status ({ claude }), read (the notes as a reading, or { error }), cancel, chat (Wardian's Ask).
+   Capabilities: claude:sample, asset. */
+const INLINE_CHARS = 40000;          // notes up to this length go in the request; Claude takes 60,000 characters
+const READING = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    decisions: { type: 'array', maxItems: 12, items: { type: 'string' } },
+    action_items: { type: 'array', maxItems: 20, items: { type: 'object', properties: {
+      owner: { type: 'string' }, task: { type: 'string', minLength: 1 }, due: { type: 'string' } }, required: ['task'] } },
+    open_questions: { type: 'array', maxItems: 10, items: { type: 'string' } },
+  },
+  required: ['summary', 'decisions', 'action_items', 'open_questions'],
+};
+
 Kernel.register({
   name: 'ai',
-  listens: ['notes:changed'],
-  emits: { 'notes:extracted': { retain: true } },
-  caps: ['storage', 'claude:sample'],
+  listens: ['notes:changed', 'notes:extracted', 'actions:changed'],
+  provides: ['status', 'read', 'cancel', 'chat'],
+  caps: ['claude:sample', 'asset'],
   init(ctx) {
-    const $ = ctx.$, bar = $('#bar');
-    let notes = null, sample = null, ready = false, controller = null;
-    let last = ctx.store.get('last');                  // the latest reading, so a reload shows it again
+    let notes = { title: '', text: '', hash: '' }, reading = null, checklist = null, controller = null;
+    ctx.on('notes:changed', p => { notes = p; });
+    ctx.on('notes:extracted', p => { reading = p && !p.empty ? p : null; });
+    ctx.on('actions:changed', p => { checklist = p; });
+    const numbered = (n, line) => n + ': ' + line;
 
-    const status = (text, warn) => { $('#status').textContent = text || ''; $('#status').classList.toggle('warn', !!warn); };
-    const words = t => (t.match(/\S+/g) || []).length;
-    function publish(reading) {
-      last = reading;
-      ctx.store.set('last', reading);
-      ctx.emit('notes:extracted', reading);
-    }
-    // Wraps a reading with what the views need to know about it.
-    const wrap = (source, r, n, extra = {}) => ({ ...r, ...extra, source, title: n.title || 'Meeting notes', hash: n.hash,
-      id: n.hash + '-' + source + '-' + Date.now().toString(36), at: new Date().toISOString(), words: words(n.text) });
-
-    function readLocally(note) {
-      if (!notes || !notes.text.trim()) return;
-      publish(wrap('local', LocalReader.read(notes.title, notes.text), notes, note ? { note } : {}));
-    }
-
-    async function readWithClaude() {
-      if (!sample || controller || !notes) return;
-      const n = notes;
-      if (!n.text.trim()) { status('Paste or open some notes first.', true); return; }
-      controller = new AbortController();
-      $('#claude').disabled = $('#local').disabled = true;
-      status('');
-      bar.start('Claude is reading ' + Text.plural(words(n.text), 'word'), { cancelable: true,
-        detail: 'This usually takes 10 to 40 seconds. You can keep working in the other panels.' });
-      try {
-        const r = await ClaudeReader.read(sample, n.title, n.text, controller.signal);
-        bar.update({ detail: '' }).done('Claude read the notes in ' + bar.seconds + ' s');
-        publish(wrap('claude', r, n));
-        if (notes.hash !== n.hash) status('The notes changed while Claude read them. Press Read with Claude again to include the changes.');
-      } catch (e) {
-        const { code, text } = ClaudeReader.explain(e);
-        const haveClaude = last && last.source === 'claude' && last.hash === n.hash;
-        bar.update({ detail: '' });
-        if (code === 'cancelled') { bar.fail('Stopped'); status(text); }
-        else {
-          bar.fail('Claude could not read the notes');
-          status(text + (haveClaude ? ' The earlier reading by Claude stays.' : ' The quick reader’s results are shown instead.'), true);
-          if (!haveClaude) readLocally('Claude could not read these notes (' + code + '), so the quick reader did.');
+    const ai = WardianUI.agentApp(ctx, { answer: READING, maxSteps: 6, run: {
+      current_reading: async () => {
+        if (!reading) return { none: 'Nothing has read the notes yet.' };
+        return { meeting: reading.title, read_by: reading.source === 'claude' ? 'Claude' : 'the quick reader',
+          out_of_date: !!reading.stale || reading.hash !== notes.hash, summary: reading.summary, decisions: reading.decisions,
+          open_questions: reading.open_questions, action_items: (checklist && Array.isArray(checklist.items) ? checklist.items : reading.action_items)
+            .map(a => ({ owner: a.owner || '', task: a.task, due: a.due || '', done: !!a.done })) };
+      },
+      search_notes: async ({ query, max_results = 20 }) => {
+        const q = query.toLowerCase(), lines = notes.text.split('\n'), hits = [];
+        for (let i = 0; i < lines.length && hits.length < max_results; i++) {
+          if (lines[i].toLowerCase().includes(q)) hits.push(numbered(i + 1, Text.clip(lines[i], 300)));
         }
-      } finally {
-        controller = null;
-        $('#claude').disabled = $('#local').disabled = false;
-      }
-    }
+        return { lines: hits, total_lines: lines.length, more: hits.length === max_results };
+      },
+      read_notes: async ({ from_line, max_lines = 40 }) => {
+        const lines = notes.text.split('\n'), out = [];
+        let size = 0;
+        for (let i = from_line - 1; i < lines.length && out.length < max_lines && size < 3000; i++) {
+          out.push(numbered(i + 1, lines[i]));
+          size += lines[i].length + 8;
+        }
+        return { meeting: notes.title || '(no name)', lines: out, total_lines: lines.length };
+      },
+    } });
 
-    bar.addEventListener('cancel', () => { if (controller) controller.abort(); });
-    $('#claude').addEventListener('click', readWithClaude);
-    $('#local').addEventListener('click', () => { readLocally(); status('The quick reader read the notes.'); });
-
-    function onNotes(p) {
-      notes = p;
-      if (!ready) return;                              // wait until we know whether Claude is there
-      if (!p.text.trim()) {
-        if (last) { last = null; ctx.store.set('last', null); }
-        ctx.emit('notes:extracted', { empty: true, source: 'none', id: 'empty', hash: p.hash, title: p.title || 'Meeting notes',
-          summary: '', decisions: [], action_items: [], open_questions: [] });
-        return;
-      }
-      if (last && last.hash === p.hash) { ctx.emit('notes:extracted', last); return; }
-      if (!last || last.source !== 'claude' || !sample) { readLocally(); return; }
-      // A reading by Claude of older notes: keep it, marked as out of date, until the viewer asks again.
-      ctx.emit('notes:extracted', { ...last, stale: true });
-      status('The notes changed since Claude read them. Press Read with Claude to read them again.');
-    }
-    ctx.on('notes:changed', onNotes);
-
-    (async () => {
-      sample = await ctx.cap('sample').catch(() => null);
-      const mode = $('#mode');
-      if (sample) {
-        mode.textContent = 'Claude is on'; mode.dataset.variant = 'success';
-        $('#about').textContent = 'Claude writes a summary and finds the decisions, action items and open questions. ' +
-          'Your notes go to Claude, through Wardian, only when you press the button. Until then the quick reader shows what it finds.';
-        $('#claude').hidden = false;
-      } else {
-        mode.textContent = 'AI is off'; mode.dataset.variant = 'secondary';
-        $('#about').textContent = 'No Claude provider is set up in this Wardian, so the quick reader reads your notes here, as you type. ' +
-          'It finds lines such as “Action: …”, “TODO …”, “@sam will …”, “Decision: …”, check boxes, and questions. It does not write a summary.';
-        $('#local').hidden = true;
-        $('#howto').hidden = false;
-      }
-      ready = true;
-      if (notes) onNotes(notes);
-    })();
+    ctx.provide({
+      status: async () => ({ claude: !!(await ctx.cap('sample').catch(() => null)), inline_chars: INLINE_CHARS }),
+      /** The notes heard last, read by Claude: { reading, hash } or { error: { code, message } }. */
+      async read() {
+        const n = notes;
+        if (!n.text.trim()) return { error: { code: 'empty', message: 'There are no notes to read.' } };
+        if (n.text.length > INLINE_CHARS) return { error: { code: 'prompt_too_large', message: 'The notes are too long for one request.' } };
+        if (controller) controller.abort();
+        const mine = controller = new AbortController();
+        try {
+          const task = 'Read these meeting notes and answer with the reading.\nMeeting: ' + (n.title || '(no name)') + '\n<notes>\n' + n.text + '\n</notes>';
+          const out = await ai.ask(task, { signal: mine.signal });
+          if (out.error) return { error: out.error };
+          try { return { reading: Text.reading(out.answer), hash: n.hash }; }
+          catch (e) { return { error: { code: 'invalid_json', message: e.message } }; }
+        } finally {
+          if (controller === mine) controller = null;
+        }
+      },
+      cancel: () => { if (controller) controller.abort(); return true; },
+      chat: ({ messages }) => ai.chat(messages),
+    });
   }
 });

@@ -82,6 +82,36 @@ const post = (p, body) => fetch(BASE + p, { method: 'POST', headers: { 'Content-
   await page.locator('.ver').first().waitFor({ timeout: 5000 });
   ok(/App settings/.test(await page.locator('.ver').first().textContent()), 'the save is a version by App settings');
 
+  console.log('== meeting-notes');
+  await page.click('text=Back to the app');
+  await page.locator('#apps li button', { hasText: /Meeting notes/ }).first().click();
+  const suite = page.frameLocator('iframe.suiteframe');
+  const reader = suite.frameLocator('iframe[title="reader"]');
+  await reader.locator('#mode', { hasText: 'Claude is on' }).waitFor({ timeout: 15000 });
+  ok(true, 'the reader learns from the ai part that Claude is on');
+  await reader.locator('#claude').click();
+  const summary = suite.frameLocator('iframe[title="summary"]');
+  await summary.getByText('FAKE: the team agreed to ship on Friday.').waitFor({ timeout: 20000 });
+  ok(true, "Read with Claude goes through the ai part, and the summary shows Claude's reading");
+  const bodies = () => fs.readFileSync(LOG, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  const read = bodies().filter(b => JSON.stringify(b).includes('Read these meeting notes')).pop();
+  ok(read && read.messages[0].content.includes('Do not invent owners, dates or decisions') && read.messages[0].content.includes('"current_reading"'),
+    'with the skill and tools from its files');
+  await page.click('#askBtn');
+  await page.fill('#askPanel textarea', 'Who writes the release notes?');
+  await page.press('#askPanel textarea', 'Enter');
+  await page.locator('#askPanel .msg.say').waitFor({ timeout: 20000 });
+  const said = await page.locator('#askPanel .msg.say').textContent();
+  ok(/Ana writes the release notes/.test(said) && /Looked at: current_reading/.test(said), 'Ask answers from the reading on screen: ' + said);
+  const chat = bodies().filter(b => JSON.stringify(b).includes('1. current_reading')).pop();
+  ok(chat && chat.messages[0].content.includes('Write the release notes') && chat.messages[0].content.includes('Thursday'), 'current_reading gave Claude the checklist');
+  await page.keyboard.press('Escape');
+  await page.click('#moreBtn');
+  await page.click('#aiToolsBtn');
+  await page.locator('#aiSkill').waitFor({ timeout: 5000 });
+  ok(await page.locator('#aiToolList .tool').count() === 3, 'its settings list its three tools');
+  ok(!/no code|proposed/.test(await page.locator('#aiToolList').textContent()), 'each has code');
+
   ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join('; ') : ''));
   await browser.close();
   console.log(`${pass} passed, ${fail} failed`);

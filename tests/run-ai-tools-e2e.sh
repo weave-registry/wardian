@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end test of an AI app's skill and tools in App settings, and of Ask (ADR-2610131300), with
-# a fake Claude (tests/fixtures/fake-ai-claude.py).
+# a fake Claude (tests/fixtures/fake-ai-claude.py): the hosts fixture, and the meeting-notes example.
 # Needs: python3, Node with the playwright package (npm i -g playwright) and Google Chrome (or WARDIAN_BROWSER=chromium for Playwright's Chromium).
 set -euo pipefail
 export WARDIAN_NO_OPEN=1   # never open a browser tab from a test (ADR-2610080930)
@@ -17,8 +17,9 @@ PORT=${PORT:-8773}
 mkdir -p "$TMP/apps" "$TMP/data"
 cp -R tests/fixtures/ai-hosts "$TMP/apps/hosts"
 mkdir -p "$TMP/apps/hosts/ui" && cp static/ui/agent.js "$TMP/apps/hosts/ui/"
-# The user has already allowed this app to use Claude.
-printf '[{"app":"hosts","channel":"ai","mode":"use","allow":true,"at":1}]' > "$TMP/data/grants.json"
+cp -R apps/meeting-notes "$TMP/apps/"
+# The user has already allowed these apps to use Claude.
+printf '[{"app":"hosts","channel":"ai","mode":"use","allow":true,"at":1},{"app":"meeting-notes","channel":"ai","mode":"use","allow":true,"at":1}]' > "$TMP/data/grants.json"
 python3 tests/fixtures/fake-ai-claude.py "$FPORT" "$TMP/claude.log" &
 PIDS+=($!)
 for _ in $(seq 100); do (exec 3<>"/dev/tcp/127.0.0.1/$FPORT") 2>/dev/null && break; sleep 0.1; done

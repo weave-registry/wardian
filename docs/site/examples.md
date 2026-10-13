@@ -24,7 +24,7 @@ example's `README.md` first: it explains each file and how the data moves.
 | [`loan-planner`](#loan-planner) | suite | small parts, retained topics, WebAssembly through `asset` |
 | [`habit-tracker`](#habit-tracker) | suite | `storage`, one owner per piece of state, backup and restore |
 | [`csv-explorer`](#csv-explorer) | suite | `db`: 100,000 rows, paged, sorted and filtered in SQL |
-| [`meeting-notes`](#meeting-notes) | suite | `claude:sample`, with a fallback when AI is off |
+| [`meeting-notes`](#meeting-notes) | suite | `claude:sample`, with a fallback when AI is off; an AI with editable skill and tools, and Ask |
 | [`monte-carlo`](#monte-carlo) | suite | `worker` and `source`, progress and Stop |
 | [`focus-log`](#focus-log) | suite | receiving on a channel, keeping it in `db` |
 | [`usl-lab`](#usl-lab) | suite | a scientific tool: model fitting in a worker |
@@ -121,7 +121,9 @@ bound parameter, never SQL text. [How it works](/docs/examples/csv-explorer) · 
 Paste meeting notes or a transcript and get a summary, the decisions, an editable checklist of who
 does what, and the open questions, ready to export as Markdown. With a Claude provider set up,
 Claude reads the notes, with a Stop button and a clear message for each error code. Without one, a
-local reader does the job, and the app says how to turn AI on.
+local reader does the job, and the app says how to turn AI on. Its AI keeps its skill and tools in
+`skill.md` and `tools.json`, editable in **⋯ → AI skill and tools**, and answers **Ask** about the
+meeting.
 [How it works](/docs/examples/meeting-notes) · [Source](https://github.com/weave-registry/wardian/tree/main/apps/meeting-notes)
 
 ### monte-carlo

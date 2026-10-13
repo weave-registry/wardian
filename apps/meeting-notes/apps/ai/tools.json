@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "tools": [
+    {
+      "name": "current_reading",
+      "description": "The reading the app shows now: the summary, the decisions, the open questions, and the action items as the user has edited and ticked them (owner, task, due, done). It also says who read the notes (Claude or the quick reader) and whether the notes changed since. Use it first for questions about decisions, owners, deadlines or what is left to do.",
+      "input": { "type": "object", "properties": {}, "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "search_notes",
+      "description": "The numbered lines of the notes that contain a word or phrase, case ignored, at most 20. Use it to find where the notes talk about a person, a topic or a date, then read_notes around those lines.",
+      "input": { "type": "object", "properties": {
+        "query": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "max_results": { "type": "integer", "minimum": 1, "maximum": 20 }
+      }, "required": ["query"], "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    },
+    {
+      "name": "read_notes",
+      "description": "Numbered lines of the notes from from_line, at most max_lines (up to 80) and about 3,000 characters, with the total number of lines. Use it to quote or check what the notes say, around lines search_notes found.",
+      "input": { "type": "object", "properties": {
+        "from_line": { "type": "integer", "minimum": 1 },
+        "max_lines": { "type": "integer", "minimum": 1, "maximum": 80 }
+      }, "required": ["from_line"], "additionalProperties": false },
+      "enabled": true,
+      "proposed": false
+    }
+  ]
+}

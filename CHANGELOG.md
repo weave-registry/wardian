@@ -12,6 +12,20 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Changed
+
+- The `meeting-notes` example's AI has its skill and tools in its settings, and answers Ask
+  (ADR-2610131300):
+  - **Out of sight:** the AI moved to a hidden `ai` part, the only one that uses Claude. The new
+    **Reader** panel keeps the buttons, Stop and the quick reader, and asks `ai` to read the notes.
+  - **Skill and tools:** `skill.md` says how to read notes and answer about a meeting; three
+    read-only tools look at the reading on screen and search and read the notes. Edit or improve
+    them in **⋯ → AI skill and tools**.
+  - **Ask:** questions such as "who owns the release notes?" are answered from the reading and the
+    notes, naming the lines relied on.
+  - **Limit:** Claude now reads notes of up to 40,000 characters in one request, down from 58,000,
+    to leave room for the skill and tools.
+
 ## [0.4.22] - 2026-10-13
 
 ### Added

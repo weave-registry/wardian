@@ -35,12 +35,12 @@
       ]
     },
     {
-      "name": "ai",
+      "name": "reader",
       "slot": "aside",
       "wrap": "<aside class=\"w-card w-glass panel\">",
       "scripts": [
-        "apps/ai/local.js",
-        "apps/ai/claude.js"
+        "apps/reader/local.js",
+        "apps/reader/words.js"
       ],
       "listens": [
         "notes:changed"
@@ -50,9 +50,13 @@
           "retain": true
         }
       },
+      "needs": [
+        "ai.status",
+        "ai.read",
+        "ai.cancel"
+      ],
       "caps": [
-        "storage",
-        "claude:sample"
+        "storage"
       ]
     },
     {
@@ -89,6 +93,27 @@
       ],
       "caps": [
         "claude:downloads"
+      ]
+    },
+    {
+      "name": "ai",
+      "scripts": [
+        "ui/agent.js"
+      ],
+      "listens": [
+        "notes:changed",
+        "notes:extracted",
+        "actions:changed"
+      ],
+      "provides": [
+        "status",
+        "read",
+        "cancel",
+        "chat"
+      ],
+      "caps": [
+        "claude:sample",
+        "asset"
       ]
     }
   ]

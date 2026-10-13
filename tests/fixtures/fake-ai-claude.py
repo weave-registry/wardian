@@ -2,6 +2,8 @@
 """A fake Anthropic API for the App settings and Ask test (ADR-2610131300).
 - Improve with AI (a system prompt that starts "You improve"): the skill and tools, with find_host added.
 - The agent loop of the ai app (a prompt with <steps>): top_hosts first, then the answer from its result.
+- meeting-notes: a reading for "Read these meeting notes"; for the chat question about the release
+  notes, current_reading first, then the answer.
 - The key test (GET /v1/models/<model>): the model. Anything else: a short text. Every request body is appended to the log file."""
 import json, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -37,6 +39,14 @@ class H(BaseHTTPRequestHandler):
                              {"name": "find_host", "description": "One host's errors.",
                               "input": {"type": "object", "properties": {"host": {"type": "string", "maxLength": 100}}, "required": ["host"]}}]}
             reply = text_reply(json.dumps(out))
+        elif "Read these meeting notes" in prompt:
+            reading = {"summary": "FAKE: the team agreed to ship on Friday.", "decisions": ["Ship on Friday."],
+                       "action_items": [{"owner": "Ana", "task": "Write the release notes", "due": "Thursday"}],
+                       "open_questions": ["Who tells support?"]}
+            reply = text_reply(json.dumps({"answer": reading}))
+        elif "<steps>" in prompt and "Who writes the release notes" in prompt:
+            done = "1. current_reading" in prompt
+            reply = text_reply(json.dumps({"answer": {"reply": "Ana writes the release notes, by Thursday."}} if done else {"tool": "current_reading", "input": {}}))
         elif "<steps>" in prompt:
             done = "1. top_hosts" in prompt
             reply = text_reply(json.dumps({"answer": {"reply": "web-1 had the most errors: 40."}} if done else {"tool": "top_hosts", "input": {"limit": 2}}))
