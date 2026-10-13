@@ -12,6 +12,20 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- An app's AI has its skill and tools in its settings, and a chat (ADR-2610131300):
+  - **AI skill and tools:** in an app's ⋯ menu. Shows the skill and each tool's description and
+    input, to edit, turn on or off, and save as a new version in History.
+  - **Improve with AI:** Claude rewrites the skill and tools from the app and its code. Nothing is
+    saved until you press Save, and Undo puts yours back. A tool the code lacks is marked
+    *proposed*, and Make an app can build it.
+  - **Ask:** a chat beside the app that the app's own AI answers with the same skill and tools,
+    saying which ones it used.
+  - **For apps:** `skill.md` and `tools.json` in the `ai` app, loaded by `WardianUI.agentApp`,
+    which also gives the `chat` method and, with `db`, the built-in `list_tables` and `read_rows`.
+    `wardian check` checks both files. Make an app builds new AI apps this way.
+
 ## [0.4.21] - 2026-10-13
 
 ### Changed

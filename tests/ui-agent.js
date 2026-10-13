@@ -1,13 +1,15 @@
 // The agent component (static/ui/agent.js, ADR-2610131000), without a browser: the loop runs tools
 // the model asks for, checks their input against the schema, tells the model about errors instead of
 // stopping, stops at the answer or after maxSteps, keeps the prompt under claude:sample's limit, and
-// fails with a code the app can act on.
+// fails with a code the app can act on. agentApp (ADR-2610131300) loads the skill and tools from the
+// ai app's files, leaves out what is off, proposed or has no code, runs the built-in database tools
+// under their own limits, and answers a chat.
 //
 //   node tests/ui-agent.js
 'use strict';
 const fs = require('fs'), vm = require('vm'), path = require('path'), assert = require('assert/strict');
 
-const ctx = { window: {} }; vm.createContext(ctx);
+const ctx = { window: {}, TextDecoder }; vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'ui', 'agent.js'), 'utf8'), ctx);
 const UI = ctx.window.WardianUI;
 let failed = 0;
@@ -114,6 +116,68 @@ const HOSTS = { type: 'object', properties: { limit: { type: 'integer', minimum:
     assert.throws(() => UI.agent({ sample: null, tools: [{ name: 'Top Hosts', run() {} }] }), /snake_case/);
     assert.throws(() => UI.agent({ sample: null, tools: [{ name: 'a', run() {} }, { name: 'a', run() {} }] }), /two tools/);
     assert.throws(() => UI.agent({ sample: null, tools: [{ name: 'a' }] }), /run function/);
+  });
+
+  /** An ai app's ctx: its package files, the capabilities it was given, and the ones it declared. */
+  const appCtx = (files, caps, declared = ['claude:sample', 'asset', 'db']) => ({
+    cap: async name => { if (!declared.includes(name === 'db' ? 'db' : 'claude:' + name)) throw new Error(`ai did not declare capability "${name}"`); return caps[name] || null; },
+    asset: async rel => {
+      if (!declared.includes('asset')) throw new Error('ai did not declare capability "asset"');
+      if (!(rel in files)) throw new Error(`${rel}: 404`);
+      return new TextEncoder().encode(files[rel]);
+    },
+  });
+  const repo = (tools, skill = 'Answer from the hosts table.') => ({ 'apps/ai/skill.md': skill, 'apps/ai/tools.json': JSON.stringify({ format: 1, tools }) });
+  const T = (name, more = {}) => ({ name, description: `the ${name} tool`, input: { type: 'object', properties: {} }, enabled: true, proposed: false, ...more });
+
+  await test('agentApp loads the skill and the tools that are on and have code', async () => {
+    const { sample, prompts } = scripted({ tool: 'top_hosts', input: {} }, { answer: 'web-1' });
+    const ai = UI.agentApp(appCtx(repo([T('top_hosts'), T('off_one', { enabled: false }), T('later', { proposed: true }), T('no_code')]), { sample }),
+      { run: { top_hosts: async () => ['web-1'], off_one: () => 1, later: () => 1 } });
+    assert.deepEqual(JSON.parse(JSON.stringify(await ai.tools())), { tools: ['top_hosts'],
+      skipped: [{ name: 'off_one', why: 'off' }, { name: 'later', why: 'proposed' }, { name: 'no_code', why: 'no code' }] });
+    const out = await ai.ask('Which host?');
+    assert.equal(out.answer, 'web-1');
+    assert.match(prompts[0], /Answer from the hosts table\./);
+    assert.match(prompts[0], /"top_hosts"/);
+    assert.doesNotMatch(prompts[0], /off_one|later|no_code/);
+  });
+
+  await test('agentApp runs list_tables and read_rows on the database, under their own limits', async () => {
+    const asked = [];
+    const db = { tables: async () => [{ name: 'hosts' }], page: async a => { asked.push(a); return { rows: [[1]] }; } };
+    // The file widens read_rows to 1000 rows; the built-in schema still allows at most 50.
+    const wide = T('read_rows', { input: { type: 'object', properties: { table: { type: 'string' }, limit: { type: 'integer', maximum: 1000 } } } });
+    const { sample } = scripted({ tool: 'list_tables', input: {} }, { tool: 'read_rows', input: { table: 'hosts', limit: 500 } },
+      { tool: 'read_rows', input: { table: 'hosts', limit: 10 } }, { answer: 'done' });
+    const ai = UI.agentApp(appCtx(repo([T('list_tables'), wide]), { sample, db }), { db: true });
+    const out = await ai.ask('Look');
+    assert.equal(out.answer, 'done');
+    assert.deepEqual(JSON.parse(JSON.stringify(out.steps[0].output)), [{ name: 'hosts' }]);
+    assert.match(out.steps[1].error, /limit should be at most 50/);
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0].limit, 10);
+  });
+
+  await test('agentApp chat answers the last message from the conversation, with the tools used', async () => {
+    const { sample, prompts } = scripted({ tool: 'top_hosts', input: {} }, { answer: { reply: 'web-1 had 40 errors.' } });
+    const ai = UI.agentApp(appCtx(repo([T('top_hosts')]), { sample }), { run: { top_hosts: async () => [{ host: 'web-1', errors: 40 }] } });
+    const out = await ai.chat([{ role: 'user', text: 'Hi' }, { role: 'assistant', text: 'Hello.' }, { role: 'user', text: 'Which host failed most?' }]);
+    assert.equal(out.reply, 'web-1 had 40 errors.');
+    assert.deepEqual(JSON.parse(JSON.stringify(out.steps)), [{ tool: 'top_hosts', input: {} }]);
+    assert.match(prompts[0], /User: Hi\n\nYou: Hello\.\n\nUser: Which host failed most\?/);
+    assert.match(prompts[0], /<task>[\s\S]*<\/task>/);
+    assert.equal((await ai.chat([{ role: 'assistant', text: 'Hello.' }])).error.code, 'bad_request');
+  });
+
+  await test('agentApp reports a repository it cannot read, and no Claude, as codes', async () => {
+    const noAsset = UI.agentApp(appCtx(repo([]), { sample: scripted().sample }, ['claude:sample']));
+    assert.equal((await noAsset.ask('x')).error.code, 'bad_repository');
+    const broken = UI.agentApp(appCtx({ 'apps/ai/tools.json': '{' }, { sample: scripted().sample }));
+    assert.equal((await broken.chat([{ role: 'user', text: 'x' }])).error.code, 'bad_repository');
+    assert.equal((await broken.tools()).error.code, 'bad_repository');
+    const none = UI.agentApp(appCtx({}, {}));
+    assert.equal((await none.ask('x')).error.code, 'unavailable', 'no files and no Claude: unavailable, not a crash');
   });
 
   console.log(failed ? `${failed} failed` : 'all passed');

@@ -46,7 +46,7 @@ component are safe.
 | `surface` | frosted glass panes over a slow greenhouse light | `surface.css` |
 | `bento` | tiles of different widths that follow the grid's own width | `bento.css` |
 | `receipt` | one shared message, shown the same in both apps: `WardianUI.receipt()` | `receipt.css`, `receipt.js` |
-| `agent` | an app's AI with a skill and tools, in the suite's out-of-sight `ai` app: `WardianUI.agent()` | `agent.js` |
+| `agent` | an app's AI with a skill and tools, in the suite's out-of-sight `ai` app: `WardianUI.agentApp()`, `WardianUI.agent()` | `agent.js` |
 
 Classes start with `w-`. Variants and sizes are attributes:
 
@@ -142,24 +142,40 @@ box.replaceChildren(WardianUI.receipt({ ...sent, channel: 'splunk.table', data: 
   else. The apps people see call it and show the answer. When Make an app builds an app with AI, a
   skills agent plans the skill, the tools and their tests first (ADR-2610131000).
 
+  The skill and each tool's name, description and input schema are data in the `ai` app's folder:
+  `skill.md` and `tools.json`. People read, edit and improve them in **⋯ → AI skill and tools**
+  (`ai.md`), and `WardianUI.agentApp` loads them. The app's code holds only each tool's `run`. A
+  tool listed with no `run`, turned off, or marked `proposed` is left out. With `db: true` and the
+  `db` capability, `list_tables` and `read_rows` run on the package's database with no code, always
+  under their own limits. Provide `chat` too: Wardian's **Ask** panel calls it, so people can
+  explore the app's data with the same skill and tools (ADR-2610131300).
+
 ```json
-{ "name": "ai", "caps": ["claude:sample"], "provides": ["ask"], "needs": ["log.errors"], "scripts": ["ui/agent.js"] }
+{ "name": "ai", "caps": ["claude:sample", "asset"], "provides": ["ask", "chat"], "needs": ["log.errors"], "scripts": ["ui/agent.js"] }
+```
+
+`apps/ai/tools.json`:
+
+```json
+{ "format": 1, "tools": [{ "name": "top_hosts", "description": "The hosts with the most errors. Use it before naming a host.",
+  "input": { "type": "object", "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 20 } }, "required": ["limit"] },
+  "enabled": true, "proposed": false }] }
 ```
 
 ```js
-// apps/ai/app.js: provide at once, so an early call finds the method; wait for Claude inside it.
-Kernel.register({ name: 'ai', caps: ['claude:sample'], provides: ['ask'], needs: ['log.errors'], init(ctx) {
-  const agent = ctx.cap('sample').then(sample => WardianUI.agent({ sample, skill: SKILL, maxSteps: 6, tools: [{
-    name: 'top_hosts', description: 'The hosts with the most errors. Use it before naming a host.',
-    input: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['limit'] },
-    run: ({ limit }) => ctx.call('log', 'errors', { limit }) }] }));
-  // ask, unlike run, never throws: an error's code would not cross ctx.call.
-  ctx.provide({ ask: async ({ task }) => (await agent).ask(task) });
+// apps/ai/app.js: provide at once, so an early call finds the method; agentApp waits for Claude.
+Kernel.register({ name: 'ai', caps: ['claude:sample', 'asset'], provides: ['ask', 'chat'], needs: ['log.errors'], init(ctx) {
+  const ai = WardianUI.agentApp(ctx, { maxSteps: 6, run: { top_hosts: ({ limit }) => ctx.call('log', 'errors', { limit }) } });
+  // ask and chat never throw: an error's code would not cross ctx.call.
+  ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }) => ai.chat(messages) });
 } });
 
 // A visible app: { answer, steps }, or { error: { code, message } } to show the plain path.
 const r = await ctx.call('ai', 'ask', { task });
 ```
+
+  `WardianUI.agent({ sample, skill, tools: [{ name, description, input, run }] })` is the loop
+  itself, for an AI whose skill and tools are not meant to be edited.
 
 ### A glass suite
 

@@ -262,7 +262,7 @@
   }
   function forwardCall(c){
     const id = nextId++;
-    pendingCalls.set(id, {from: c.from, id: c.id, to: c.app});
+    pendingCalls.set(id, {from: c.from, id: c.id, to: c.app, host: c.host});
     note('call', c.from, c.app + '.' + c.method);
     send(c.app, {k: 'invoke', id, method: c.method, args: c.args});
   }
@@ -318,6 +318,7 @@
       if (!p) return;
       if (p.to !== app) return fault(app, 'may not answer a call it was not asked');   // only the app that was asked may answer
       pendingCalls.delete(m.id);
+      if (p.host) return hostReply(p.id, !!m.ok, m.ok ? m.value : String(m.error));
       reply(p.from, p.id, !!m.ok, m.ok ? m.value : String(m.error));
     },
     store(app, m){
@@ -491,6 +492,34 @@
     if (e.source !== parent || parent === window || e.origin !== location.origin || !m || m.wardian !== 'snapshot' || m.k !== 'ask') return;
     const out = await snapshot();
     parent.postMessage(Object.assign({wardian: 'snapshot', k: 'answer', id: m.id}, out), location.origin);
+  });
+
+  // ---------- Ask: the app's chat (ADR-2610131300) ----------
+  // Wardian's page asks the out-of-sight ai app to answer a chat message, through its "chat"
+  // method, as another app of the suite would call it. Only that page may ask, and only an ai app
+  // that uses Claude and provides chat answers; the messages are the viewer's, passed as data.
+  const hostAnswers = new Map();   // host call id -> answer(ok, value)
+  function hostReply(id, ok, v){ const a = hostAnswers.get(id); hostAnswers.delete(id); if (a) a(ok, v); }
+  addEventListener('message', e => {
+    const m = e.data;
+    if (e.source !== parent || parent === window || e.origin !== location.origin || !m || m.wardian !== 'ai') return;
+    const answer = (ok, v) => parent.postMessage({wardian: 'ai', k: 'reply', id: m.id, ok, ...(ok ? {value: v} : {error: v})}, location.origin);
+    const f = frames.get('ai');
+    const can = !!f && f.contract.provides.includes('chat') && f.contract.caps.includes('claude:sample');
+    if (m.k === 'has') return answer(true, {chat: can});
+    if (m.k !== 'chat') return;
+    if (!can) return answer(false, 'this app has no chat');
+    const id = nextId++;
+    hostAnswers.set(id, answer);
+    const c = {from: 'wardian', id, app: 'ai', method: 'chat', args: {messages: Array.isArray(m.messages) ? m.messages : []}, host: true};
+    if (f.provided.has('chat')) return forwardCall(c);
+    // The ai app has not started yet: hold the question until it provides chat, as for a call.
+    c.timer = setTimeout(() => {
+      waiting.set('ai.chat', (waiting.get('ai.chat') || []).filter(x => x !== c));
+      hostReply(id, false, "the app's AI did not start in time");
+    }, 15000);
+    if (!waiting.has('ai.chat')) waiting.set('ai.chat', []);
+    waiting.get('ai.chat').push(c);
   });
 
   window.Kernel = Object.freeze({

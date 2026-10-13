@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "title": "Hosts",
+  "description": "Which hosts have the most errors, with an AI that answers questions about them.",
+  "apps": [
+    { "name": "board", "slot": "main" },
+    { "name": "ai", "caps": ["claude:sample", "asset"], "provides": ["ask", "chat"], "scripts": ["ui/agent.js"] }
+  ]
+}

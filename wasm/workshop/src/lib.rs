@@ -21,6 +21,7 @@
 
 #[path = "../../../src/domain"]
 mod domain {
+    pub mod ai_tools;
     pub mod check;
     pub mod components;
     pub mod export;

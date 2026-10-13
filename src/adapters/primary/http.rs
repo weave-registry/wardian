@@ -204,6 +204,8 @@ fn read_json(req: &mut Request<'_>) -> Result<Value, String> {
 
 /// The viewer's state can be larger than a setting: an app may keep up to 1 MB (ADR-2610071055).
 const MAX_STATE_BODY_BYTES: u64 = 2 * 1024 * 1024;
+/// A skill and its tools from App settings: 40,000 characters, escaped as JSON, with room to spare.
+const MAX_AI_TOOLS_BODY_BYTES: u64 = 512 * 1024;
 
 fn read_json_upto(req: &mut Request<'_>, max: u64) -> Result<Value, String> {
     let ct = req_header(req, "Content-Type").unwrap_or("");
@@ -432,6 +434,12 @@ fn handle(req: &mut Request<'_>, s: &Services, token: Option<&str>) -> Response 
         })),
         // What a .wardian file holds, before anything is installed.
         (Method::Post, ["api", "import", "preview"]) if admin => result_resp(read_zip(req).and_then(|bytes| s.exports.preview_import(&bytes))),
+        // App settings: the AI's skill and tools (ADR-2610131300). Improve asks Claude and saves nothing.
+        (Method::Get, ["api", "apps", app, "ai"]) if admin => result_resp(studio.ai_tools(app)),
+        (Method::Post, ["api", "apps", app, "ai"]) if admin => result_resp(read_json_upto(req, MAX_AI_TOOLS_BODY_BYTES).and_then(|body| studio.save_ai_tools(app, &body))),
+        (Method::Post, ["api", "apps", app, "ai", "improve"]) if admin => {
+            result_resp(read_json_upto(req, MAX_AI_TOOLS_BODY_BYTES).and_then(|body| studio.improve_ai_tools(app, &body)))
+        }
         // An app as a .wardian file; `preview=1` lists what it would hold without building it.
         (Method::Get, ["api", "apps", app, "export"]) if admin => {
             let with_data = query(&url, "data") == Some("1");

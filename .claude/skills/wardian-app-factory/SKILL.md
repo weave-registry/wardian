@@ -125,7 +125,10 @@ still needs an `app.wasm` at its top (spec §3.2); keep the template's empty one
   with no slot, the only part with `claude:sample`, built with the `agent` component (`wardian add
   agent` lists `ui/agent.js` in its scripts only); the visible parts call `ai.ask`. Plan the skill,
   the tools and their tests before writing code, with a subagent if you can dispatch one
-  (`references/ai.md`, "Skills and tools").
+  (`references/ai.md`, "Skills and tools"). Put the skill in `apps/ai/skill.md` and the tools'
+  names, descriptions and schemas in `apps/ai/tools.json`, load them with `WardianUI.agentApp`
+  (the code holds only each tool's `run`), and provide `chat` too: people edit and improve the
+  skill and tools in the app's settings, and explore its data with Ask (`references/components.md`).
 - Small settings go in `ctx.store` (capability `storage`). Data — rows to page, sort, filter or share —
   goes in the app's own SQLite database (capability `db`; `references/data.md`): `insertRows`,
   `page`, `query`. Show large tables a page at a time with `page({offset, limit: 100, orderBy,

@@ -60,6 +60,12 @@ pub trait Builder: Send + Sync {
     fn set_agent(&self, patch: &Value) -> Result<Value, String>;
     /// The tokens used, by day and payer, with the caps.
     fn usage(&self) -> Value;
+    /// A local app's AI skill and tools (ADR-2610131300), for App settings.
+    fn ai_tools(&self, app: &str) -> Result<Value, String>;
+    /// Saves them, checked and kept in the app's history.
+    fn save_ai_tools(&self, app: &str, body: &Value) -> Result<Value, String>;
+    /// Claude's improved skill and tools, for the editor; nothing is saved.
+    fn improve_ai_tools(&self, app: &str, body: &Value) -> Result<Value, String>;
 }
 
 /// Every secret Wardian holds, on one list (ADR-2610081500). Never the secrets themselves.

@@ -141,4 +141,80 @@
       error: { code: (e && e.code) || 'error', message: (e && e.message) || String(e) }, steps: (e && e.steps) || [] }));
     return Object.freeze({ run, ask, tools: [...byName.keys()] });
   };
+
+  /* The ai app's agent from its repository (ADR-2610131300). The skill and the tools' names,
+     descriptions and input schemas are data in the ai app's folder (skill.md, tools.json), which
+     App settings shows, edits and improves; the code is only each tool's run, keyed by name:
+       const ai = WardianUI.agentApp(ctx, { run: { top_hosts: async ({ limit }) => topHosts(limit) }, answer: ANSWER });
+       ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }) => ai.chat(messages) });
+     A tool that is off, only proposed, or has no run here is left out (ai.tools() says which and
+     why). With db: true and the "db" capability, list_tables and read_rows run on the package's
+     own database with no code. The ai app declares "asset" (to read its files) and "claude:sample";
+     "chat" is what Wardian's Ask panel calls. ask and chat never throw. */
+  const BUILTIN_INPUT = {
+    list_tables: { type: 'object', properties: {}, additionalProperties: false },
+    read_rows: { type: 'object', properties: {
+      table: { type: 'string', minLength: 1, maxLength: 64 },
+      offset: { type: 'integer', minimum: 0 },
+      limit: { type: 'integer', minimum: 1, maximum: 50 },
+      orderBy: { type: 'string', maxLength: 64 },
+      desc: { type: 'boolean' } }, required: ['table'], additionalProperties: false },
+  };
+  const builtins = db => ({
+    list_tables: async () => db.tables(),
+    read_rows: async ({ table, offset = 0, limit = 20, orderBy = '', desc = false }) => db.page({ table, offset, limit, orderBy, desc }),
+  });
+  const CHAT_ANSWER = { type: 'object', properties: { reply: { type: 'string', minLength: 1 } }, required: ['reply'] };
+  const MAX_CHAT_MESSAGES = 20, MAX_CHAT_TEXT = 4000;
+  const coded = e => ({ code: (e && e.code) || 'error', message: (e && e.message) || String(e) });
+
+  UI.agentApp = (ctx, { run = {}, answer = null, dir = 'apps/ai', db = false, maxSteps = 8, modelTier, onStep } = {}) => {
+    const decoder = new TextDecoder();
+    const read = async path => {
+      try { return decoder.decode(await ctx.asset(path)); }
+      catch (e) {
+        if (/did not declare capability/.test(String(e && e.message))) throw fail('bad_repository', 'the ai app needs the "asset" capability to read its skill and tools');
+        return null;   // no such file yet: an empty skill, no tools
+      }
+    };
+    const loaded = (async () => {
+      const [sample, skill, toolsText, dbCap] = await Promise.all([ctx.cap('sample'), read(`${dir}/skill.md`), read(`${dir}/tools.json`), db ? ctx.cap('db') : null]);
+      let list = [];
+      if (toolsText) {
+        try { list = JSON.parse(toolsText).tools || []; } catch (e) { throw fail('bad_repository', `${dir}/tools.json is not valid JSON`); }
+      }
+      const own = dbCap ? builtins(dbCap) : {};
+      const tools = [], skipped = [];
+      for (const t of Array.isArray(list) ? list : []) {
+        const name = t && t.name;
+        const code = Object.hasOwn(run, name) ? run[name] : Object.hasOwn(own, name) ? own[name] : null;
+        const why = t.enabled === false ? 'off' : t.proposed ? 'proposed' : typeof code !== 'function' ? 'no code' : '';
+        if (why) { skipped.push({ name, why }); continue; }
+        // A built-in tool keeps its own input schema, whatever the file says: its limits protect the database.
+        tools.push({ name, description: t.description || '', input: Object.hasOwn(own, name) ? BUILTIN_INPUT[name] : t.input, run: code });
+      }
+      const make = ans => UI.agent({ sample, skill: skill || '', tools, answer: ans, maxSteps, modelTier, onStep });
+      return { asker: make(answer), chatter: make(CHAT_ANSWER), tools: tools.map(t => t.name), skipped };
+    })();
+    loaded.catch(() => {});   // reported by the first ask, chat or tools
+    const failed = e => ({ error: coded(e), steps: (e && e.steps) || [] });
+    return Object.freeze({
+      ask: async (task, opts) => { try { return await (await loaded).asker.ask(task, opts); } catch (e) { return failed(e); } },
+      /** One answer in a conversation: messages is [{role: 'user'|'assistant', text}], the last one
+          the user's. Resolves to {reply, steps} or {error, steps}; steps are the tools used. */
+      chat: async (messages, opts) => {
+        try {
+          const said = (Array.isArray(messages) ? messages : []).filter(m => m && typeof m.text === 'string' && m.text.trim()).slice(-MAX_CHAT_MESSAGES);
+          if (!said.length || said[said.length - 1].role !== 'user') throw fail('bad_request', 'the last message must be the user\'s');
+          const transcript = said.map(m => `${m.role === 'user' ? 'User' : 'You'}: ${m.text.slice(0, MAX_CHAT_TEXT)}`).join('\n\n');
+          const task = 'A person is exploring this app\'s data in a chat. The conversation so far:\n\n' + transcript +
+            '\n\nAnswer their last message as {"reply": "…"} in plain words. Look things up with the tools rather than guessing, and say what you looked at.';
+          const out = await (await loaded).chatter.run(task, opts);
+          return { reply: out.answer.reply, steps: out.steps.map(s => ({ tool: s.tool, input: s.input, ...(s.error ? { error: s.error } : {}) })) };
+        } catch (e) { return failed(e); }
+      },
+      /** Which tools are loaded, and which are left out and why ('off', 'proposed', 'no code'). */
+      tools: async () => { try { const l = await loaded; return { tools: l.tools, skipped: l.skipped }; } catch (e) { return { error: coded(e), tools: [], skipped: [] }; } },
+    });
+  };
 })();

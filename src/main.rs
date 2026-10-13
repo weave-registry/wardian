@@ -9,6 +9,7 @@ mod tests;
 
 mod domain {
     pub mod agent;
+    pub mod ai_tools;
     pub mod aws_profile;
     pub mod check;
     pub mod components;
@@ -44,6 +45,7 @@ mod ports {
     pub mod web;
 }
 mod usecases {
+    pub mod ai_tools;
     pub mod aws_profiles;
     pub mod background;
     pub mod catalog;

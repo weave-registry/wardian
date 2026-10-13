@@ -146,6 +146,35 @@ Design the tools before the code:
 Make an app does this for you: when the app uses AI, the builder first sends a skills agent to
 research the skill, the tools and their tests, then builds the `ai` app to that plan (ADR-2610131000).
 
+## An app's skill and tools, in its settings
+
+Every app with AI keeps its skill and tools as data in its `ai` app: `skill.md`, and `tools.json`
+with each tool's name, description and input schema. Open the app, then **⋯ → AI skill and tools**
+(ADR-2610131300):
+
+- **Edit** the skill, each tool's description and input schema, and turn a tool on or off. A tool's
+  code stays in the app, so here you change what the AI is told about it.
+- **Improve with AI:** Claude reads the app's README, its `ai` app's code and the skill and tools
+  as they are in the editor, and rewrites them; say what you want, or leave it empty for a general
+  pass. Claude's version goes into the editor with its notes, and nothing is saved until you press
+  **Save**; **Undo** puts yours back. It counts against Make an app's daily tokens.
+- **Proposed tools:** a tool the code does not have yet, from Claude or from **Add a tool**, is
+  marked *proposed: needs code*, and the AI leaves it out. **Build proposed tools with Make an
+  app** asks the builder to write their code.
+- **Save** checks the skill and tools the way `wardian check` does, and keeps the change in the
+  app's **History** as a version by *App settings*, so it can be undone.
+
+These settings change the app's files, so they need admin, and the app must be in the local apps
+folder.
+
+## Ask: a chat with an app's AI
+
+An app whose `ai` app provides `chat` has **Ask** beside its title. Ask opens a chat on the side of
+the app: each question goes to the app's own AI, which answers with the same skill and tools,
+looking up the app's data. Each answer says which tools it used. Ask uses the app's own Claude
+allowance, like any other use of `claude:sample` by the app, and works only when Claude is set up
+and the app is allowed to use it.
+
 ## Cost
 
 Each call uses credit on the key or the AWS account set up in Settings. Use `modelTier: 'quick'` for

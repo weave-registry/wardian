@@ -691,6 +691,9 @@ impl crate::ports::service::Builder for NoBuilder {
     fn agent(&self) -> Value { Value::Null }
     fn set_agent(&self, _: &Value) -> Result<Value, String> { Err("no".into()) }
     fn usage(&self) -> Value { Value::Null }
+    fn ai_tools(&self, _: &str) -> Result<Value, String> { Err("no".into()) }
+    fn save_ai_tools(&self, _: &str, _: &Value) -> Result<Value, String> { Err("no".into()) }
+    fn improve_ai_tools(&self, _: &str, _: &Value) -> Result<Value, String> { Err("no".into()) }
 }
 
 /// Secrets as the server keeps them, sealed over the real disk, with their tests recorded in `dir`.
@@ -3930,4 +3933,93 @@ mod workshop {
         let out = run("add_components", json!({ "components": ["agent"] }), &mut g, None);
         assert!(out.text.contains("not wired") && !String::from_utf8_lossy(&g["suite.json"]).contains("agent.js"), "{}", out.text);
     }
+}
+
+/// A suite with an out-of-sight ai app whose code runs one tool, top_hosts (ADR-2610131300).
+fn ai_suite(apps: &Path) -> std::path::PathBuf {
+    let dir = apps.join("hosts");
+    let files = [
+        ("suite.json", r#"{"format": 1, "title": "Hosts", "apps": [
+  {"name": "view", "slot": "main", "needs": ["ai.ask"]},
+  {"name": "ai", "caps": ["claude:sample", "asset"], "provides": ["ask", "chat"], "scripts": ["ui/agent.js"]}]}"#),
+        ("ui/agent.js", "/* the agent component */\n"),
+        ("apps/view/app.js", "Kernel.register({ name: 'view', needs: ['ai.ask'], init(ctx) {} });\n"),
+        ("apps/view/view.html", "<p>Hosts</p>\n"),
+        ("apps/ai/app.js", "Kernel.register({ name: 'ai', provides: ['ask', 'chat'], caps: ['claude:sample', 'asset'], init(ctx) {\n  const ai = WardianUI.agentApp(ctx, { run: { top_hosts: async ({ limit }) => [] } });\n  ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }) => ai.chat(messages) });\n} });\n"),
+        ("README.md", "# Hosts\nWhich hosts have the most errors.\n"),
+    ];
+    for (rel, body) in files {
+        let p = dir.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, body).unwrap();
+    }
+    dir
+}
+
+/// ADR-2610131300: App settings shows an AI app's skill and tools, saves them checked and as a
+/// version in History, refuses a bad repository without touching the app, and says which tools have
+/// no code. An app without an ai app says so.
+#[test]
+fn app_settings_save_the_ai_skill_and_tools_as_a_version() {
+    use serde_json::json;
+    let base = tmp("ai-settings");
+    let fake = Arc::new(FakeClaude::default());
+    let (studio, _, _) = studio_on(&fake, &base);
+    let dir = ai_suite(&base.join("apps"));
+    let first = studio.ai_tools("hosts").unwrap();
+    assert_eq!((first["ai"].clone(), first["saved"].clone(), first["chat"].clone()), (json!(true), json!(false), json!(true)), "{first}");
+    assert_eq!(first["repository"], json!({ "skill": "", "tools": [] }));
+
+    let tool = |name: &str| json!({ "name": name, "description": "The hosts with the most errors.", "input": { "type": "object", "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 20 } } } });
+    let saved = studio.save_ai_tools("hosts", &json!({ "repository": { "skill": "Look before you answer.", "tools": [tool("top_hosts"), tool("find_host")] } })).unwrap();
+    assert_eq!(saved["code"], json!({ "top_hosts": true, "find_host": false }), "find_host has no code yet: {saved}");
+    assert!(saved["version"].as_u64().is_some(), "{saved}");
+    assert_eq!(fs::read_to_string(dir.join("apps/ai/skill.md")).unwrap(), "Look before you answer.\n", "saved with one newline at the end");
+    let tools: serde_json::Value = serde_json::from_slice(&fs::read(dir.join("apps/ai/tools.json")).unwrap()).unwrap();
+    assert_eq!((tools["format"].clone(), tools["tools"][0]["name"].clone()), (json!(1), json!("top_hosts")));
+    let history = { use crate::ports::service::AppHistory; hub(&base.join("apps"), &base.join("data")).history().versions("hosts").unwrap() };
+    assert!(history.to_string().contains("app-settings"), "{history}");
+
+    let bad = studio.save_ai_tools("hosts", &json!({ "repository": { "skill": "x", "tools": [tool("Top Hosts")] } })).unwrap_err();
+    assert!(bad.contains("snake_case"), "{bad}");
+    assert_eq!(fs::read_to_string(dir.join("apps/ai/skill.md")).unwrap(), "Look before you answer.\n", "a refused save changes nothing");
+
+    // A tools.json written by hand that breaks the rules fails the check, so no save path keeps it.
+    fs::write(dir.join("apps/ai/tools.json"), r#"{"format": 1, "tools": [{"name": "x"}]}"#).unwrap();
+    assert!(studio.ai_tools("hosts").unwrap()["error"].as_str().unwrap().contains("say when to use it"));
+    assert!(studio.save_ai_tools("hosts", &json!({ "repository": { "skill": "y" } })).is_ok(), "saving from settings replaces the broken file");
+
+    fs::create_dir_all(base.join("apps/plain/apps/view")).unwrap();
+    fs::write(base.join("apps/plain/suite.json"), r#"{"format": 1, "apps": [{"name": "view", "slot": "main"}]}"#).unwrap();
+    fs::write(base.join("apps/plain/apps/view/app.js"), "Kernel.register({ name: 'view', init() {} });\n").unwrap();
+    assert_eq!(studio.ai_tools("plain").unwrap()["ai"], false);
+    assert!(studio.save_ai_tools("plain", &json!({ "repository": {} })).unwrap_err().contains("no AI"));
+    assert!(studio.ai_tools("../etc").is_err());
+    let _ = fs::remove_dir_all(base);
+}
+
+/// ADR-2610131300: Improve with AI sends the repository, the README and the ai app's code on Make an
+/// app's meter, saves nothing, and returns Claude's version with new tools marked as proposals.
+#[test]
+fn improve_with_ai_returns_a_proposal_and_saves_nothing() {
+    use serde_json::json;
+    let base = tmp("ai-improve");
+    let fake = Arc::new(FakeClaude::default());
+    let answer = json!({ "skill": "Look first, then answer.", "notes": "Tightened the limit; added find_host.", "tools": [
+        { "name": "top_hosts", "description": "The 1 to 20 hosts with the most errors.", "input": { "type": "object", "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 20 } }, "required": ["limit"] } },
+        { "name": "find_host", "description": "One host's errors by day.", "input": { "type": "object", "properties": { "host": { "type": "string", "maxLength": 200 } }, "required": ["host"] } }] });
+    fake.script.lock().unwrap().push_back(json!({ "content": [{ "type": "text", "text": answer.to_string() }], "stop_reason": "end_turn", "usage": { "input_tokens": 10, "output_tokens": 10 } }));
+    let (studio, _, _) = studio_on(&fake, &base);
+    studio.set_key(GOOD_KEY, None).unwrap();
+    let dir = ai_suite(&base.join("apps"));
+    let out = studio.improve_ai_tools("hosts", &json!({ "repository": { "skill": "Be brief.", "tools": [] }, "wanted": "add a lookup for one host" })).unwrap();
+    assert_eq!(out["proposed"], json!(["find_host"]), "{out}");
+    assert_eq!(out["repository"]["tools"][0]["proposed"], false);
+    let body = fake.bodies.lock().unwrap().last().unwrap().clone();
+    let text = body["messages"][0]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("Which hosts have the most errors") && text.contains("top_hosts: async") && text.contains("add a lookup for one host"), "{text}");
+    assert!(body.get("tools").is_none());
+    assert!(!dir.join("apps/ai/skill.md").exists(), "nothing is saved");
+    assert_eq!(studio.usage()["totals"][crate::domain::agent::BUILDER]["requests"], 1, "the request is on Make an app's meter");
+    let _ = fs::remove_dir_all(base);
 }

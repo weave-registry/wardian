@@ -2,6 +2,7 @@
 //! words. Pure: the package is given as its file list and a reader, so the same rules judge a
 //! folder, a zip and an app Claude is still writing in memory.
 
+use super::ai_tools;
 use super::grants::valid_channel;
 use super::import_plan::{MAX_FILE_BYTES, MAX_TOTAL_BYTES};
 use super::package::{safe_rel, safe_segment, FORMAT, MAX_APP_FILES, MAX_DEPTH, PAGE_GUESSES, SKIP_DIRS};
@@ -398,6 +399,13 @@ fn check_suite(served: &HashSet<String>, read: &dyn Fn(&str) -> Option<Vec<u8>>,
         for cap in strings(a.get("caps"), &format!("{at}.caps"), r) {
             if !KNOWN_CAPS.contains(&cap) {
                 r.warn(format!("{at}: capability \"{cap}\" is unknown to this Wardian and is never granted"));
+            }
+        }
+        // The AI's skill and tools as data (ADR-2610131300): checked the way App settings saves them.
+        let (skill_rel, tools_rel) = (format!("{dir}/{}", ai_tools::SKILL_FILE), format!("{dir}/{}", ai_tools::TOOLS_FILE));
+        if served.contains(&skill_rel) || served.contains(&tools_rel) {
+            if let Err(e) = ai_tools::Repository::from_files(read(&skill_rel).as_deref(), read(&tools_rel).as_deref()) {
+                r.err(format!("{at}: {}", e.replace('\n', "; ")));
             }
         }
     }
