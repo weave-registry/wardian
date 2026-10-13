@@ -209,7 +209,24 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: hexa adr gates
-        run: hexa adr gates --verbose
+        id: gates
+        run: |
+          set -o pipefail
+          hexa adr gates --verbose 2>&1 | tee "$RUNNER_TEMP/gates.log"
+
+      # hexa names a failed gate but not what failed in it: run each failed gate again with its
+      # output shown, to see the error, or that it passes a second time (a flaky test). The job
+      # has failed either way.
+      - name: Run the failed gates again, with their output
+        if: failure() && steps.gates.outcome == 'failure'
+        run: |
+          sed -n 's/.* — gate failed: //p' "$RUNNER_TEMP/gates.log" | while IFS= read -r gate; do
+            echo "::group::$gate"
+            if bash -c "$gate" </dev/null; then result="passed the second time (flaky?)"; else result="failed again (exit $?)"; fi
+            echo "::endgroup::"
+            echo "$gate: $result"
+            echo "- \`$gate\`: $result" >> "$GITHUB_STEP_SUMMARY"
+          done
 
   load:
     needs: fast
