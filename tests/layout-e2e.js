@@ -5,6 +5,8 @@ const B = process.env.BASE;
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ok  ', m); } else { fail++; console.log('  FAIL', m); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Whether c() comes true within ms: for something that slides in or out, which a busy machine slows.
+const soon = async (c, ms = 3000) => { for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) if (await c()) return true; return !!(await c()); };
 const order = (page, col) => page.$$eval('.' + col + ' > [data-arrange-panel]', ps => ps.map(p => p.getAttribute('data-arrange-panel') + (p.hasAttribute('data-arrange-hidden') ? '(hidden)' : '')));
 const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 'boot').length);
 
@@ -201,8 +203,8 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
   ok(after && after !== before && (await page.locator('#runner h2').textContent()).trim() === after.trim(), `↓ moves to the next tile and Enter opens it (${before} → ${after})`);
   const contentW = () => page.evaluate(() => document.querySelector('#content').getBoundingClientRect().width);
   const w0 = await contentW();
-  await page.click('#sideToggle'); await sleep(450);
-  ok(await page.getAttribute('#sideToggle', 'aria-expanded') === 'true' && await page.locator('#filter').isVisible() && await contentW() < w0 - 100,
+  await page.click('#sideToggle');
+  ok(await soon(async () => await page.getAttribute('#sideToggle', 'aria-expanded') === 'true' && await page.locator('#filter').isVisible() && await contentW() < w0 - 100),
     'the toggle keeps the list open, with its names and filter');
   await page.reload(); await sleep(800);
   await page.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(800);
@@ -304,20 +306,19 @@ const boots = page => page.evaluate(() => Kernel.trace().filter(t => t.kind === 
       // The click leaves the pointer near the top edge, which rightly keeps the header out; once it
       // moves into the app the header goes. Wait for that rather than for a fixed time (CI is slower).
       await fw.mouse.move(700, 450);
-      for (let i = 0; i < 30 && await hb() > 1; i++) await sleep(100);
-      ok(await hb() <= 1 && await fw.getAttribute('#fullBtn', 'aria-pressed') === 'true', "the Menu's Full window enters it and the header waits above");
-      await fw.mouse.move(700, 2); await sleep(500);
-      ok(await hb() > 30 && near(await box()), 'the top edge brings the header back, over the app, which keeps its size');
+      ok(await soon(async () => await hb() <= 1) && await fw.getAttribute('#fullBtn', 'aria-pressed') === 'true', "the Menu's Full window enters it and the header waits above");
+      await fw.mouse.move(700, 2);
+      ok(await soon(async () => await hb() > 30) && near(await box()), 'the top edge brings the header back, over the app, which keeps its size');
       ok(await fw.locator('#appsBtn').isVisible(), 'the header that comes back has Apps in it');
       await fw.click('#appsBtn'); await sleep(250);
       await fw.keyboard.type('loan'); await fw.keyboard.press('Enter'); await sleep(1200);
       ok(/loan/i.test(await fw.locator('#runner h2').textContent()) && await fw.evaluate(() => document.body.classList.contains('full-window')) && near(await box()),
         'switching apps from there keeps Full window');
       await fw.mouse.move(700, 2); await sleep(500);
-      await fw.mouse.move(700, 600, { steps: 12 }); await sleep(1100);   // down across the header, as a hand moves
-      ok(await hb() <= 1, 'and it goes again when the pointer leaves');
-      await fw.focus('#appsBtn'); await sleep(400);
-      ok(await hb() > 30, 'Tab into the header shows it');
+      await fw.mouse.move(700, 600, { steps: 12 });   // down across the header, as a hand moves
+      ok(await soon(async () => await hb() <= 1), 'and it goes again when the pointer leaves');
+      await fw.focus('#appsBtn');
+      ok(await soon(async () => await hb() > 30), 'Tab into the header shows it');
       await fw.evaluate(() => document.activeElement.blur()); await sleep(300);
       await fw.reload(); await sleep(800);
       await fw.locator('#apps li button', { hasText: /life/i }).first().click(); await sleep(1000);
