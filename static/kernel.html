@@ -63,7 +63,7 @@
      claude:downloads (a file download), splunk (searches the server runs, as background jobs the
      kernel waits on: ADR-2610072118), db (the package's own
      SQLite database, ADR-2610071219) and claude:sample (Claude,
-     with the server's Anthropic key). The user allows splunk and Claude once per package first.
+     with the server's Anthropic key, or in a hosted kernel the page around it: ADR-2610141500). The user allows splunk and Claude once per package first.
    - Channels to other packages (channels.js): only those declared in suite.json, and only once the
      user allows them. Other packages see this suite's name as the sender.
    Debug in the console: Kernel.apps(), Kernel.trace(), Kernel.faults(), Kernel.started(). */
@@ -82,6 +82,27 @@
   const waiting = new Map();           // "app.method" -> [queued call]
   const trace = [], faults = [], started = new Set();
   let nextId = 1, headerEl = null;
+  // A hosted kernel (ADR-2610141500): served sandboxed, with no origin of its own, as the hosted
+  // builder's previews are. No Wardian server stands behind it, so the page around it, the only one
+  // its CSP lets frame it, provides Claude, asks the viewer, and pays; and that page may Ask.
+  const HOSTED = parent !== window && self.origin === 'null';   // a sandboxed page's location keeps its URL's origin
+  const hostedAnswers = new Map();     // question id -> answer(ok, value)
+  /** A question to the page around a hosted kernel; `ms` > 0 gives up after that long. */
+  function askAround(k, body, ms){
+    const id = 'h' + (nextId++);
+    return new Promise((resolve, reject) => {
+      const timer = ms ? setTimeout(() => { hostedAnswers.delete(id); reject(new Error('the page around the app did not answer')); }, ms) : 0;
+      hostedAnswers.set(id, (ok, v) => { clearTimeout(timer); if (ok) resolve(v); else reject(new Error(v)); });
+      parent.postMessage(Object.assign({wardian: 'host', k, id}, body), '*');
+    });
+  }
+  if (HOSTED) addEventListener('message', e => {
+    const m = e.data;
+    if (e.source !== parent || !m || m.wardian !== 'host' || m.k !== 'reply') return;
+    const a = hostedAnswers.get(m.id);
+    hostedAnswers.delete(m.id);
+    if (a) a(!!m.ok, m.ok ? m.value : String(m.error));
+  });
 
   const note = (kind, app, what) => { trace.push({t: Math.round(performance.now()), kind, app, what}); if (trace.length > 400) trace.shift(); };
   function fault(app, message){
@@ -204,6 +225,13 @@
       async json(args, app){ return (await runJob('/api/ai/sample', 'ai', app, {prompt: (args || {}).prompt, tier: (args || {}).tier, json: true})).value; },
     },
   };
+  // In a hosted kernel, Claude is the page around it: it asks the viewer, and the answer's code
+  // ("over_budget: …") reaches the app as e.code, as from Wardian's server.
+  if (HOSTED) CAPS.sample = {
+    async text(args, app){ return askAround('sample', sampleBody(args, app, false), 0); },
+    async json(args, app){ return (await askAround('sample', sampleBody(args, app, true), 0)).value; },
+  };
+  function sampleBody(args, app, json){ const a = args || {}; return {app, prompt: String(a.prompt ?? ''), tier: a.tier === 'quick' ? 'quick' : '', json}; }
   async function hostStatus(){
     const r = await fetch('/api/status', {cache: 'no-store'});
     return r.json();
@@ -329,7 +357,9 @@
       if (!capDeclared(app, m.name)) fault(app, `did not declare capability "${HOST_CAPS.includes(m.name) ? m.name : 'claude:' + m.name}"`);
       let impl = capDeclared(app, m.name) && CAPS[m.name];
       // Offer Claude only when this server has a key, so apps hide AI features otherwise.
-      if (impl && m.name === 'sample'){ try { if (!(await hostStatus()).ai.ready) impl = null; } catch { impl = null; } }
+      if (impl && m.name === 'sample'){
+        try { if (!(HOSTED ? (await askAround('has', {cap: 'sample'}, 3000)).ready : (await hostStatus()).ai.ready)) impl = null; } catch { impl = null; }
+      }
       note('cap', app, m.name + (impl ? '' : ' (not available)'));
       reply(app, m.id, true, impl ? Object.keys(impl) : null);
     },
@@ -500,10 +530,11 @@
   // that uses Claude and provides chat answers; the messages are the viewer's, passed as data.
   const hostAnswers = new Map();   // host call id -> answer(ok, value)
   function hostReply(id, ok, v){ const a = hostAnswers.get(id); hostAnswers.delete(id); if (a) a(ok, v); }
+  // A hosted kernel's page has another origin than this opaque one; its CSP says who that may be.
   addEventListener('message', e => {
     const m = e.data;
-    if (e.source !== parent || parent === window || e.origin !== location.origin || !m || m.wardian !== 'ai') return;
-    const answer = (ok, v) => parent.postMessage({wardian: 'ai', k: 'reply', id: m.id, ok, ...(ok ? {value: v} : {error: v})}, location.origin);
+    if (e.source !== parent || parent === window || (!HOSTED && e.origin !== location.origin) || !m || m.wardian !== 'ai') return;
+    const answer = (ok, v) => parent.postMessage({wardian: 'ai', k: 'reply', id: m.id, ok, ...(ok ? {value: v} : {error: v})}, HOSTED ? '*' : location.origin);
     const f = frames.get('ai');
     const can = !!f && f.contract.provides.includes('chat') && f.contract.caps.includes('claude:sample');
     if (m.k === 'has') return answer(true, {chat: can});

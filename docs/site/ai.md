@@ -173,6 +173,10 @@ looking up the app's data. Each answer says which tools it used. Ask uses the ap
 allowance, like any other use of `claude:sample` by the app, and works only when Claude is set up
 and the app is allowed to use it.
 
+On wardian.studio, an app running in the builder's preview or on its store page gets Claude from
+the site instead, paid from the viewer's credits after they allow it, and has Ask in its toolbar
+(ADR-2610141500).
+
 ## Cost
 
 Each call uses credit on the key or the AWS account set up in Settings. Use `modelTier: 'quick'` for

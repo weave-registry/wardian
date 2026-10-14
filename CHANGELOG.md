@@ -12,6 +12,13 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- A suite running in the hosted builder's previews gets Claude and Ask from the page around it
+  (ADR-2610141500): its `claude:sample` asks that page, which asks the viewer and pays, and that
+  page can open Ask. The workshop module has `sampleRequest` and `sampleOutcome`, the same checks
+  and answers as Wardian's server. Wardian's own page and the website's examples are unchanged.
+
 ## [0.4.24] - 2026-10-13
 
 ### Changed

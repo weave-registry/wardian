@@ -21,7 +21,7 @@ use super::workshop::{self, Files};
 use crate::domain::agent::{AgentSettings, BUILDER, LIMITS};
 use crate::domain::aws_profile;
 use crate::domain::package::{safe_segment, SKIP_DIRS};
-use crate::domain::studio::{free_name, json_in, Session, EMPTY_WASM};
+use crate::domain::studio::{free_name, json_in, sample_answer, sample_ask, Session, EMPTY_WASM};
 use crate::ports::{
     assets::Assets,
     clock::{Clock, Tasks},
@@ -44,8 +44,6 @@ use std::{
 // The steps, tokens and chats of Make an app, and the tokens of a `claude:sample` reply, are
 // settings (ADR-2610081500, `domain::agent`).
 const MAX_MESSAGE_CHARS: usize = 20_000;
-/// The most an app may send in one `claude:sample` prompt.
-const MAX_SAMPLE_CHARS: usize = 60_000;
 
 /// A failed model call, in words.
 fn api_error(e: LlmError) -> String {
@@ -172,15 +170,9 @@ impl Api {
                 Err(e) => return Err(format!("error: {}", api_error(e))),
             }
         };
-        let text: String = resp["content"]
-            .as_array()
-            .map(|blocks| blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(""))
-            .unwrap_or_default();
-        let stop = resp["stop_reason"].as_str().unwrap_or("");
-        if stop == "refusal" {
-            return Err("refused: Claude declined this request".into());
-        }
-        Ok(json!({ "text": text, "truncated": stop == "max_tokens", "model": model }))
+        let mut out = sample_answer(&resp, false)?;
+        out["model"] = json!(model);
+        Ok(out)
     }
 
     /// One request: its tokens go on the meter, and a refused key is recorded for Settings.
@@ -665,21 +657,13 @@ impl Studio {
     pub fn sample(&self, body: &Value) -> Result<Value, String> {
         let package = body["package"].as_str().unwrap_or("");
         let api = self.api(package).map_err(|e| format!("not_granted: {e}"))?;
-        let prompt = body["prompt"].as_str().unwrap_or("").trim();
-        if prompt.is_empty() {
-            return Err("error: the prompt is empty".into());
-        }
-        if prompt.chars().count() > MAX_SAMPLE_CHARS {
-            return Err("prompt_too_large: the prompt is too long".into());
-        }
-        let quick = body["tier"].as_str() == Some("quick");
-        if body["json"].as_bool().unwrap_or(false) {
-            let ask = format!("{prompt}\n\nAnswer with the JSON only, no other words.");
-            let out = api.sample(&ask, quick)?;
+        let (ask, quick, json) = sample_ask(body)?;
+        let out = api.sample(&ask, quick)?;
+        if json {
             let value = json_in(out["text"].as_str().unwrap_or("")).ok_or("invalid_json: the answer was not JSON")?;
             Ok(json!({ "value": value }))
         } else {
-            api.sample(prompt, quick)
+            Ok(out)
         }
     }
 

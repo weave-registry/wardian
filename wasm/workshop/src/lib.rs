@@ -24,6 +24,10 @@
 //! AI's {"system","messages","maxTokens"} (the host adds the model) or {"error"}; and
 //! {"op":"aiImproveOutcome","reply":{…},"files":{…}} turns the model's reply into
 //! {"repository","notes","proposed"} or {"error"}.
+//! An app's `claude:sample` in a hosted preview (ADR-2610141500): {"op":"sampleRequest","body":{prompt,
+//! json, tier}} gives {"messages","quick","json"} (the host adds the model and the output limit) or
+//! {"error"} with the app's error code; {"op":"sampleOutcome","reply":{…},"json":bool} turns the
+//! model's reply into what the app gets, {"text","truncated"} or {"value"}, or {"error"}.
 #![allow(dead_code)]
 
 #[path = "../../../src/domain"]
@@ -106,7 +110,12 @@ pub fn handle(request: &str) -> Vec<u8> {
             Err(e) => json!({ "error": e }),
         },
         Some("aiImproveOutcome") => usecases::ai_tools::improve_outcome_for(&req["reply"], &files_of(&req)).unwrap_or_else(|e| json!({ "error": e })),
-        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest, skillsOutcome, aiTools, aiToolsApply, aiImproveRequest or aiImproveOutcome" }),
+        Some("sampleRequest") => match domain::studio::sample_ask(&req["body"]) {
+            Ok((ask, quick, json)) => json!({ "messages": [{ "role": "user", "content": ask }], "quick": quick, "json": json }),
+            Err(e) => json!({ "error": e }),
+        },
+        Some("sampleOutcome") => domain::studio::sample_answer(&req["reply"], req["json"].as_bool().unwrap_or(false)).unwrap_or_else(|e| json!({ "error": e })),
+        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest, skillsOutcome, aiTools, aiToolsApply, aiImproveRequest, aiImproveOutcome, sampleRequest or sampleOutcome" }),
     };
     reply.to_string().into_bytes()
 }

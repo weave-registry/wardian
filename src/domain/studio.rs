@@ -104,6 +104,44 @@ pub fn json_in(text: &str) -> Option<Value> {
     (end > start).then(|| serde_json::from_str(&text[start..=end]).ok()).flatten()
 }
 
+/// The most an app may send in one `claude:sample` prompt.
+pub const MAX_SAMPLE_CHARS: usize = 60_000;
+
+/// One `claude:sample` request from an app, checked: the prompt to send Claude, whether the quick
+/// model answers, and whether the answer must be JSON. `body`: {prompt, json, tier}. Errors start
+/// with the code the app gets. Wardian's server and the hosted builder (workshop.wasm) both use it.
+pub fn sample_ask(body: &Value) -> Result<(String, bool, bool), String> {
+    let prompt = body["prompt"].as_str().unwrap_or("").trim();
+    if prompt.is_empty() {
+        return Err("error: the prompt is empty".into());
+    }
+    if prompt.chars().count() > MAX_SAMPLE_CHARS {
+        return Err("prompt_too_large: the prompt is too long".into());
+    }
+    let quick = body["tier"].as_str() == Some("quick");
+    let json = body["json"].as_bool().unwrap_or(false);
+    let ask = if json { format!("{prompt}\n\nAnswer with the JSON only, no other words.") } else { prompt.to_string() };
+    Ok((ask, quick, json))
+}
+
+/// Claude's reply (Messages format) to a `claude:sample` request, as the app gets it:
+/// {text, truncated}, or {value} when it asked for JSON.
+pub fn sample_answer(reply: &Value, json: bool) -> Result<Value, String> {
+    let text: String = reply["content"]
+        .as_array()
+        .map(|blocks| blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(""))
+        .unwrap_or_default();
+    let stop = reply["stop_reason"].as_str().unwrap_or("");
+    if stop == "refusal" {
+        return Err("refused: Claude declined this request".into());
+    }
+    if json {
+        let value = json_in(&text).ok_or("invalid_json: the answer was not JSON")?;
+        return Ok(json!({ "value": value }));
+    }
+    Ok(json!({ "text": text, "truncated": stop == "max_tokens" }))
+}
+
 /// A free folder name for a new app: "notes", else "notes-2", "notes-3"… `taken` says whether
 /// a name is in use.
 pub fn free_name(wanted: &str, taken: &dyn Fn(&str) -> bool) -> String {
@@ -133,8 +171,27 @@ pub fn size_text(n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{free_name, json_in};
+    use super::{free_name, json_in, sample_answer, sample_ask, MAX_SAMPLE_CHARS};
     use serde_json::json;
+
+    #[test]
+    fn studio_a_sample_request_is_checked_and_asks_for_json_when_wanted() {
+        assert_eq!(sample_ask(&json!({"prompt": "  hi  "})).unwrap(), ("hi".to_string(), false, false));
+        let (ask, quick, j) = sample_ask(&json!({"prompt": "list", "json": true, "tier": "quick"})).unwrap();
+        assert!(ask.starts_with("list") && ask.contains("JSON only") && quick && j);
+        assert!(sample_ask(&json!({"prompt": " "})).unwrap_err().starts_with("error: "));
+        assert!(sample_ask(&json!({"prompt": "x".repeat(MAX_SAMPLE_CHARS + 1)})).unwrap_err().starts_with("prompt_too_large: "));
+    }
+
+    #[test]
+    fn studio_a_sample_answer_is_text_json_or_a_coded_error() {
+        let reply = |text: &str, stop: &str| json!({"content": [{"type": "text", "text": text}], "stop_reason": stop});
+        assert_eq!(sample_answer(&reply("hello", "end_turn"), false).unwrap(), json!({"text": "hello", "truncated": false}));
+        assert_eq!(sample_answer(&reply("hel", "max_tokens"), false).unwrap()["truncated"], true);
+        assert_eq!(sample_answer(&reply("Here: {\"a\": 1}", "end_turn"), true).unwrap(), json!({"value": {"a": 1}}));
+        assert!(sample_answer(&reply("no", "end_turn"), true).unwrap_err().starts_with("invalid_json: "));
+        assert!(sample_answer(&reply("", "refusal"), false).unwrap_err().starts_with("refused: "));
+    }
 
     #[test]
     fn finds_json_in_an_answer() {
