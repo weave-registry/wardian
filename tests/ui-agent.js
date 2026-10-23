@@ -170,6 +170,132 @@ const HOSTS = { type: 'object', properties: { limit: { type: 'integer', minimum:
     assert.equal((await ai.chat([{ role: 'assistant', text: 'Hello.' }])).error.code, 'bad_request');
   });
 
+  // ---- Blocks in a chat answer (ADR-2610231000) ----
+  const AB = UI.answerBlocks;
+  const plain = v => JSON.parse(JSON.stringify(v));
+  const STEPS = [
+    { tool: 'top_hosts', input: {}, output: [{ host: 'web-1', errors: 40 }, { host: 'web-2', errors: 3, note: 'new' }] },
+    { tool: 'read_rows', input: { table: 'runs' }, output: { columns: ['load', 'throughput'], rows: [[1, 980], [2]], total: 2, offset: 0 } },
+    { tool: 'fit_results', input: {}, output: { units: { load: 'users' }, alpha: '0.021 [0.018–0.025]', r_squared: '0.998', peak_load: '41' } },
+    { tool: 'data_checks', input: {}, output: [{ level: 'ok', title: '9 runs' }, { level: 'warning', title: 'One run is off the curve', detail: 'Run 7.' }] },
+    { tool: 'current_reading', input: {}, output: { decisions: ['Ship on Friday.'], open_questions: ['Who tells support?'] } },
+    { tool: 'broken', input: {}, error: 'the table is empty' },
+  ];
+
+  await test('a block that names a step is filled with that step\'s own result', async () => {
+    const { blocks, problems } = AB.settle([
+      { kind: 'table', title: 'Errors by host', from: 1 },
+      { kind: 'table', from: 2, pick: ['throughput'] },
+      { kind: 'figures', from: 3, pick: ['alpha', 'peak_load'] },
+      { kind: 'checks', from: 4 },
+    ], STEPS);
+    assert.deepEqual(plain(problems), []);
+    assert.deepEqual(plain(blocks[0]), { kind: 'table', title: 'Errors by host', source: 'top_hosts', columns: ['host', 'errors', 'note'], rows: [['web-1', 40, null], ['web-2', 3, 'new']] });
+    assert.deepEqual(plain(blocks[1]), { kind: 'table', source: 'read_rows', columns: ['throughput'], rows: [[980], [null]] });
+    assert.deepEqual(plain(blocks[2].items), [{ label: 'alpha', value: '0.021 [0.018–0.025]' }, { label: 'peak load', value: '41' }]);
+    assert.deepEqual(plain(blocks[3].items.map(c => c.level)), ['ok', 'watch'], 'a level by another name is the lab\'s');
+  });
+
+  await test('a step that cannot be shown is a problem the model can act on', async () => {
+    const { blocks, problems } = AB.settle([
+      { kind: 'list', from: 5 }, { kind: 'list', from: 5, key: 'decisions' }, { kind: 'table', from: 6 }, { kind: 'table', from: 9 },
+      { kind: 'chart', items: [] },
+    ], STEPS);
+    assert.deepEqual(plain(blocks), [{ kind: 'list', source: 'current_reading', items: ['Ship on Friday.'] }]);
+    assert.match(problems[0], /^blocks\[0\]: .*several parts .*"key": decisions, open_questions/);
+    assert.match(problems[1], /^blocks\[2\]: step 6 failed/);
+    assert.match(problems[2], /^blocks\[3\]: "from" should be a step number from 1 to 6/);
+    assert.equal(problems.length, 3, 'at most four blocks: the fifth is not looked at');
+    assert.match(AB.settle([{ kind: 'table', from: 2, pick: ['latency'] }], STEPS).problems[0], /no column latency; it has load, throughput/);
+    assert.match(AB.settle([{ kind: 'checks', from: 1 }], STEPS).problems[0], /cannot be shown as checks/);
+  });
+
+  await test('settle repairs what it can: lengths, row widths, too many rows, unknown fields', async () => {
+    const rows = Array.from({ length: 70 }, (_, i) => [i, 'x', 'extra']);
+    const { blocks, problems } = AB.settle([
+      { kind: 'table', columns: ['n', 'v'], rows: [[1], ...rows], caption: 'Runs', html: '<b>x</b>' },
+      { kind: 'list', items: ['  a  ', 7, null, { no: 1 }, 'z'.repeat(500)], title: 't'.repeat(200) },
+      { kind: 'figures', items: [{ label: 'Peak', value: 41, note: 'users' }, { label: 'Ok', value: true }] },
+    ], []);
+    assert.deepEqual(plain(problems), []);
+    assert.equal(blocks[0].rows.length, 50);
+    assert.deepEqual(plain(blocks[0].rows[0]), [1, null], 'a short row gets an empty cell');
+    assert.deepEqual(plain(blocks[0].rows[1]), [0, 'x'], 'a long row is cut to the columns');
+    assert.equal(blocks[0].caption, 'Runs · Showing the first 50 of 71 rows.');
+    assert.ok(!('html' in blocks[0]), 'fields a kind does not have are dropped');
+    assert.deepEqual(plain(blocks[1].items.slice(0, 2)), ['a', '7']);
+    assert.equal(blocks[1].items.length, 3);
+    assert.equal(blocks[1].items[2].length, 400);
+    assert.equal(blocks[1].title.length, 80);
+    assert.deepEqual(plain(blocks[2].items[1]), { label: 'Ok', value: 'true' });
+    const wide = AB.settle([{ kind: 'table', columns: Array.from({ length: 10 }, (_, i) => 'c' + i), rows: [Array(10).fill('y'.repeat(300))] }], []).blocks[0];
+    assert.equal(wide.columns.length, 8);
+    assert.equal(wide.rows[0][0].length, 200);
+    assert.match(wide.caption, /first 8 of 10 columns/);
+    assert.match(AB.settle('not a list').problems[0], /should be a list/);
+    assert.deepEqual(plain(AB.settle(undefined)), { blocks: [], problems: [] });
+  });
+
+  await test('on the page, "from" is refused and a settled source is kept; in the ai app the model cannot write one', async () => {
+    const page = AB.settle([{ kind: 'list', items: ['a'], source: 'top_hosts' }, { kind: 'list', from: 1 }, { kind: 'list', items: ['b'], source: 'Not A Tool' }], null);
+    assert.deepEqual(plain(page.blocks), [{ kind: 'list', items: ['a'], source: 'top_hosts' }, { kind: 'list', items: ['b'] }]);
+    assert.match(page.problems[0], /filled in by the ai app/);
+    assert.deepEqual(plain(AB.settle([{ kind: 'list', items: ['a'], source: 'top_hosts' }], STEPS).blocks), [{ kind: 'list', items: ['a'] }]);
+    assert.deepEqual(plain(AB.suggestions(['  Which host?  ', '', 3, 'q'.repeat(300), 'a', 'b'])), ['Which host?', '3', 'q'.repeat(199) + '…']);
+  });
+
+  await test('chat answers with blocks from the steps, sends bad blocks back once, then leaves them out', async () => {
+    const answer = { reply: 'web-1 had the most errors: 40.', blocks: [{ kind: 'table', from: 1 }, { kind: 'pie' }], suggest: ['Which host had the fewest?'] };
+    const { sample, prompts } = scripted({ tool: 'top_hosts', input: {} }, { answer }, { answer });
+    const ai = UI.agentApp(appCtx(repo([T('top_hosts')]), { sample }), { run: { top_hosts: async () => STEPS[0].output } });
+    const out = plain(await ai.chat([{ role: 'user', text: 'Which host failed most?' }]));
+    assert.equal(out.reply, 'web-1 had the most errors: 40.');
+    assert.deepEqual(out.blocks, [{ kind: 'table', source: 'top_hosts', columns: ['host', 'errors', 'note'], rows: [['web-1', 40, null], ['web-2', 3, 'new']] }]);
+    assert.deepEqual(out.suggest, ['Which host had the fewest?']);
+    assert.equal(out.dropped, 1);
+    assert.match(prompts[0], /You may add "blocks"/, 'the model is told about blocks');
+    assert.match(prompts[0], /- checks: findings with a level/);
+    assert.match(prompts[2], /Part of your answer cannot be shown: blocks\[1\]: "kind" should be one of figures, table, list, checks/);
+    assert.equal(prompts.length, 3, 'sent back once only');
+    const bare = scripted({ answer: { reply: 'Hello.' } });
+    const said = plain(await UI.agentApp(appCtx(repo([]), { sample: bare.sample })).chat([{ role: 'user', text: 'Hi' }]));
+    assert.deepEqual(said, { reply: 'Hello.', steps: [] }, 'an answer without blocks is as before');
+  });
+
+  await test('text gives the blocks as lines for the next question', async () => {
+    const { blocks } = AB.settle([{ kind: 'table', title: 'Hosts', from: 1, pick: ['host', 'errors'] }, { kind: 'checks', from: 4 }, { kind: 'figures', items: [{ label: 'Peak', value: 41, note: 'users' }] }], STEPS);
+    assert.equal(AB.text(blocks), 'Hosts\nhost\terrors\nweb-1\t40\nweb-2\t3\n(from top_hosts)\n\n[ok] 9 runs\n[watch] One run is off the curve: Run 7.\n(from data_checks)\n\nPeak: 41 (users)');
+  });
+
+  /** Just enough of a document to build the view; setting innerHTML or outerHTML throws. */
+  const fakeDoc = () => {
+    const node = tag => {
+      const n = { tag, className: '', textContent: '', dataset: {}, kids: [], append(...k) { n.kids.push(...k); } };
+      for (const p of ['innerHTML', 'outerHTML']) Object.defineProperty(n, p, { set() { throw new Error(`${p} was set`); } });
+      return n;
+    };
+    return { createElement: node, createDocumentFragment: () => node('#fragment') };
+  };
+  const find = (n, pred, out = []) => { if (pred(n)) out.push(n); (n.kids || []).forEach(k => find(k, pred, out)); return out; };
+
+  await test('view builds the library\'s components with textContent only', async () => {
+    const { blocks } = AB.settle([
+      { kind: 'table', from: 1 }, { kind: 'figures', items: [{ label: 'Peak', value: 41 }] },
+      { kind: 'list', items: ['<img src=x onerror=alert(1)>'] }, { kind: 'checks', from: 4 },
+    ], STEPS);
+    const frag = AB.view(blocks, fakeDoc());
+    assert.equal(frag.kids.length, 4);
+    const table = find(frag, n => n.className === 'w-table')[0];
+    assert.deepEqual(find(table, n => n.tag === 'th').map(n => [n.textContent, n.className]), [['host', ''], ['errors', 'num'], ['note', '']]);
+    assert.equal(find(table, n => n.tag === 'caption')[0].textContent, 'From top_hosts');
+    assert.equal(find(frag, n => n.className === 'w-tile').length, 1);
+    assert.equal(find(frag, n => n.className === 'answer-value')[0].textContent, '41');
+    const li = find(frag, n => n.tag === 'li')[0];
+    assert.equal(li.textContent, '<img src=x onerror=alert(1)>', 'markup stays text');
+    assert.equal(find(frag, n => n.tag === 'img').length, 0);
+    assert.deepEqual(find(frag, n => n.className === 'w-badge').map(n => [n.textContent, n.dataset.variant]), [['OK', 'success'], ['Watch', 'outline']]);
+  });
+
   await test('agentApp reports a repository it cannot read, and no Claude, as codes', async () => {
     const noAsset = UI.agentApp(appCtx(repo([]), { sample: scripted().sample }, ['claude:sample']));
     assert.equal((await noAsset.ask('x')).error.code, 'bad_repository');

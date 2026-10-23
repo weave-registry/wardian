@@ -176,6 +176,15 @@ looking up the app's data. Each answer says which tools it used. Ask uses the ap
 allowance, like any other use of `claude:sample` by the app, and works only when Claude is set up
 and the app is allowed to use it.
 
+An answer can show what the tools found, not only say it (ADR-2610231000). Under the words, Ask
+draws up to four blocks with the component library: **figures** as tiles, a **table**, a **list**,
+or **checks** with a level (OK, Watch, Problem). A block that shows a tool's result as it is says
+"From" and the tool's name: its rows and figures are the tool's own, filled in by the `ai` app, not
+copied by Claude. Ask checks every block again and draws it as text, never as markup; a block it
+cannot show is left out, and the answer says so. Ask may also offer up to three follow-up questions
+to click. An app gets all this from `ui/agent.js` with no code of its own; an app with an older copy
+answers in words as before, until `wardian add --force agent <app folder>` or Make an app updates it.
+
 On wardian.studio, an app running in the builder's preview or on its store page gets Claude from
 the site instead, paid from the viewer's credits after they allow it, and has Ask in its toolbar
 (ADR-2610141500).

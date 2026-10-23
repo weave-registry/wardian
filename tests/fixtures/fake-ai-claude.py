@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """A fake Anthropic API for the App settings and Ask test (ADR-2610131300).
 - Improve with AI (a system prompt that starts "You improve"): the skill and tools, with find_host added.
-- The agent loop of the ai app (a prompt with <steps>): top_hosts first, then the answer from its result.
+- The agent loop of the ai app (a prompt with <steps>): top_hosts first, then the answer from its result,
+  with blocks and a suggestion.
 - meeting-notes: a reading for "Read these meeting notes"; for the chat question about the release
   notes, current_reading first, then the answer.
 - The key test (GET /v1/models/<model>): the model. Anything else: a short text. Every request body is appended to the log file."""
@@ -48,8 +49,16 @@ class H(BaseHTTPRequestHandler):
             done = "1. current_reading" in prompt
             reply = text_reply(json.dumps({"answer": {"reply": "Ana writes the release notes, by Thursday."}} if done else {"tool": "current_reading", "input": {}}))
         elif "<steps>" in prompt:
+            # The answer shows top_hosts' own result as a table (ADR-2610231000), with a block of a kind
+            # there is not, which goes back once and is then left out.
             done = "1. top_hosts" in prompt
-            reply = text_reply(json.dumps({"answer": {"reply": "web-1 had the most errors: 40."}} if done else {"tool": "top_hosts", "input": {"limit": 2}}))
+            answer = {"reply": "web-1 had the most errors: 40.",
+                      "blocks": [{"kind": "table", "title": "Errors by host", "from": 1},
+                                 {"kind": "figures", "items": [{"label": "Most errors", "value": 40, "note": "web-1"}]},
+                                 {"kind": "list", "items": ["<b>web-1</b> needs a look"]},
+                                 {"kind": "pie"}],
+                      "suggest": ["Which host had the fewest errors?"]}
+            reply = text_reply(json.dumps({"answer": answer} if done else {"tool": "top_hosts", "input": {"limit": 2}}))
         else:
             reply = text_reply("ok")
         data = json.dumps(reply).encode()

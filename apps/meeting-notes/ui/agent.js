@@ -66,7 +66,9 @@
     return s.length > max ? s.slice(0, max) + ` … (${s.length - max} more characters left out)` : s;
   };
 
-  UI.agent = ({ sample, skill = '', tools = [], answer = null, maxSteps = 8, modelTier, maxObservation = 4000, onStep } = {}) => {
+  /* settle(answer, steps), optional: after the schema, {answer, problems}. With problems the answer
+     goes back to the model once; after that the settled answer is taken as it is (ADR-2610231000). */
+  UI.agent = ({ sample, skill = '', tools = [], answer = null, settle = null, maxSteps = 8, modelTier, maxObservation = 4000, onStep } = {}) => {
     const byName = new Map();
     for (const t of tools) {
       if (!t || !/^[a-z][a-z0-9_]{0,63}$/.test(t.name || '') || typeof t.run !== 'function') throw new TypeError('each tool needs a snake_case name and a run function');
@@ -99,7 +101,7 @@
     const run = async (task, { signal } = {}) => {
       if (!sample) throw fail('unavailable', 'Claude is not set up in this Wardian, or this app is not allowed to use it');
       const steps = [];
-      let note = '';
+      let note = '', settled = false;
       for (let n = 0; n < maxSteps; n++) {
         if (signal && signal.aborted) throw fail('cancelled', 'cancelled');
         let reply;
@@ -112,7 +114,14 @@
         note = '';
         if (reply && typeof reply === 'object' && 'answer' in reply) {
           const problems = check(answer, reply.answer, 'answer');
-          if (!problems.length) return { answer: reply.answer, steps };
+          if (!problems.length && !settle) return { answer: reply.answer, steps };
+          if (!problems.length) {
+            const s = settle(reply.answer, steps);
+            if (!s.problems.length || settled) return { answer: s.answer, steps };
+            settled = true;
+            note = `Part of your answer cannot be shown: ${s.problems.slice(0, 5).join('; ')}. Fix those parts or leave them out.`;
+            continue;
+          }
           note = `Your answer does not match <answer-schema>: ${problems.slice(0, 5).join('; ')}. Fix it.`;
           continue;
         }
@@ -142,6 +151,241 @@
     return Object.freeze({ run, ask, tools: [...byName.keys()] });
   };
 
+  /* Blocks in a chat answer (ADR-2610231000): figures, a table, a list or checks, which Wardian's Ask
+     draws under the reply with the library's components. KINDS is the one definition: the model's
+     instructions (GUIDE) come from it, and settle() is the one rule. In the ai app, settle(blocks,
+     steps) fills a block that names a step ("from") with that step's own result, so its figures are
+     the tool's and not the model's copy, and repairs what it can: long text, rows too short or too
+     long, too many rows or blocks, a level by another name. Wardian's page runs settle(blocks, null)
+     again on what arrives, which refuses "from" and keeps "source", and view() draws the blocks with
+     createElement and textContent only: no markup, links or images, numbers as written.
+       const { blocks, problems } = WardianUI.answerBlocks.settle(answer.blocks, steps);
+       logBox.append(WardianUI.answerBlocks.view(blocks)); */
+  const LIMIT = { blocks: 4, title: 80, label: 60, value: 80, note: 160, cell: 200, item: 400, columns: 8, rows: 50,
+    figures: 6, items: 20, checks: 12, suggest: 3, question: 200, tableChars: 8000, chars: 12000 };
+  const KINDS = {
+    figures: `a few named numbers: {"kind": "figures", "items": [{"label", "value", "note"?}]}, 1 to ${LIMIT.figures}`,
+    table: `rows: {"kind": "table", "columns": ["…"], "rows": [[…]], "caption"?}, at most ${LIMIT.columns} columns and ${LIMIT.rows} rows`,
+    list: `short points: {"kind": "list", "items": ["…"]}, at most ${LIMIT.items}`,
+    checks: `findings with a level: {"kind": "checks", "items": [{"level": "ok" | "watch" | "problem", "title", "detail"?}]}, at most ${LIMIT.checks}`,
+  };
+  const LEVELS = { ok: 'ok', pass: 'ok', good: 'ok', watch: 'watch', warn: 'watch', warning: 'watch', problem: 'problem', bad: 'problem', error: 'problem', fail: 'problem' };
+  const BLOCK_GUIDE = [
+    `You may add "blocks", at most ${LIMIT.blocks}, for what the tools returned that reads better drawn than said; "reply" still says the answer in words. Each block has a "kind" and an optional "title":`,
+    ...Object.entries(KINDS).map(([k, s]) => `- ${k}: ${s}`),
+    'To show a step\'s result as it is, give "from": <its step number> in place of the items or the columns and rows, with "key" naming the part of the result to show when it has several, and "pick" the columns or fields to keep. Prefer "from" to copying a result. Put nothing in a block that is not in the steps\' results.',
+    `You may add "suggest": up to ${LIMIT.suggest} short follow-up questions the tools could answer.`,
+  ].join('\n');
+
+  const isPlain = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const clip = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+  /** Text for a label, title or item: a string (trimmed, cut to n) or a finite number, else null. */
+  const say = (v, n) => typeof v === 'string' && v.trim() ? clip(v.trim(), n) : typeof v === 'number' && isFinite(v) ? String(v) : null;
+  /** A table cell: a number, a string or null; anything else as its JSON. */
+  const cell = v => v == null ? null : typeof v === 'number' ? (isFinite(v) ? v : String(v)) : typeof v === 'string' ? clip(v, LIMIT.cell) : clip(text(v, LIMIT.cell), LIMIT.cell);
+  const figureValue = v => typeof v === 'number' ? (isFinite(v) ? v : String(v)) : typeof v === 'boolean' ? String(v) : say(v, LIMIT.value);
+  const words = k => String(k).replace(/_/g, ' ');
+
+  /** What a step's result looks like as each kind, or null when it does not fit. */
+  const FITS = {
+    table: v => {
+      if (isPlain(v) && Array.isArray(v.columns) && Array.isArray(v.rows) && v.rows.every(Array.isArray)) return { columns: v.columns, rows: v.rows };
+      if (Array.isArray(v) && v.length && v.every(isPlain)) {
+        const columns = [...new Set(v.flatMap(o => Object.keys(o)))];
+        return { columns, rows: v.map(o => columns.map(c => o[c])) };
+      }
+      return null;
+    },
+    list: v => Array.isArray(v) && v.length && v.every(x => typeof x === 'string' || typeof x === 'number') ? v : null,
+    checks: v => Array.isArray(v) && v.length && v.every(x => isPlain(x) && 'level' in x && 'title' in x) ? v : null,
+    figures: v => {
+      if (!isPlain(v) || 'columns' in v) return null;
+      const items = Object.entries(v).filter(([, x]) => typeof x === 'number' || typeof x === 'string').map(([k, x]) => ({ label: words(k), value: x, key: k }));
+      return items.length ? items : null;
+    },
+  };
+
+  /** The step a block names, as data for its kind: [data, problem, tool]. */
+  const fromStep = (b, steps) => {
+    if (!steps.length) return [null, 'there are no steps to show'];
+    const n = b.from;
+    if (!Number.isInteger(n) || n < 1 || n > steps.length) return [null, `"from" should be a step number from 1 to ${steps.length}`];
+    const s = steps[n - 1];
+    if (s.error || !('output' in s)) return [null, `step ${n} failed, so it has no result to show`];
+    let v = s.output;
+    if (b.key != null) {
+      if (!isPlain(v) || typeof b.key !== 'string' || !Object.hasOwn(v, b.key)) return [null, `step ${n}'s result has no part "${b.key}"`];
+      v = v[b.key];
+    }
+    const fits = FITS[b.kind];
+    let got = fits(v);
+    if (!got && b.key == null && isPlain(v)) {
+      const parts = Object.keys(v).filter(k => fits(v[k]));
+      if (parts.length > 1) return [null, `step ${n}'s result has several parts that could be shown; name one with "key": ${parts.join(', ')}`];
+      if (parts.length) got = fits(v[parts[0]]);
+    }
+    if (!got) return [null, `step ${n}'s result cannot be shown as ${b.kind}; write the ${b.kind === 'table' ? 'columns and rows' : 'items'} instead`];
+    return [got, null, s.tool];
+  };
+
+  /** One block as Ask draws it: [block, problem]. steps null: it has been settled already. */
+  const settleBlock = (b, steps) => {
+    if (!isPlain(b)) return [null, 'should be an object'];
+    const kind = b.kind;
+    if (typeof kind !== 'string' || !Object.hasOwn(KINDS, kind)) return [null, `"kind" should be one of ${Object.keys(KINDS).join(', ')}`];
+    const out = { kind }, title = say(b.title, LIMIT.title), pick = Array.isArray(b.pick) ? b.pick.map(String) : null;
+    if (title) out.title = title;
+    let data = kind === 'table' ? (b.columns != null || b.rows != null ? { columns: b.columns, rows: b.rows } : null) : b.items;
+    if (b.from != null) {
+      if (!steps) return [null, '"from" is filled in by the ai app'];
+      const [got, why, tool] = fromStep(b, steps);
+      if (why) return [null, why];
+      data = got;
+      out.source = tool;
+    } else if (!steps && typeof b.source === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(b.source)) out.source = b.source;
+    const many = what => [null, `${kind} needs "${what}" (a list), or "from"`];
+    if (kind === 'table') {
+      if (!data || !Array.isArray(data.columns) || !data.columns.length || !Array.isArray(data.rows)) return many('columns" and "rows');
+      if (!data.rows.every(Array.isArray)) return [null, 'each row should be a list of cells, in the order of the columns'];
+      let names = data.columns.map(c => say(c, LIMIT.label) ?? ''), keep = names.map((_, i) => i);
+      if (pick && b.from != null) {
+        const missing = pick.filter(p => !names.includes(p));
+        if (missing.length) return [null, `the table has no column ${missing.join(', ')}; it has ${names.join(', ')}`];
+        keep = pick.map(p => names.indexOf(p));
+      }
+      const notes = [];
+      if (keep.length > LIMIT.columns) { notes.push(`the first ${LIMIT.columns} of ${keep.length} columns`); keep = keep.slice(0, LIMIT.columns); }
+      // A short row gets empty cells and a long one is cut, so every row has the table's columns.
+      let rows = data.rows.map(r => keep.map(i => cell(r[i])));
+      const all = rows.length;
+      if (rows.length > LIMIT.rows) rows = rows.slice(0, LIMIT.rows);
+      while (rows.length > 1 && JSON.stringify(rows).length > LIMIT.tableChars) rows = rows.slice(0, Math.ceil(rows.length / 2));
+      if (rows.length < all) notes.push(`the first ${rows.length} of ${all} rows`);
+      out.columns = keep.map(i => names[i]);
+      out.rows = rows;
+      const caption = [say(b.caption, LIMIT.note), notes.length ? `Showing ${notes.join(' and ')}.` : null].filter(Boolean).join(' · ');
+      if (caption) out.caption = clip(caption, LIMIT.note + 80);
+      return [out, null];
+    }
+    if (!Array.isArray(data) || !data.length) return many('items');
+    if (kind === 'figures') {
+      const items = pick && b.from != null ? pick.map(p => data.find(f => f.key === p)).filter(Boolean) : data;
+      out.items = [];
+      for (const f of items.slice(0, LIMIT.figures)) {
+        const label = isPlain(f) && say(f.label, LIMIT.label), value = isPlain(f) ? figureValue(f.value) : null;
+        if (!label || value == null) return [null, 'each figure needs a "label" and a "value"'];
+        const note = say(f.note, LIMIT.note);
+        out.items.push(note ? { label, value, note } : { label, value });
+      }
+      if (!out.items.length) return [null, 'none of the picked fields is in the result'];
+    } else if (kind === 'list') {
+      out.items = data.map(x => say(x, LIMIT.item)).filter(Boolean).slice(0, LIMIT.items);
+      if (!out.items.length) return [null, 'a list needs items that are text'];
+    } else {
+      out.items = [];
+      for (const c of data.slice(0, LIMIT.checks)) {
+        const level = isPlain(c) && LEVELS[String(c.level).toLowerCase()], title = isPlain(c) && say(c.title, LIMIT.title + 40);
+        if (!level || !title) return [null, 'each check needs a "level" (ok, watch or problem) and a "title"'];
+        const detail = say(c.detail, LIMIT.item);
+        out.items.push(detail ? { level, title, detail } : { level, title });
+      }
+    }
+    return [out, null];
+  };
+
+  UI.answerBlocks = Object.freeze({
+    kinds: Object.keys(KINDS),
+    guide: BLOCK_GUIDE,
+    /** {blocks, problems}: the blocks that can be shown, and why the others cannot. steps: the
+        loop's steps in the ai app, which "from" refers to; null on the page that shows them. */
+    settle(blocks, steps = null) {
+      if (blocks == null) return { blocks: [], problems: [] };
+      if (!Array.isArray(blocks)) return { blocks: [], problems: ['"blocks" should be a list'] };
+      const out = [], problems = [];
+      let size = 0;
+      blocks.slice(0, LIMIT.blocks).forEach((b, i) => {
+        const [ok, why] = settleBlock(b, steps);
+        if (why) { problems.push(`blocks[${i}]: ${why}`); return; }
+        size += JSON.stringify(ok).length;
+        if (size > LIMIT.chars) problems.push(`blocks[${i}]: the blocks come to more than ${LIMIT.chars} characters`);
+        else out.push(ok);
+      });
+      return { blocks: out, problems };
+    },
+    /** At most three follow-up questions, as text. */
+    suggestions: list => (Array.isArray(list) ? list : []).map(q => say(q, LIMIT.question)).filter(Boolean).slice(0, LIMIT.suggest),
+    /** Settled blocks as plain lines, for the conversation the next question carries. */
+    text: blocks => blocks.map(b => [b.title,
+      ...(b.kind === 'figures' ? b.items.map(f => `${f.label}: ${f.value}${f.note ? ` (${f.note})` : ''}`)
+        : b.kind === 'table' ? [b.columns.join('\t'), ...b.rows.map(r => r.map(c => c ?? '').join('\t'))]
+        : b.kind === 'list' ? b.items.map(x => `- ${x}`)
+        : b.items.map(c => `[${c.level}] ${c.title}${c.detail ? `: ${c.detail}` : ''}`)),
+      b.source ? `(from ${b.source})` : null].filter(Boolean).join('\n')).join('\n\n'),
+    /** Settled blocks as a DocumentFragment of the library's components, built with textContent only. */
+    view(blocks, doc = document) {
+      const h = (tag, cls, said) => {
+        const n = doc.createElement(tag);
+        if (cls) n.className = cls;
+        if (said != null) n.textContent = String(said);
+        return n;
+      };
+      const numeric = v => typeof v === 'number' || (typeof v === 'string' && /^[-+−]?[\d.,]*\d\s?%?$/.test(v.trim()));
+      const frag = doc.createDocumentFragment();
+      for (const b of blocks) {
+        const box = h('section', 'answer-block');
+        box.dataset.kind = b.kind;
+        if (b.title) box.append(h('h4', 'answer-title', b.title));
+        const from = b.source ? `From ${b.source}` : '';
+        if (b.kind === 'figures') {
+          const grid = h('div', 'w-bento');
+          for (const f of b.items) {
+            const tile = h('article', 'w-tile'), head = h('header'), body = h('div', 'w-tile-body');
+            tile.dataset.span = '6';
+            head.append(h('p', 'w-tile-note', f.label));
+            body.append(h('p', 'answer-value', f.value));
+            tile.append(head, body);
+            if (f.note) { const foot = h('footer'); foot.append(h('p', 'w-tile-note', f.note)); tile.append(foot); }
+            grid.append(tile);
+          }
+          box.append(grid);
+        } else if (b.kind === 'table') {
+          const wrap = h('div', 'w-table-wrap'), table = h('table', 'w-table'), head = h('tr'), body = h('tbody'), thead = h('thead');
+          const num = b.columns.map((_, i) => b.rows.some(r => r[i] != null) && b.rows.every(r => r[i] == null || numeric(r[i])));
+          b.columns.forEach((c, i) => { const th = h('th', num[i] ? 'num' : '', c); th.scope = 'col'; head.append(th); });
+          for (const r of b.rows) {
+            const tr = h('tr');
+            r.forEach((c, i) => tr.append(h('td', num[i] ? 'num' : '', c ?? '')));
+            body.append(tr);
+          }
+          thead.append(head);
+          const caption = [b.caption, from].filter(Boolean).join(' · ');
+          if (caption) table.append(h('caption', '', caption));
+          table.append(thead, body);
+          wrap.append(table);
+          box.append(wrap);
+        } else if (b.kind === 'list') {
+          const ul = h('ul', 'answer-list');
+          for (const x of b.items) ul.append(h('li', '', x));
+          box.append(ul);
+        } else {
+          const ul = h('ul', 'answer-checks');
+          for (const c of b.items) {
+            const li = h('li'), badge = h('span', 'w-badge', { ok: 'OK', watch: 'Watch', problem: 'Problem' }[c.level]);
+            badge.dataset.variant = { ok: 'success', watch: 'outline', problem: 'destructive' }[c.level];
+            li.dataset.level = c.level;
+            li.append(badge, h('b', '', c.title));
+            if (c.detail) li.append(h('p', '', c.detail));
+            ul.append(li);
+          }
+          box.append(ul);
+        }
+        if (from && b.kind !== 'table') box.append(h('p', 'answer-source', from));
+        frag.append(box);
+      }
+      return frag;
+    },
+  });
+
   /* The ai app's agent from its repository (ADR-2610131300). The skill and the tools' names,
      descriptions and input schemas are data in the ai app's folder (skill.md, tools.json), which
      App settings shows, edits and improves; the code is only each tool's run, keyed by name:
@@ -164,7 +408,13 @@
     list_tables: async () => db.tables(),
     read_rows: async ({ table, offset = 0, limit = 20, orderBy = '', desc = false }) => db.page({ table, offset, limit, orderBy, desc }),
   });
-  const CHAT_ANSWER = { type: 'object', properties: { reply: { type: 'string', minLength: 1 } }, required: ['reply'] };
+  const CHAT_ANSWER = { type: 'object', properties: { reply: { type: 'string', minLength: 1 },
+    blocks: { type: 'array' }, suggest: { type: 'array' } }, required: ['reply'] };   // settleChat judges each block
+  /** A chat answer's blocks, filled from the steps and repaired; dropped counts the ones left out. */
+  const settleChat = (a, steps) => {
+    const { blocks, problems } = UI.answerBlocks.settle(a.blocks, steps), suggest = UI.answerBlocks.suggestions(a.suggest);
+    return { answer: { reply: a.reply, ...(blocks.length ? { blocks } : {}), ...(suggest.length ? { suggest } : {}), ...(problems.length ? { dropped: problems.length } : {}) }, problems };
+  };
   const MAX_CHAT_MESSAGES = 20, MAX_CHAT_TEXT = 4000;
   const coded = e => ({ code: (e && e.code) || 'error', message: (e && e.message) || String(e) });
 
@@ -193,24 +443,27 @@
         // A built-in tool keeps its own input schema, whatever the file says: its limits protect the database.
         tools.push({ name, description: t.description || '', input: Object.hasOwn(own, name) ? BUILTIN_INPUT[name] : t.input, run: code });
       }
-      const make = ans => UI.agent({ sample, skill: skill || '', tools, answer: ans, maxSteps, modelTier, onStep });
-      return { asker: make(answer), chatter: make(CHAT_ANSWER), tools: tools.map(t => t.name), skipped };
+      const make = (ans, settle) => UI.agent({ sample, skill: skill || '', tools, answer: ans, settle, maxSteps, modelTier, onStep });
+      return { asker: make(answer), chatter: make(CHAT_ANSWER, settleChat), tools: tools.map(t => t.name), skipped };
     })();
     loaded.catch(() => {});   // reported by the first ask, chat or tools
     const failed = e => ({ error: coded(e), steps: (e && e.steps) || [] });
     return Object.freeze({
       ask: async (task, opts) => { try { return await (await loaded).asker.ask(task, opts); } catch (e) { return failed(e); } },
       /** One answer in a conversation: messages is [{role: 'user'|'assistant', text}], the last one
-          the user's. Resolves to {reply, steps} or {error, steps}; steps are the tools used. */
+          the user's. Resolves to {reply, blocks?, suggest?, dropped?, steps} or {error, steps}: blocks
+          to draw under the reply (answerBlocks), follow-up questions, how many blocks were left out,
+          and the tools used. */
       chat: async (messages, opts) => {
         try {
           const said = (Array.isArray(messages) ? messages : []).filter(m => m && typeof m.text === 'string' && m.text.trim()).slice(-MAX_CHAT_MESSAGES);
           if (!said.length || said[said.length - 1].role !== 'user') throw fail('bad_request', 'the last message must be the user\'s');
           const transcript = said.map(m => `${m.role === 'user' ? 'User' : 'You'}: ${m.text.slice(0, MAX_CHAT_TEXT)}`).join('\n\n');
           const task = 'A person is exploring this app\'s data in a chat. The conversation so far:\n\n' + transcript +
-            '\n\nAnswer their last message as {"reply": "…"} in plain words. Look things up with the tools rather than guessing, and say what you looked at.';
+            '\n\nAnswer their last message as {"reply": "…"} in plain words. Look things up with the tools rather than guessing, and say what you looked at.\n' +
+            UI.answerBlocks.guide;
           const out = await (await loaded).chatter.run(task, opts);
-          return { reply: out.answer.reply, steps: out.steps.map(s => ({ tool: s.tool, input: s.input, ...(s.error ? { error: s.error } : {}) })) };
+          return { ...out.answer, steps: out.steps.map(s => ({ tool: s.tool, input: s.input, ...(s.error ? { error: s.error } : {}) })) };
         } catch (e) { return failed(e); }
       },
       /** Which tools are loaded, and which are left out and why ('off', 'proposed', 'no code'). */

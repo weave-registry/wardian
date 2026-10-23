@@ -22,7 +22,11 @@
 <link rel="stylesheet" href="/ui/field.css">
 <link rel="stylesheet" href="/ui/tabs.css">
 <link rel="stylesheet" href="/ui/badge.css">
+<link rel="stylesheet" href="/ui/bento.css">
+<link rel="stylesheet" href="/ui/table.css">
 <script src="/ui/arrange.js" data-manual></script>
+<!-- Ask checks and draws an answer's blocks with Wardian's own copy, never the app's (ADR-2610231000). -->
+<script src="/ui/agent.js"></script>
 <script src="/ui/tabs.js"></script>
 <script src="/snapshot.js"></script>
 <style>
@@ -501,6 +505,25 @@
   .ask-panel > p { margin: 0; }
   .ask-log { display: flex; flex-direction: column; gap: .5rem; overflow: auto; min-height: 0; }
   .ask-used { display: block; margin-top: .35rem; font-size: .8rem; color: var(--muted); }
+  /* An answer's blocks (ADR-2610231000): the library's tiles, table and badges, sized for the panel. */
+  .ask-log .msg.say.has-blocks { align-self: stretch; min-width: 0; }
+  .answer-blocks { display: grid; gap: .75rem; margin-top: .6rem; white-space: normal; }
+  .answer-block { display: grid; gap: .4rem; min-width: 0; }
+  .answer-title { margin: 0; font-size: .9rem; }
+  .ask-panel .w-bento { gap: .5rem; }
+  .ask-panel .w-bento > .w-tile { grid-column: span 6; padding: .6rem .75rem; row-gap: .2rem; }
+  /* A tile's own header, not the page's top bar. */
+  .ask-panel .w-tile > header { display: grid; padding: 0; background: none; border: 0; }
+  .ask-panel .w-tile > header > * { white-space: normal; }
+  .answer-value { margin: 0; font: 600 1.35rem/1.2 var(--sans); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .ask-panel .w-table-wrap { max-height: 22rem; }
+  .ask-panel .w-table th, .ask-panel .w-table td { padding: 6px 10px; font-size: .85rem; }
+  .answer-list { margin: 0; padding-left: 1.2rem; }
+  .answer-checks { display: grid; gap: .4rem; margin: 0; padding: 0; list-style: none; }
+  .answer-checks li { display: grid; grid-template-columns: auto 1fr; gap: .1rem .5rem; align-items: baseline; }
+  .answer-checks li p { grid-column: 2; margin: 0; font-size: .85rem; color: var(--muted); }
+  .answer-source, .ask-dropped { margin: 0; font-size: .8rem; color: var(--muted); }
+  .ask-log .chips { align-self: flex-start; }
   .ask-input, .aitools textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid var(--line); border-radius: 8px;
                background: var(--panel); padding: .55rem .7rem; font: inherit; color: inherit; }
   .aitools { display: grid; gap: .6rem; }
@@ -1747,12 +1770,13 @@ function toggleAsk(app) {
   document.body.append(panel);
   ask = { app: app.name, messages: [], panel, busy: false };
   $('askBtn')?.setAttribute('aria-expanded', 'true');
-  const say = (cls, text, extra) => { const n = el('div', { className: `msg ${cls}`, textContent: text }); if (extra) n.append(extra); logBox.append(n); logBox.scrollTop = logBox.scrollHeight; };
+  const say = (cls, text, ...extra) => { const n = el('div', { className: `msg ${cls}`, textContent: text }); n.append(...extra.filter(Boolean)); logBox.append(n); logBox.scrollTop = logBox.scrollHeight; };
   const go = async () => {
     const text = input.value.trim();
     if (!text || !ask || ask.busy) return;
     const mine = ask;
     mine.messages.push({ role: 'user', text });
+    logBox.querySelectorAll('.ask-suggest').forEach((n) => n.remove());   // asked: the old suggestions are spent
     say('user', text);
     input.value = '';
     mine.busy = true; send.disabled = true; state.textContent = 'Looking it up…';
@@ -1762,9 +1786,23 @@ function toggleAsk(app) {
     if (ask !== mine) return;   // closed meanwhile
     mine.busy = false; send.disabled = false; state.textContent = '';
     if (out && typeof out.reply === 'string') {
-      mine.messages.push({ role: 'assistant', text: out.reply });
+      // The blocks come from the app: checked again here, and drawn with textContent only.
+      const AB = window.WardianUI?.answerBlocks;
+      const shown = AB ? AB.settle(out.blocks, null) : { blocks: [], problems: [] };
+      const dropped = (Number.isInteger(out.dropped) && out.dropped > 0 ? out.dropped : 0) + shown.problems.length;
+      const words = shown.blocks.length ? `${out.reply}\n\n${AB.text(shown.blocks)}` : out.reply;
+      mine.messages.push({ role: 'assistant', text: words.slice(0, 4000) });
       const used = (out.steps || []).map((st) => st.tool + (st.error ? ' (failed)' : ''));
-      say('say', out.reply, used.length ? el('span', { className: 'ask-used', textContent: `Looked at: ${used.join(', ')}` }) : null);
+      say('say', out.reply, shown.blocks.length ? el('div', { className: 'answer-blocks' }, AB.view(shown.blocks)) : null,
+        dropped ? el('p', { className: 'ask-dropped', textContent: 'Part of this answer could not be shown.' }) : null,
+        used.length ? el('span', { className: 'ask-used', textContent: `Looked at: ${used.join(', ')}` }) : null);
+      if (shown.blocks.length) logBox.lastElementChild.classList.add('has-blocks');
+      const next = AB ? AB.suggestions(out.suggest) : [];
+      if (next.length) {
+        logBox.append(el('div', { className: 'chips ask-suggest', role: 'group', ariaLabel: 'Ask next' },
+          ...next.map((q) => el('button', { textContent: q, onclick: () => { input.value = q; go(); } }))));
+        logBox.scrollTop = logBox.scrollHeight;
+      }
     } else {
       mine.messages.pop();   // not answered: the next question replaces it
       const err = (out && out.error) || {};

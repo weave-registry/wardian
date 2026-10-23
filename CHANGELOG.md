@@ -14,6 +14,13 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- Ask's answers can show what the tools found (ADR-2610231000): under the words, up to four blocks
+  drawn with the component library, figures as tiles, a table, a list, or checks with a level. A
+  block can show a tool's result as it is (`"from"`), so its rows and figures are the tool's own,
+  marked "From" and the tool's name. `agent.js` repairs what it can before asking Claude again,
+  sends a bad block back once and then leaves it out, and Ask checks every block again and draws it
+  as text only. Ask also offers up to three follow-up questions to click. An app needs no code of
+  its own: the examples carry the new `ui/agent.js`.
 - A suite running in the hosted builder's previews gets Claude and Ask from the page around it
   (ADR-2610141500): its `claude:sample` asks that page, which asks the viewer and pays, and that
   page can open Ask. The workshop module has `sampleRequest` and `sampleOutcome`, the same checks
