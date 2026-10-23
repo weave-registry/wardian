@@ -369,6 +369,7 @@ by its frame, never by the message's content.
 | `{k:'provide', methods}` | `ctx.provide` |
 | `{k:'call', id, app, method, args}` | `ctx.call` |
 | `{k:'result', id, ok, value \| error}` | The answer to an `invoke`. |
+| `{k:'progress', id, data}` | `call.progress(data)` during an `invoke`. The kernel passes it to the host's Ask only, as `{n, tool, failed}`. |
 | `{k:'store', key, value}` | `ctx.store.set` |
 | `{k:'asset', id, path}` | `ctx.asset` |
 | `{k:'cap', id, name}`, `{k:'capop', id, name, op, args}` | `ctx.cap` and a capability's methods. |

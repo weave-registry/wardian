@@ -341,6 +341,16 @@
       if (!waiting.has(key)) waiting.set(key, []);
       waiting.get(key).push(c);
     },
+    // Progress on a call (ADR-2610231100): only the app that was asked may report it, and only Ask
+    // hears it, as a step's number, its tool's name and whether it failed.
+    progress(app, m){
+      const p = pendingCalls.get(m.id);
+      if (!p || p.to !== app || !p.host) return;
+      if ((p.steps = (p.steps || 0) + 1) > 50) return;
+      const d = m.data && typeof m.data === 'object' ? m.data : {};
+      if (!Number.isInteger(d.n) || d.n < 1 || typeof d.tool !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(d.tool)) return;
+      hostStep(p.id, {n: d.n, tool: d.tool, failed: d.failed === true});
+    },
     result(app, m){
       const p = pendingCalls.get(m.id);
       if (!p) return;
@@ -529,12 +539,15 @@
   // method, as another app of the suite would call it. Only that page may ask, and only an ai app
   // that uses Claude and provides chat answers; the messages are the viewer's, passed as data.
   const hostAnswers = new Map();   // host call id -> answer(ok, value)
-  function hostReply(id, ok, v){ const a = hostAnswers.get(id); hostAnswers.delete(id); if (a) a(ok, v); }
+  const hostSteps = new Map();     // host call id -> step({n, tool, failed}), while it runs
+  function hostReply(id, ok, v){ const a = hostAnswers.get(id); hostAnswers.delete(id); hostSteps.delete(id); if (a) a(ok, v); }
+  function hostStep(id, s){ const f = hostSteps.get(id); if (f) f(s); }
   // A hosted kernel's page has another origin than this opaque one; its CSP says who that may be.
   addEventListener('message', e => {
     const m = e.data;
     if (e.source !== parent || parent === window || (!HOSTED && e.origin !== location.origin) || !m || m.wardian !== 'ai') return;
     const answer = (ok, v) => parent.postMessage({wardian: 'ai', k: 'reply', id: m.id, ok, ...(ok ? {value: v} : {error: v})}, HOSTED ? '*' : location.origin);
+    const step = s => parent.postMessage({wardian: 'ai', k: 'step', id: m.id, step: s}, HOSTED ? '*' : location.origin);
     const f = frames.get('ai');
     const can = !!f && f.contract.provides.includes('chat') && f.contract.caps.includes('claude:sample');
     if (m.k === 'has') return answer(true, {chat: can});
@@ -542,6 +555,7 @@
     if (!can) return answer(false, 'this app has no chat');
     const id = nextId++;
     hostAnswers.set(id, answer);
+    hostSteps.set(id, step);
     const c = {from: 'wardian', id, app: 'ai', method: 'chat', args: {messages: Array.isArray(m.messages) ? m.messages : []}, host: true};
     if (f.provided.has('chat')) return forwardCall(c);
     // The ai app has not started yet: hold the question until it provides chat, as for a call.

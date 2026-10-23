@@ -77,7 +77,7 @@ Kernel.register({
         return {a: num(r.alphaFactor, 0, 3), b: num(r.betaFactor, 0, 3), l: num(r.lambdaFactor, 0.25, 3), rationale: typeof r.rationale === 'string' ? r.rationale : ''};
       },
       cancel: () => { if (ctl) ctl.abort(); return true; },
-      chat: ({messages}) => ai.chat(messages),
+      chat: ({messages}, call) => ai.chat(messages, call),
     });
   }
 });

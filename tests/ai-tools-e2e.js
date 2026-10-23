@@ -1,4 +1,5 @@
-// End-to-end test of an AI app's skill and tools in App settings, and of Ask (ADR-2610131300).
+// End-to-end test of an AI app's skill and tools in App settings, and of Ask (ADR-2610131300,
+// ADR-2610231000 for blocks, ADR-2610231100 for the steps it shows while it waits).
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path');
 const BASE = process.env.BASE, APPS = process.env.APPS, LOG = process.env.CLAUDE_LOG;
@@ -20,6 +21,13 @@ const post = (p, body) => fetch(BASE + p, { method: 'POST', headers: { 'Content-
   console.log('== Ask');
   await page.locator('#askBtn').waitFor({ timeout: 5000 });
   ok(true, 'an app whose ai app provides chat has Ask');
+  // What Ask hears and shows while the AI works (ADR-2610231100).
+  await page.evaluate(() => {
+    window.__steps = []; window.__status = [];
+    addEventListener('message', (e) => { if (e.data && e.data.wardian === 'ai' && e.data.k === 'step') window.__steps.push(e.data.step); });
+    new MutationObserver(() => { const s = document.querySelector('#askPanel [role=status]'); if (s && s.textContent) window.__status.push(s.textContent); })
+      .observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
   await page.click('#askBtn');
   ok(await page.locator('#askBtn').getAttribute('aria-expanded') === 'true', 'Ask says it is open');
   const input = page.locator('#askPanel textarea');
@@ -30,6 +38,9 @@ const post = (p, body) => fetch(BASE + p, { method: 'POST', headers: { 'Content-
   await reply.waitFor({ timeout: 20000 });
   ok(/web-1 had the most errors: 40\./.test(await reply.textContent()), 'the ai app answers through its tools: ' + await reply.textContent());
   ok(/Looked at: top_hosts/.test(await reply.textContent()), 'and says which tools it used');
+  const heard = await page.evaluate(() => ({ steps: window.__steps, status: window.__status }));
+  ok(JSON.stringify(heard.steps) === '[{"n":1,"tool":"top_hosts","failed":false}]', 'the kernel told Ask each tool as it was used: ' + JSON.stringify(heard.steps));
+  ok(heard.status.some((t) => t === 'Looked at top_hosts. Still looking…'), 'and Ask showed it while it waited: ' + JSON.stringify(heard.status));
   const log = fs.readFileSync(LOG, 'utf8').trim().split('\n').map(l => JSON.parse(l));
   const loop = log.filter(b => JSON.stringify(b).includes('<steps>'));
   ok(loop.length === 3, `three steps of the loop went to Claude: the tool, the answer, and the answer sent back once (${loop.length})`);

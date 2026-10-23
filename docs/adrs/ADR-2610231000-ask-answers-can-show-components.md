@@ -107,8 +107,8 @@ definitions, and follow-up questions to click.
   `KINDS` then.
 - Blocks are for Ask. An app's own `ask` keeps its own `answer` schema, and an app that wants tiles
   or tables draws them itself.
-- Not done: Ask showing each tool as it runs (OpenUI draws while it streams). That needs progress
-  messages on the chat bridge and is left for its own ADR.
+- Ask showing each tool as it runs, in place of OpenUI's drawing while it streams, is
+  ADR-2610231100.
 
 ## Implementation
 

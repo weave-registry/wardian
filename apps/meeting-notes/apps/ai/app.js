@@ -77,7 +77,7 @@ Kernel.register({
         }
       },
       cancel: () => { if (controller) controller.abort(); return true; },
-      chat: ({ messages }) => ai.chat(messages),
+      chat: ({ messages }, call) => ai.chat(messages, call),
     });
   }
 });

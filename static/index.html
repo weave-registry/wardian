@@ -1781,7 +1781,14 @@ function toggleAsk(app) {
     input.value = '';
     mine.busy = true; send.disabled = true; state.textContent = 'Looking it up…';
     let out;
-    try { out = await askKernel(mine.messages); }
+    // Each tool as the AI uses it (ADR-2610231100), from an ai app that passes its call on.
+    const seen = [];
+    const onStep = (st) => {
+      if (ask !== mine) return;
+      seen.push(st.tool + (st.failed ? ' (failed)' : ''));
+      state.textContent = `Looked at ${seen.slice(-4).join(', ')}${seen.length > 4 ? ` and ${seen.length - 4} more` : ''}. Still looking…`;
+    };
+    try { out = await askKernel(mine.messages, onStep); }
     catch (e) { out = { error: { code: 'error', message: e.message } }; }
     if (ask !== mine) return;   // closed meanwhile
     mine.busy = false; send.disabled = false; state.textContent = '';
@@ -1815,8 +1822,8 @@ function toggleAsk(app) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); go(); } });
   input.focus();
 }
-/** One chat answer from the open suite's ai app, through its kernel. */
-function askKernel(messages) {
+/** One chat answer from the open suite's ai app, through its kernel; onStep hears each tool it uses. */
+function askKernel(messages, onStep) {
   const win = $('runner').querySelector('iframe.suiteframe')?.contentWindow;
   if (!win) return Promise.reject(new Error('the app is not open'));
   const id = `ask-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1824,7 +1831,13 @@ function askKernel(messages) {
     const done = (f, v) => { removeEventListener('message', on); clearTimeout(timer); f(v); };
     const on = (e) => {
       const m = e.data;
-      if (e.source !== win || e.origin !== location.origin || !m || m.wardian !== 'ai' || m.k !== 'reply' || m.id !== id) return;
+      if (e.source !== win || e.origin !== location.origin || !m || m.wardian !== 'ai' || m.id !== id) return;
+      if (m.k === 'step') {
+        const st = m.step || {};
+        if (onStep && Number.isInteger(st.n) && typeof st.tool === 'string') onStep({ n: st.n, tool: st.tool.slice(0, 64), failed: st.failed === true });
+        return;
+      }
+      if (m.k !== 'reply') return;
       if (m.ok) done(resolve, m.value); else done(reject, new Error(m.error));
     };
     const timer = setTimeout(() => done(reject, new Error('no answer within five minutes')), 300000);

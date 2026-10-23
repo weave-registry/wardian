@@ -165,7 +165,7 @@ Kernel.register({ name: 'ai', caps: ['claude:sample', 'asset'], provides: ['ask'
   const ai = WardianUI.agentApp(ctx, { maxSteps: 6, run: { top_hosts: ({ limit }) => ctx.call('log', 'errors', { limit }) } });
   // ask and chat never throw: an error's code would not cross ctx.call. chat answers Wardian's Ask
   // with { reply, blocks?, suggest?, steps }: blocks are tables, figures, lists or checks Ask draws.
-  ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }) => ai.chat(messages) });
+  ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }, call) => ai.chat(messages, call) });
 } });
 
 // A visible app: { answer, steps }, or { error: { code, message } } to show the plain path.

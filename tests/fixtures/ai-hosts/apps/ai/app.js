@@ -9,6 +9,6 @@ Kernel.register({
     const ai = WardianUI.agentApp(ctx, { run: {
       top_hosts: async ({ limit }) => HOSTS.slice().sort((a, b) => b.errors - a.errors).slice(0, limit),
     } });
-    ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }) => ai.chat(messages) });
+    ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }, call) => ai.chat(messages, call) });
   },
 });

@@ -48,7 +48,7 @@ Kernel.register({
         if (!a || typeof a !== 'object' || typeof a.search !== 'string' || !a.search.trim()) return {error: {code: 'bad_reply', message: 'Claude did not return a search.'}};
         return {answer: a};
       },
-      chat: ({messages}) => ai.chat(messages),
+      chat: ({messages}, call) => ai.chat(messages, call),
     });
   }
 });

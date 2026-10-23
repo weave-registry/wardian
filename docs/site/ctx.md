@@ -57,7 +57,7 @@ Both throw if the topic is not in the part's contract.
 
 | Member | Does | Needs |
 |---|---|---|
-| `ctx.provide({ name: fn })` | makes methods callable by other parts; `fn(args)` may return a value or a promise | each name in `provides` |
+| `ctx.provide({ name: fn })` | makes methods callable by other parts; `fn(args, call)` may return a value or a promise, and `call.progress(data)` reports progress on this call (only Wardian's Ask hears it, as the steps of an AI's chat) | each name in `provides` |
 | `ctx.call(app, method, args)` | a promise of the other part's result | `"app.method"` in `needs` |
 
 ```js

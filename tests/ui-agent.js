@@ -262,6 +262,17 @@ const HOSTS = { type: 'object', properties: { limit: { type: 'integer', minimum:
     assert.deepEqual(said, { reply: 'Hello.', steps: [] }, 'an answer without blocks is as before');
   });
 
+  await test('chat reports each tool to the call it was given, and a progress that throws stops nothing (ADR-2610231100)', async () => {
+    const { sample } = scripted({ tool: 'top_hosts', input: {} }, { tool: 'nope', input: {} }, { answer: { reply: 'Done.' } });
+    const ai = UI.agentApp(appCtx(repo([T('top_hosts')]), { sample }), { run: { top_hosts: async () => [] } });
+    const heard = [];
+    const out = await ai.chat([{ role: 'user', text: 'Look' }], { progress: d => { heard.push(d); throw new Error('the page went away'); } });
+    assert.equal(out.reply, 'Done.');
+    assert.deepEqual(plain(heard), [{ n: 1, tool: 'top_hosts', failed: false }, { n: 2, tool: 'nope', failed: true }]);
+    const again = scripted({ answer: { reply: 'Hi.' } });
+    assert.equal((await UI.agentApp(appCtx(repo([]), { sample: again.sample })).chat([{ role: 'user', text: 'x' }])).reply, 'Hi.', 'without a call, as before');
+  });
+
   await test('text gives the blocks as lines for the next question', async () => {
     const { blocks } = AB.settle([{ kind: 'table', title: 'Hosts', from: 1, pick: ['host', 'errors'] }, { kind: 'checks', from: 4 }, { kind: 'figures', items: [{ label: 'Peak', value: 41, note: 'users' }] }], STEPS);
     assert.equal(AB.text(blocks), 'Hosts\nhost\terrors\nweb-1\t40\nweb-2\t3\n(from top_hosts)\n\n[ok] 9 runs\n[watch] One run is off the curve: Run 7.\n(from data_checks)\n\nPeak: 41 (users)');

@@ -150,8 +150,11 @@ const Kernel = (() => {
       (handlers.get(m.topic) || []).forEach(fn => safe(() => fn(m.payload)));
     } else if (m.k === 'invoke'){
       const fn = methods.get(m.method);
+      // The method's second argument reports progress on this call (ADR-2610231100); the kernel
+      // passes it on to Wardian's Ask, and to no app yet.
+      const call = Object.freeze({progress: data => post({k: 'progress', id: m.id, data})});
       Promise.resolve()
-        .then(() => { if (!fn) throw new Error(m.method + ' is not provided'); return fn(m.args); })
+        .then(() => { if (!fn) throw new Error(m.method + ' is not provided'); return fn(m.args, call); })
         .then(value => post({k: 'result', id: m.id, ok: true, value}),
               err => post({k: 'result', id: m.id, ok: false, error: String(err && err.message || err)}));
     } else if (m.k === 'chmsg'){

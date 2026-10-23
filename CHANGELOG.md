@@ -14,6 +14,11 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
+- Ask shows each tool as the app's AI uses it, "Looked at top_hosts. Still looking…", while it waits
+  for the answer (ADR-2610231100). A provided method now gets a second argument, `call`, whose
+  `call.progress(data)` reports progress on that call; the kernel passes it to Ask only, as tool
+  names. An `ai` app passes it on with `chat: ({ messages }, call) => ai.chat(messages, call)`, as
+  the examples now do.
 - Ask's answers can show what the tools found (ADR-2610231000): under the words, up to four blocks
   drawn with the component library, figures as tiles, a table, a list, or checks with a level. A
   block can show a tool's result as it is (`"from"`), so its rows and figures are the tool's own,

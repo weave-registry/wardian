@@ -98,7 +98,8 @@
       throw fail('prompt_too_large', 'the skill, tools and task are too long for one request; shorten them');
     };
 
-    const run = async (task, { signal } = {}) => {
+    /** opts.onStep, besides the agent's own: this run's steps as they happen. */
+    const run = async (task, { signal, onStep: alsoOnStep } = {}) => {
       if (!sample) throw fail('unavailable', 'Claude is not set up in this Wardian, or this app is not allowed to use it');
       const steps = [];
       let note = '', settled = false;
@@ -140,7 +141,9 @@
           }
           steps.push(s);
         }
-        if (onStep) { try { onStep({ step: steps.length, ...steps[steps.length - 1] }); } catch (e) { /* the app's display must not stop the loop */ } }
+        for (const f of [onStep, alsoOnStep]) {
+          if (f) { try { f({ step: steps.length, ...steps[steps.length - 1] }); } catch (e) { /* the app's display must not stop the loop */ } }
+        }
       }
       throw Object.assign(fail('max_steps', `no answer after ${maxSteps} steps`), { steps });
     };
@@ -390,7 +393,7 @@
      descriptions and input schemas are data in the ai app's folder (skill.md, tools.json), which
      App settings shows, edits and improves; the code is only each tool's run, keyed by name:
        const ai = WardianUI.agentApp(ctx, { run: { top_hosts: async ({ limit }) => topHosts(limit) }, answer: ANSWER });
-       ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }) => ai.chat(messages) });
+       ctx.provide({ ask: ({ task }) => ai.ask(task), chat: ({ messages }, call) => ai.chat(messages, call) });
      A tool that is off, only proposed, or has no run here is left out (ai.tools() says which and
      why). With db: true and the "db" capability, list_tables and read_rows run on the package's
      own database with no code. The ai app declares "asset" (to read its files) and "claude:sample";
@@ -453,8 +456,10 @@
       /** One answer in a conversation: messages is [{role: 'user'|'assistant', text}], the last one
           the user's. Resolves to {reply, blocks?, suggest?, dropped?, steps} or {error, steps}: blocks
           to draw under the reply (answerBlocks), follow-up questions, how many blocks were left out,
-          and the tools used. */
-      chat: async (messages, opts) => {
+          and the tools used. opts is the call the method was given, {progress}, or {signal}: with
+          progress, Ask is told each tool as it is used (ADR-2610231100).
+            chat: ({ messages }, call) => ai.chat(messages, call) */
+      chat: async (messages, opts = {}) => {
         try {
           const said = (Array.isArray(messages) ? messages : []).filter(m => m && typeof m.text === 'string' && m.text.trim()).slice(-MAX_CHAT_MESSAGES);
           if (!said.length || said[said.length - 1].role !== 'user') throw fail('bad_request', 'the last message must be the user\'s');
@@ -462,7 +467,9 @@
           const task = 'A person is exploring this app\'s data in a chat. The conversation so far:\n\n' + transcript +
             '\n\nAnswer their last message as {"reply": "…"} in plain words. Look things up with the tools rather than guessing, and say what you looked at.\n' +
             UI.answerBlocks.guide;
-          const out = await (await loaded).chatter.run(task, opts);
+          const progress = opts && typeof opts.progress === 'function' ? opts.progress : null;
+          const out = await (await loaded).chatter.run(task, { signal: opts && opts.signal,
+            onStep: progress && (s => progress({ n: s.step, tool: s.tool, failed: !!s.error })) });
           return { ...out.answer, steps: out.steps.map(s => ({ tool: s.tool, input: s.input, ...(s.error ? { error: s.error } : {}) })) };
         } catch (e) { return failed(e); }
       },
