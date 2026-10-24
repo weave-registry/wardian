@@ -104,6 +104,8 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
   ok(rf.some(f => /^liar: .*differs from suite.json/.test(f)), 'liar refused: contract differs');
   ok(rf.some(f => /^probe: may not emit "evil:topic"/.test(f)), 'direct emit refused by kernel');
   ok(rf.some(f => /^probe: did not declare capability "storage"/.test(f)), 'direct store refused by kernel');
+  ok(rf.some(f => f === 'probe: unknown message: constructor'), 'a kind the kernel does not know is a fault, even one named like an Object method');
+  ok(!rf.some(f => /unknown message: undefined/.test(f)), 'a message with no kind is not the kernel\'s: no fault');
   ok(await page.evaluate(() => localStorage.getItem('kernel:rogue:probe') === null && localStorage.getItem('kernel:rogue:liar') === null), 'nothing stored for rogue apps');
   // SPEC 6.7.6: any refusal is recorded as a fault, not only answered.
   for (const [re, what] of [

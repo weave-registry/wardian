@@ -47,6 +47,8 @@ Kernel.register({ name: 'probe', emits: { 'probe:done': {}, 'probe:data': {}, 'p
     parent.postMessage({k: 'asset', id: 996, path: 'suite.json'}, '*');
     parent.postMessage({k: 'chsend', id: 995, channel: 'evil', data: 1}, '*');
     parent.postMessage({k: 'chon', id: 994, channel: 'evil'}, '*');
+    parent.postMessage({k: 'constructor'}, '*');
+    parent.postMessage({type: 'not-the-kernel', from: 'an extension'}, '*');
     await new Promise(r => setTimeout(r, 500));
     out.push('direct capop: ' + direct[999], 'direct call: ' + direct[998], 'direct cap: ' + direct[997],
       'direct asset: ' + direct[996], 'direct chsend: ' + direct[995], 'direct chon: ' + direct[994]);

@@ -431,8 +431,11 @@
     }
     if (m.k === 'snapshot'){ snapshotAnswer(e.source, m); return; }
     if (!app) return;                          // the header frame only reports its size
-    const h = handlers[m.k];
-    if (h) h(app, m); else fault(app, 'unknown message: ' + String(m.k));
+    // A message with no kind is not the shim's: a browser extension or a library in the frame can
+    // post to its parent, and the app is not at fault for that. A kind the kernel does not know is.
+    if (typeof m.k !== 'string') return;
+    const h = Object.hasOwn(handlers, m.k) ? handlers[m.k] : null;
+    if (h) h(app, m); else fault(app, 'unknown message: ' + m.k);
   });
 
   stored = await WardianState.apps.load(suiteName);
