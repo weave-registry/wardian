@@ -321,6 +321,11 @@ fn layout(pages: &[DocPage], at: usize, body: &str, toc: &[(u8, String, String)]
   .try {{ margin: 1rem 0 2rem; padding: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }}
   .try h2 {{ margin-top: 0; padding-top: 0; border-top: 0; }}
   .try-frame {{ width: 100%; height: 560px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }}
+  /* Arrange is the Try box's, not a button floating over the app's panels (ADR-2610241000). */
+  .try-bar {{ display: flex; justify-content: flex-end; margin: 0 0 .4rem; }}
+  .try-arrange {{ font: inherit; font-size: .85rem; padding: .3rem .8rem; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }}
+  .try-arrange[aria-pressed="true"] {{ background: var(--mark); }}
+  .try-arrange[hidden] {{ display: none; }}
   .try .muted {{ color: var(--muted); font-size: .88rem; }}
   .gallery {{ margin: 1rem 0 2.5rem; }}
   .gallery h2 {{ margin-top: 0; padding-top: 0; border-top: 0; }}
@@ -363,6 +368,21 @@ fn layout(pages: &[DocPage], at: usize, body: &str, toc: &[(u8, String, String)]
 </main>
 </div>
 <script>
+// A Try box hosts Arrange for the app in its frame (ADR-2610241000), as Wardian's app list does: the
+// app says it is ready, the box answers that it hosts Arrange (the app hides its floating button),
+// and the box's button opens and closes it; the app says when it does.
+for (const f of document.querySelectorAll('iframe.try-frame')) {{
+  const btn = f.closest('section')?.querySelector('.try-arrange');
+  if (!btn) continue;
+  let open = false;
+  addEventListener('message', e => {{
+    const m = e.data;
+    if (!m || m.wardian !== 'arrange' || e.source !== f.contentWindow) return;
+    if (m.k === 'ready') {{ e.source.postMessage({{wardian: 'arrange', k: 'host'}}, '*'); btn.hidden = false; }}
+    else if (m.k === 'state') {{ open = !!m.open; btn.setAttribute('aria-pressed', String(open)); }}
+  }});
+  btn.addEventListener('click', () => f.contentWindow.postMessage({{wardian: 'arrange', k: open ? 'close' : 'open'}}, '*'));
+}}
 (() => {{
   const index = {index};
   const q = document.getElementById('q'), hits = document.getElementById('hits');

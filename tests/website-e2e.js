@@ -79,6 +79,20 @@ const SERVER_ONLY = ['csv-explorer', 'focus-log', 'focus-timer', 'splunk-table',
     ok(state && state.parts > 0 && state.boots >= state.parts, `${app}: every part started (${state && state.boots} of ${state && state.parts})`);
     ok(state && state.faults.length === 0, `${app}: no faults ${state ? state.faults.join(' | ') : 'no kernel'}`);
     ok(/stays in this browser/.test(await page.locator('section.try').innerText()), `${app}: says its data stays in the browser`);
+    // Arrange is the Try box's (ADR-2610241000): the suite's own button, which would float over its
+    // panels, is hidden, and the box's opens and closes Arrange in the suite.
+    const arrange = page.locator('section.try button.try-arrange');
+    await arrange.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    ok(await arrange.isVisible(), `${app}: the Try box has Arrange`);
+    ok(!(await kernel.locator('.w-arrange-btn').isVisible()), `${app}: the suite's floating Arrange button is hidden`);
+    if (await arrange.isVisible()) {
+      await arrange.click();
+      await kernel.waitForSelector('html.w-arrange-on', { timeout: 5000 }).catch(() => {});
+      ok(await kernel.evaluate(() => document.documentElement.classList.contains('w-arrange-on')) && (await arrange.getAttribute('aria-pressed')) === 'true', `${app}: Arrange opens`);
+      await arrange.click();
+      await kernel.waitForSelector('html:not(.w-arrange-on)', { timeout: 5000 }).catch(() => {});
+      ok((await arrange.getAttribute('aria-pressed')) === 'false', `${app}: and closes`);
+    }
     ok(errors.length === 0, `${app}: no page errors ${errors.join(' | ')}`);
     await page.close();
   }

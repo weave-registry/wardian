@@ -85,7 +85,8 @@ pub fn try_box(assets: &dyn Assets, app: &str) -> Option<String> {
     );
     let body = match (try_src(assets, app), k) {
         (Some(src), _) => format!(
-            "<iframe class=\"try-frame\" src=\"{src}\" title=\"{app}, running\" loading=\"lazy\" \
+            "<div class=\"try-bar\"><button type=\"button\" class=\"try-arrange\" aria-pressed=\"false\" hidden>Arrange</button></div>\
+             <iframe class=\"try-frame\" src=\"{src}\" title=\"{app}, running\" loading=\"lazy\" \
              sandbox=\"allow-scripts allow-same-origin allow-forms allow-downloads allow-modals\"></iframe>\
              <p class=\"muted\">The app runs here in your browser. Nothing you type leaves it{kept}. \
              <a href=\"{src}\" target=\"_blank\" rel=\"noopener\">Open it on its own</a>.</p>",
