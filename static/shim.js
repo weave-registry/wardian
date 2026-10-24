@@ -15,8 +15,10 @@ const Kernel = (() => {
   const safe = fn => { try { const r = fn(); if (r && r.catch) r.catch(fault); } catch (e) { fault(e); } };
   // Errors outside the kernel's own calls (a typo in app.js, a broken event handler) are faults too.
   // The browser's ResizeObserver loop notice is not a failure: it says some size notices moved to
-  // the next frame (ADR-2610071110). Every other error is the app's.
-  const NOTICE = /^ResizeObserver loop (completed with undelivered notifications|limit exceeded)/;
+  // the next frame (ADR-2610071110). Nor is a muted "Script error.": the browser says only that for
+  // a script the page cannot see into, such as an extension's, and every script of the app's is
+  // inline in this page, so its errors come with their message (ADR-2610241300). Every other error is the app's.
+  const NOTICE = /^(ResizeObserver loop (completed with undelivered notifications|limit exceeded)|Script error\.?$)/;
   addEventListener('error', e => { if (!e.error && NOTICE.test(String(e.message || ''))) return; fault(e.error || e.message); });
   addEventListener('unhandledrejection', e => fault(e.reason));
   const request = m => new Promise((res, rej) => { const id = nextId++; pending.set(id, {res, rej}); post(Object.assign({id}, m)); });

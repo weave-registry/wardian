@@ -77,6 +77,9 @@ const frameOf = (page, app) => page.frames().find(f => f.url().endsWith('/' + ap
   await chartF.evaluate(() => window.dispatchEvent(new ErrorEvent('error', { message: 'ResizeObserver loop completed with undelivered notifications.' })));
   await sleep(300);
   ok(await page.evaluate(() => Kernel.faults().length) === before, 'the ResizeObserver loop notice is not a fault');
+  await chartF.evaluate(() => window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.' })));
+  await sleep(300);
+  ok(await page.evaluate(() => Kernel.faults().length) === before, 'a muted "Script error." (a script the page cannot see, like an extension\'s) is not a fault');
   await chartF.evaluate(() => { for (let i = 0; i < 3; i++) window.dispatchEvent(new ErrorEvent('error', { message: 'test fault', error: new Error('test fault') })); });
   await sleep(300);
   ok(await page.evaluate(() => Kernel.faults().length) === before + 3, 'a real error is a fault, each time');
