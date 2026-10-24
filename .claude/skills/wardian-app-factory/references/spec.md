@@ -362,7 +362,8 @@ A host MUST NOT grant a capability that the app's contract in `suite.json` does 
 
 The shim and the kernel exchange these `postMessage` objects. Apps do not use them directly.
 They are listed for anyone who writes another host or shim. The kernel identifies the sender
-by its frame, never by the message's content.
+by its frame, never by the message's content. A message from a frame with no string `k` is not
+one of these (a browser extension can post one) and is ignored; one with a `k` not listed is a fault.
 
 | From frame | Meaning |
 |---|---|
