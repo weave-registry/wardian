@@ -58,15 +58,33 @@ async function until(fn, ms, what) {
   await b.goto(B + '/'); await sleep(1500);
   ok(/working|testing/.test(await b.locator('#aiBtn').textContent()), 'the second tab shows it too: ' + await b.locator('#aiBtn').textContent());
 
+  console.log('== the plan waits for the person (the Elephant-Goldfish Model, ADR-2610281200)');
+  const planned = await until(async () => { const s = (await sessions())[0]; return s && s.state === 'needs_you'; }, 60000, 'plan waits');
+  ok(planned, 'the plan is reviewed and needs you, with nobody on the chat page');
+  await until(async () => await a.locator('#aiBtn').getAttribute('data-state') === 'needs_you', 10000, 'needs-you badge');
+  ok(await a.locator('#aiBtn').getAttribute('data-state') === 'needs_you', 'the button asks for you');
+  const first = (await sessions())[0];
+  const asked = (await (await fetch(B + `/api/ai/events?session=${first.session}&since=0`)).json()).events;
+  ok(!asked.some(e => e.kind === 'saved') && /Reply go/.test(asked[asked.length - 1].text || ''), 'nothing is saved before the person answers: ' + (asked[asked.length - 1].text || ''));
+  ok(asked.some(e => e.kind === 'tool' && /4 goldfish reviewers checked the plan/.test(e.text)), 'four goldfish reviewed the plan');
+  await post('/api/ai/send', { session: first.session, message: 'go' });
+
   console.log('== the test runs out of sight; its failure goes back to Claude');
-  const done = await until(async () => { const s = (await sessions())[0]; return s && s.state === 'ready'; }, 60000, 'ready');
+  const done = await until(async () => {
+    const s = (await sessions())[0];
+    if (!s || s.state !== 'ready') return false;
+    const e = (await (await fetch(B + `/api/ai/events?session=${s.session}&since=0`)).json()).events;
+    return e.some(x => x.kind === 'tested' && x.ok);
+  }, 90000, 'ready');
   ok(done, 'the chat ends ready, with nobody on the chat page');
   const s = (await sessions())[0];
   const ev = (await (await fetch(B + `/api/ai/events?session=${s.session}&since=0`)).json()).events;
   const kinds = ev.filter(e => e.kind !== 'tool' && e.kind !== 'say').map(e => e.kind + (e.kind === 'tested' ? (e.ok ? '+' : '-') : ''));
-  ok(kinds.join() === 'user,saved,testing,tested-,test,saved,testing,tested+', 'one test per save, the failure sent back, then a pass: ' + kinds.join());
+  ok(kinds.join() === 'user,user,saved,testing,tested-,test,saved,testing,tested+', 'one test per save, the failure sent back, then a pass: ' + kinds.join());
   ok(/boom: the first version is broken/.test(ev.find(e => e.kind === 'test').text), 'Claude got the real error');
-  ok((await (await fetch(FAKE + '/log')).json()).join() === 'write,components,finish,done,fix,finish,done', 'Claude was asked twice: build, then fix');
+  const log = (await (await fetch(FAKE + '/log')).json()).join();
+  ok(log === 'plan,design-review,goldfish,goldfish,goldfish,goldfish,approve,write,components,build-review,goldfish,goldfish,finish,done,fix,finish,done',
+    'plan, four goldfish, approval, build, two goldfish, save; then the fix, with no second review: ' + log);
   const suiteJson = await (await fetch(B + '/apps/bg-test/suite.json')).json();
   ok(suiteJson.styles && suiteJson.styles[0] === 'ui/theme.css' && (await fetch(B + '/apps/bg-test/ui/button.css')).ok, 'the app it built uses the component library: ' + JSON.stringify(suiteJson.styles));
   ok((await a.locator('#runner h2').first().textContent()) === other, 'your other app stayed open the whole time');
