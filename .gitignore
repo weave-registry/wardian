@@ -19,6 +19,7 @@ service-account.json
 !/apps/monte-carlo/
 !/apps/focus-timer/
 !/apps/focus-log/
+!/apps/trip-cost-splitter/
 /apps/*/target
 /apps/*/Cargo.lock
 /templates/*/target

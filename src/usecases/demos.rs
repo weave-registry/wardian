@@ -342,7 +342,8 @@ mod tests {
         assert_eq!(kind(&a, "meeting-notes"), Some(Kind::Suite { browser_only: true }), "Claude is off without a server");
         assert_eq!(kind(&a, "nothing"), None);
         let runnable: Vec<&str> = names(&a).into_iter().filter(|n| kind(&a, n).is_some_and(Kind::runs_in_a_browser)).collect();
-        assert_eq!(runnable.len(), 11, "{runnable:?}");
+        assert_eq!(kind(&a, "trip-cost-splitter"), Some(Kind::Page { channels: false }), "made by Make an app");
+        assert_eq!(runnable.len(), 12, "{runnable:?}");
     }
 
     #[test]

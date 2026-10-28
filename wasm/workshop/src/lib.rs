@@ -17,9 +17,13 @@
 //! The skills agent (ADR-2610131000) is a model call the host makes: "skillsRequest" gives its
 //! {"system","messages","maxTokens"} (the host adds the model), or {"error"} for a bad brief, which is
 //! the tool's error; "skillsOutcome" turns the model's reply into {"text","isError","line"?}.
-//! A fresh review (ADR-2610281000) is one too, the same way: {"op":"reviewRequest","input":{stage,
-//! asked?},"files":{…}} gives {"system","messages","maxTokens"} or {"error"}, and
-//! {"op":"reviewOutcome","input":{…},"reply":{…}} gives {"text","isError","line"?}.
+//! Goldfish reviews (ADR-2610281000, ADR-2610281200) are model calls too, one per lens:
+//! {"op":"reviewRequest","input":{stage,asked?},"files":{…}} gives {"requests":[{"lens","system",
+//! "messages"}…],"maxTokens"} or {"error"}, and {"op":"reviewOutcome","input":{…},"replies":[{"lens",
+//! "reply"}|{"lens","error"}…]} gives {"text","isError","line"?}.
+//! The Elephant-Goldfish gates (ADR-2610281200): {"op":"flow","flow":{…}|null,"event":…} with event
+//! "start" (and "newApp"), "said" (the person answered), "refuse" (and "tool","input": may it run?)
+//! or "ran" (and "tool","input","isError") gives {"flow","waiting","refuse"?}.
 //! An AI app's skill and tools (ADR-2610131300): {"op":"aiTools","files":{…}} gives what App settings
 //! shows; {"op":"aiToolsApply","files":{…},"repository":{…}} gives {"changes":{"path":"text",…}}, the
 //! ai app's skill.md and tools.json to write (the caller saves through finish, which checks), or
@@ -92,21 +96,26 @@ pub fn handle(request: &str) -> Vec<u8> {
             }
             reply
         }
-        Some("reviewRequest") => match workshop::review_request(&Embedded, &req["input"], &files_of(&req)) {
-            Ok(mut r) => {
-                r["maxTokens"] = json!(workshop::REVIEW_MAX_TOKENS);
-                r
-            }
+        Some("reviewRequest") => match workshop::review_requests(&Embedded, &req["input"], &files_of(&req)) {
+            Ok(r) => json!({
+                "requests": r.into_iter().map(|(lens, body)| json!({ "lens": lens, "system": body["system"], "messages": body["messages"] })).collect::<Vec<_>>(),
+                "maxTokens": workshop::REVIEW_MAX_TOKENS,
+            }),
             Err(e) => json!({ "error": e }),
         },
         Some("reviewOutcome") => {
-            let out = workshop::review_outcome(&req["input"], &req["reply"]);
+            let replies: Vec<(String, Result<Value, String>)> = req["replies"]
+                .as_array()
+                .map(|a| a.iter().map(|r| (r["lens"].as_str().unwrap_or("").to_string(), r.get("error").and_then(Value::as_str).map_or_else(|| Ok(r["reply"].clone()), |e| Err(e.to_string())))).collect())
+                .unwrap_or_default();
+            let out = workshop::review_outcome(&req["input"], &replies);
             let mut reply = json!({ "text": out.text, "isError": out.is_error });
             if let Some(line) = out.shown {
                 reply["line"] = json!(line);
             }
             reply
         }
+        Some("flow") => flow(&req),
         Some("aiTools") => usecases::ai_tools::view(&files_of(&req)),
         Some("aiToolsApply") => {
             let before = files_of(&req);
@@ -133,7 +142,7 @@ pub fn handle(request: &str) -> Vec<u8> {
             Err(e) => json!({ "error": e }),
         },
         Some("sampleOutcome") => domain::studio::sample_answer(&req["reply"], req["json"].as_bool().unwrap_or(false)).unwrap_or_else(|e| json!({ "error": e })),
-        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest, skillsOutcome, reviewRequest, reviewOutcome, aiTools, aiToolsApply, aiImproveRequest, aiImproveOutcome, sampleRequest or sampleOutcome" }),
+        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest, skillsOutcome, reviewRequest, reviewOutcome, flow, aiTools, aiToolsApply, aiImproveRequest, aiImproveOutcome, sampleRequest or sampleOutcome" }),
     };
     reply.to_string().into_bytes()
 }
@@ -196,4 +205,24 @@ pub unsafe extern "C" fn call(ptr: *const u8, len: usize) -> u64 {
     let (out, n) = (reply.as_mut_ptr(), reply.len());
     std::mem::forget(reply);
     ((out as u64) << 32) | n as u64
+}
+
+/// One step of the Elephant-Goldfish gates (ADR-2610281200) on the caller's saved flow.
+fn flow(req: &Value) -> Value {
+    use domain::studio::Flow;
+    let mut f: Flow = serde_json::from_value(req["flow"].clone()).unwrap_or_else(|_| Flow::start(req["newApp"].as_bool().unwrap_or(false)));
+    let tool = req["tool"].as_str().unwrap_or("");
+    let mut refuse = None;
+    match req["event"].as_str() {
+        Some("start") => f = Flow::start(req["newApp"].as_bool().unwrap_or(false)),
+        Some("said") => f.person_said(),
+        Some("refuse") => refuse = f.refuse(tool, &req["input"], workshop::REVIEW_TOOL),
+        Some("ran") => f.ran(tool, &req["input"], workshop::REVIEW_TOOL, req["isError"].as_bool().unwrap_or(false)),
+        _ => return json!({ "error": "event must be start, said, refuse or ran" }),
+    }
+    let mut out = json!({ "flow": f, "waiting": f.waiting() });
+    if let Some(why) = refuse {
+        out["refuse"] = json!(why);
+    }
+    out
 }

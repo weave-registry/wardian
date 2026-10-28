@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
 const B = process.env.BASE;
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ok  ', m); } else { fail++; console.log('  FAIL', m); } };
-const RUNNABLE = ['adder', 'number-lab', 'unit-converter', 'image-lab', 'life', 'mandelbrot', 'text-tools'];
+const RUNNABLE = ['adder', 'number-lab', 'unit-converter', 'image-lab', 'life', 'mandelbrot', 'text-tools', 'trip-cost-splitter'];
 // Suites the website runs: the kernel with no server behind it, storage kept in the browser.
 const SUITES = ['habit-tracker', 'loan-planner', 'meeting-notes', 'monte-carlo'];
 const SERVER_ONLY = ['csv-explorer', 'focus-log', 'focus-timer', 'splunk-table', 'usl-lab'];
@@ -24,7 +24,7 @@ const SERVER_ONLY = ['csv-explorer', 'focus-log', 'focus-timer', 'splunk-table',
     await page.goto(`${B}/docs/examples`);
     const tries = await page.locator('section.gallery a.go').count();
     ok(tries === RUNNABLE.length + SUITES.length, `the examples page offers Try it for ${tries} apps`);
-    ok(await page.locator('section.gallery li').count() === 16, 'and lists all sixteen');
+    ok(await page.locator('section.gallery li').count() === 17, 'and lists all seventeen');
     await page.locator('section.gallery a.go').first().click();
     await page.waitForLoadState('load');
     ok(await page.locator('iframe.try-frame').count() === 1, 'Try it opens the app running: ' + page.url());

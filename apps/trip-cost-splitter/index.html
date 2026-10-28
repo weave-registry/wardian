@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trip Cost Splitter</title>
+  <link rel="stylesheet" href="ui/theme.css">
+  <link rel="stylesheet" href="ui/button.css">
+  <link rel="stylesheet" href="ui/field.css">
+  <link rel="stylesheet" href="ui/card.css">
+  <link rel="stylesheet" href="ui/badge.css">
+  <link rel="stylesheet" href="ui/tabs.css">
+  <script src="ui/tabs.js"></script>
+  <link rel="stylesheet" href="ui/dialog.css">
+  <script src="ui/dialog.js"></script>
+  <link rel="stylesheet" href="ui/toast.css">
+  <script src="ui/toast.js"></script>
+  <link rel="stylesheet" href="ui/tooltip.css">
+  <script src="ui/tooltip.js"></script>
+  <link rel="stylesheet" href="ui/type.css">
+  <link rel="stylesheet" href="ui/surface.css">
+  <script src="ui/arrange.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="w-wallpaper">
+  <div class="container" data-arrange-grid>
+    <div data-arrange-column="side">
+      <aside class="w-card w-glass panel" data-panel="setup" data-panel-label="Setup">
+        <div class="w-field">
+          <label class="w-label" for="currency">Currency</label>
+          <input class="w-input size-xs" id="currency" type="text" value="USD" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" aria-describedby="currency-hint">
+          <p class="w-hint" id="currency-hint"></p>
+        </div>
+
+        <h2 class="w-heading">People</h2>
+        <ul class="people-list" id="peopleList"></ul>
+        
+        <div class="add-person-form">
+          <div class="w-field">
+            <label class="w-label" for="personName">Name</label>
+            <div class="form-row">
+              <input class="w-input size-md" id="personName" type="text" maxlength="50" required aria-describedby="person-error">
+              <button class="w-button" id="addPersonBtn">Add person</button>
+            </div>
+            <p class="w-hint" id="person-error"></p>
+          </div>
+        </div>
+
+        <h2 class="w-heading">Expenses</h2>
+        <div class="sample-badge" id="sampleBadge" hidden>
+          <span class="w-badge" data-variant="secondary">Sample data</span>
+          <button class="w-button" data-variant="ghost" data-size="sm" id="clearSampleBtn">Clear sample data</button>
+        </div>
+        <button class="w-button" id="addExpenseBtn">Add expense</button>
+        <div class="expenses-empty" id="expensesEmpty"></div>
+        <ul class="expenses-list" id="expensesList"></ul>
+      </aside>
+    </div>
+
+    <div data-arrange-column="main">
+      <section class="w-card w-glass panel" data-panel="balances" data-panel-label="Balances & Settlement">
+        <h2 class="w-heading">Balances</h2>
+        <div class="balances-grid" id="balancesGrid"></div>
+
+        <h2 class="w-heading">Settlement</h2>
+        <div id="settlement"></div>
+      </section>
+
+      <section class="w-card w-glass panel" data-panel="details" data-panel-label="Details by Person">
+        <div class="w-tabs" id="personTabs">
+          <div role="tablist" id="tabsList"></div>
+          <div id="tabsContent"></div>
+        </div>
+      </section>
+
+      <section class="w-card w-glass panel" data-panel="export" data-panel-label="Export">
+        <h2 class="w-heading">Export Settlement</h2>
+        <p>Copy this settlement as Markdown to paste in a group chat.</p>
+        <button class="w-button" id="exportBtn">Copy to clipboard</button>
+      </section>
+    </div>
+  </div>
+
+  <dialog class="w-dialog" id="expenseDialog">
+    <h2 class="w-heading">Add expense</h2>
+    <form id="expenseForm">
+      <div class="w-field">
+        <label class="w-label" for="expenseDesc">Description</label>
+        <input class="w-input size-full" id="expenseDesc" type="text" minlength="1" maxlength="100" required aria-describedby="desc-error">
+        <p class="w-hint" id="desc-error"></p>
+      </div>
+
+      <div class="w-field">
+        <label class="w-label" for="expenseAmount">Amount</label>
+        <div class="w-affix">
+          <input class="w-input size-sm num" id="expenseAmount" type="number" inputmode="decimal" step="0.01" min="0.01" max="1000000" required aria-describedby="amount-error">
+          <span id="amountCurrency">USD</span>
+        </div>
+        <p class="w-hint" id="amount-error"></p>
+      </div>
+
+      <div class="w-field">
+        <label class="w-label" for="expensePaidBy">Paid by</label>
+        <select class="w-input size-md" id="expensePaidBy" required>
+        </select>
+      </div>
+
+      <fieldset class="w-field">
+        <legend class="w-label">Split between</legend>
+        <div id="splitBetween"></div>
+        <p class="w-hint" id="split-error"></p>
+      </fieldset>
+
+      <div class="dialog-actions">
+        <button type="button" class="w-button" data-variant="secondary" id="cancelBtn">Cancel</button>
+        <button type="submit" class="w-button">Add expense</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

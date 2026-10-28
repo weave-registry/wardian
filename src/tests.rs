@@ -2309,45 +2309,80 @@ fn studio_dispatches_the_skills_agent_and_hands_its_plan_to_the_builder() {
     let _ = fs::remove_dir_all(base);
 }
 
-/// ADR-2610281000: Make an app sends fresh_review as its own request with none of the chat, on
-/// Make an app's meter, and hands the review back as the tool's result.
+/// ADR-2610281000, ADR-2610281200: Make an app follows the Elephant-Goldfish Model end to end. The
+/// builder writes the plan; code is refused; four goldfish review the plan with none of the chat;
+/// the turn ends for the person's approval with the plan kept; after "go" code may be written, but
+/// finish waits for two build goldfish; then the app is saved.
 #[test]
-fn studio_dispatches_a_fresh_review_without_the_chat() {
+fn studio_runs_make_an_app_through_the_elephant_goldfish_model() {
     use serde_json::json;
-    let base = tmp("fresh-review");
+    let base = tmp("egm-flow");
     let fake = Arc::new(FakeClaude::default());
     let usage = json!({ "input_tokens": 100, "output_tokens": 50 });
+    let call = |id: &str, name: &str, input: Value| json!({ "content": [{ "type": "tool_use", "id": id, "name": name, "input": input }], "stop_reason": "tool_use", "usage": usage });
+    let text = |t: &str| json!({ "content": [{ "type": "text", "text": t }], "stop_reason": "end_turn", "usage": usage });
+    let goldfish = || json!({ "content": [{ "type": "text", "text": "## Findings\n1. **must** say who pays when nobody is chosen\n## Decisions for the user\nNone." }], "stop_reason": "end_turn", "usage": usage });
     fake.script.lock().unwrap().extend([
-        json!({ "content": [{ "type": "tool_use", "id": "w1", "name": "write_file", "input": { "path": "README.md", "content": "# Tips\nSplits a bill." } }], "stop_reason": "tool_use", "usage": usage }),
-        json!({ "content": [{ "type": "tool_use", "id": "r1", "name": "fresh_review", "input": { "stage": "design", "asked": "split a bill" } }], "stop_reason": "tool_use", "usage": usage }),
-        json!({ "content": [{ "type": "text", "text": "## Verdict\nready after the fixes below\n## Findings\n1. **must** Inputs: no people count." }], "stop_reason": "end_turn", "usage": usage }),
-        json!({ "content": [{ "type": "text", "text": "I fixed the plan." }], "stop_reason": "end_turn", "usage": usage }),
+        call("w1", "write_file", json!({ "path": "README.md", "content": "# Tips\nSplits a bill." })),
+        call("w2", "write_file", json!({ "path": "index.html", "content": "<p>early</p>" })),
+        call("r1", "fresh_review", json!({ "stage": "design", "asked": "split a bill" })),
+        goldfish(), goldfish(), goldfish(), goldfish(),
+        text("Here is the plan. Reply go, or say what to change."),
     ]);
     let (studio, _, _) = studio_on(&fake, &base);
     studio.set_key(GOOD_KEY, None).unwrap();
-    let secret = "a bill splitter, and my secret word is pelican";
-    let id = studio.send(&json!({ "message": secret })).unwrap()["session"].as_str().unwrap().to_string();
-    for _ in 0..200 {
-        if studio.events(&id, 0).unwrap()["busy"] == false {
-            break;
+    let wait = |id: &str| {
+        for _ in 0..300 {
+            if studio.events(id, 0).unwrap()["busy"] == false {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    let events = studio.events(&id, 0).unwrap();
-    assert_eq!(events["busy"], false, "{events}");
+        studio.events(id, 0).unwrap()
+    };
+    let id = studio.send(&json!({ "message": "a bill splitter, and my secret word is pelican" })).unwrap()["session"].as_str().unwrap().to_string();
+    let events = wait(&id);
     let bodies = fake.bodies.lock().unwrap().clone();
-    assert_eq!(bodies.len(), 5, "the builder twice, the reviewer, the builder again, nudged to finish");
-    let review = &bodies[2];
-    assert!(review.get("tools").is_none() && review["system"][0]["text"].as_str().unwrap().contains("fresh-eyes reviewer"));
-    assert!(!review.to_string().contains("pelican"), "the reviewer never sees the chat");
-    let brief = review["messages"][0]["content"][0]["text"].as_str().unwrap();
-    assert!(brief.contains("Splits a bill.") && brief.contains("split a bill"), "{brief}");
-    assert!(review["max_tokens"].as_u64().unwrap() <= crate::usecases::workshop::REVIEW_MAX_TOKENS);
-    let last = bodies[3]["messages"].as_array().unwrap().last().unwrap().clone();
-    assert_eq!(last["content"][0]["tool_use_id"], "r1");
-    assert!(last["content"][0]["content"].as_str().unwrap().contains("no people count"), "{last}");
-    assert!(events.to_string().contains("a fresh reviewer checked the plan"), "{events}");
-    assert_eq!(studio.usage()["totals"][crate::domain::agent::BUILDER]["requests"], 5, "the review is on Make an app's meter");
+    assert_eq!(bodies.len(), 8, "the builder 3 times, 4 goldfish, the builder; no nudge to finish while the plan waits");
+    let refused = bodies[2]["messages"].as_array().unwrap().last().unwrap()["content"][0].clone();
+    assert_eq!((refused["tool_use_id"].as_str(), refused["is_error"].as_bool()), (Some("w2"), Some(true)));
+    assert!(refused["content"].as_str().unwrap().contains("plan first"), "{refused}");
+    let fish: Vec<&Value> = bodies.iter().filter(|b| b["system"][0]["text"].as_str().is_some_and(|t| t.starts_with("You are a goldfish reviewer"))).collect();
+    assert_eq!(fish.len(), 4, "one fresh request per lens");
+    let mut lenses: Vec<String> = fish.iter().map(|b| b["messages"][0]["content"][0]["text"].as_str().unwrap().split("Your lens, and only this one: ").nth(1).unwrap().split(':').next().unwrap().to_string()).collect();
+    lenses.sort();
+    assert_eq!(lenses, ["Design", "First-time reader", "Ready to build", "Scope (zoom out)"]);
+    for b in &fish {
+        assert!(b.get("tools").is_none() && !b.to_string().contains("pelican"), "a goldfish never sees the chat");
+        assert!(b["messages"][0]["content"][0]["text"].as_str().unwrap().contains("Splits a bill."));
+    }
+    let result = bodies[7]["messages"].as_array().unwrap().last().unwrap()["content"][0]["content"].as_str().unwrap().to_string();
+    assert!(result.starts_with("4 goldfish reviewers") && result.contains("# The scope reviewer") && result.contains("STOP"), "{result}");
+    assert!(events.to_string().contains("4 goldfish reviewers checked the plan") && !events.to_string().contains("\"saved\""), "{events}");
+    assert!(!base.join("apps/tips").exists(), "nothing is saved before the person approves");
+
+    // The person says go: code may be written now, from the kept plan; finish waits for the build goldfish.
+    fake.script.lock().unwrap().extend([
+        call("w3", "write_file", json!({ "path": "app.json", "content": "{\"format\":1,\"title\":\"Tips\",\"page\":\"index.html\"}" })),
+        call("w4", "write_file", json!({ "path": "index.html", "content": "<!doctype html><title>Tips</title><p>Tips</p>" })),
+        call("f1", "finish", json!({ "name": "tips", "summary": "s" })),
+        call("r2", "fresh_review", json!({ "stage": "build" })),
+        goldfish(), goldfish(),
+        call("f2", "finish", json!({ "name": "tips", "summary": "Splits a bill." })),
+        text("Saved."),
+    ]);
+    let sent = fake.bodies.lock().unwrap().len();
+    studio.send(&json!({ "session": id, "message": "go" })).unwrap();
+    let events = wait(&id);
+    let bodies = fake.bodies.lock().unwrap()[sent..].to_vec();
+    let result_of = |i: usize| bodies[i]["messages"].as_array().unwrap().last().unwrap()["content"][0].clone();
+    assert_eq!(result_of(2)["is_error"], false, "code is allowed once the person answered: {}", result_of(2));
+    assert!(result_of(3)["content"].as_str().unwrap().contains("stage \"build\""), "finish waits for a build review");
+    assert_eq!(bodies.iter().filter(|b| b["system"][0]["text"].as_str().is_some_and(|t| t.starts_with("You are a goldfish reviewer"))).count(), 2);
+    assert!(events.to_string().contains("\"saved\""), "{events}");
+    let readme = fs::read_to_string(base.join("apps/tips/README.md")).unwrap();
+    assert!(readme.contains("Splits a bill."), "the plan from the first turn was kept and saved");
+    assert_eq!(studio.usage()["totals"][crate::domain::agent::BUILDER]["requests"], 16, "every goldfish is on Make an app's meter");
     let _ = fs::remove_dir_all(base);
 }
 
@@ -3800,9 +3835,9 @@ mod workshop {
         for must in ["w-wallpaper", "\"surface\": \"glass\"", "bento", "sample data", "360px", "Never repeat the app's own name"] {
             assert!(intro.contains(must), "the prompt does not teach {must}");
         }
-        // The method (ADR-2610111770): four stages, in order, with the field spec and the checklist.
+        // The method (ADR-2610111770, ADR-2610281200): five stages, in order, with the field spec and the checklist.
         let at = |w: &str| intro.find(w).unwrap_or_else(|| panic!("the prompt does not name {w}"));
-        assert!(at("1. Blueprint") < at("2. Design") && at("2. Design") < at("3. Develop") && at("3. Develop") < at("4. Validate"), "the stages are in order");
+        assert!(at("1. Blueprint") < at("2. Design") && at("2. Design") < at("3. Approve") && at("3. Approve") < at("4. Develop") && at("4. Develop") < at("5. Validate"), "the stages are in order");
         for must in ["field spec", "README.md first", "The Validate checklist", "one parse function per input"] {
             assert!(intro.contains(must), "the prompt does not teach {must}");
         }
@@ -3976,12 +4011,12 @@ mod workshop {
         assert!(out.text.contains("not wired") && !String::from_utf8_lossy(&g["suite.json"]).contains("agent.js"), "{}", out.text);
     }
 
-    /// ADR-2610281000: a fresh reviewer, who has none of the chat, checks the plan after Design and
-    /// the files before finish; the builder fixes what it finds and tells the user its trade-offs.
+    /// ADR-2610281000, ADR-2610281200: goldfish reviewers, one per lens and none with the chat,
+    /// check the plan after Design and the files before finish; the prompt teaches the EGM stages.
     #[test]
-    fn workshop_fresh_review_sees_the_package_and_not_the_chat() {
+    fn workshop_goldfish_reviews_see_the_package_and_not_the_chat() {
         let intro = workshop::system(&Embedded)[0]["text"].as_str().unwrap().to_string();
-        for must in ["fresh_review with stage \"design\"", "fresh_review with stage \"build\"", "(12) fresh_review", "tell the user each such choice", "without a fresh review"] {
+        for must in ["Elephant-Goldfish Model", "fresh_review with stage \"design\"", "3. Approve", "STOP and end your turn", "fresh_review with stage \"build\"", "(12) fresh_review ran after Design, the user approved the plan", "without a fresh review"] {
             assert!(intro.contains(must), "the prompt does not teach {must}");
         }
         let tool = workshop::tools().as_array().unwrap().iter().find(|t| t["name"] == workshop::REVIEW_TOOL).cloned().unwrap();
@@ -3989,41 +4024,90 @@ mod workshop {
         assert_eq!(tool["input_schema"]["properties"]["stage"]["enum"], json!(["design", "build"]));
 
         let mut f = Files::new();
-        assert!(workshop::review_request(&Embedded, &json!({ "stage": "design" }), &f).unwrap_err().contains("README.md"), "no plan, nothing to review");
+        assert!(workshop::review_requests(&Embedded, &json!({ "stage": "design" }), &f).unwrap_err().contains("README.md"), "no plan, nothing to review");
         f.insert("README.md".into(), b"# Loan\n## What you put in\nRate: decimal".to_vec());
         f.insert("app.json".into(), br#"{"format":1,"title":"Loan","page":"index.html"}"#.to_vec());
         f.insert("index.html".into(), b"<input id=rate>".to_vec());
         f.insert("ui/field.css".into(), b".w-input-library{}".to_vec());
         f.insert("logo.png".into(), vec![0x89, 0x50, 0xff, 0xfe]);
-        assert!(workshop::review_request(&Embedded, &json!({ "stage": "later" }), &f).unwrap_err().contains("stage"));
+        assert!(workshop::review_requests(&Embedded, &json!({ "stage": "later" }), &f).unwrap_err().contains("stage"));
 
-        let req = workshop::review_request(&Embedded, &json!({ "stage": "design", "asked": "a loan calculator" }), &f).unwrap();
-        let system = req["system"].to_string();
-        for must in ["fresh-eyes reviewer", "<spec>", "<components>", "The Validate checklist"] {
-            assert!(system.contains(must), "the reviewer lacks {must}");
+        let design = workshop::review_requests(&Embedded, &json!({ "stage": "design", "asked": "a loan calculator" }), &f).unwrap();
+        let lenses: Vec<&str> = design.iter().map(|(l, _)| l.as_str()).collect();
+        assert_eq!(lenses, ["scope", "first-time reader", "design", "ready to build"], "EGM's reviewers, one goldfish each");
+        for (lens, req) in &design {
+            let system = req["system"].to_string();
+            assert!(system.contains("goldfish reviewer") && system.contains("<spec>") && system.contains("<components>") && system.contains("The Validate checklist"));
+            assert_eq!(req["system"][1]["cache_control"], json!({ "type": "ephemeral" }), "the references are cached once for every goldfish");
+            assert!(req.get("tools").is_none() && req.get("model").is_none(), "the host adds the model; a goldfish has no tools");
+            assert_eq!(req["messages"].as_array().unwrap().len(), 1, "one message: none of the chat");
+            let ask = req["messages"][0]["content"][0]["text"].as_str().unwrap();
+            for must in ["<asked>\na loan calculator", "<file path=\"README.md\">", "<file path=\"app.json\">", "Stage: design", "<lens>"] {
+                assert!(ask.contains(must), "{lens}: the brief lacks {must}");
+            }
+            assert!(!ask.contains("<input id=rate>"), "a design review reads the plan, not the code");
+            let others = design.iter().filter(|(l, _)| l != lens).count();
+            assert_eq!(others, 3);
         }
-        assert_eq!(req["system"][1]["cache_control"], json!({ "type": "ephemeral" }));
-        assert!(req.get("tools").is_none() && req.get("model").is_none(), "the host adds the model; the reviewer has no tools");
-        assert_eq!(req["messages"].as_array().unwrap().len(), 1, "one message: none of the chat");
-        let brief = req["messages"][0]["content"][0]["text"].as_str().unwrap();
-        for must in ["<asked>\na loan calculator", "<file path=\"README.md\">", "<file path=\"app.json\">", "index.html", "Stage: design"] {
-            assert!(brief.contains(must), "the design brief lacks {must}");
-        }
-        assert!(!brief.contains("<input id=rate>"), "a design review reads the plan, not the code");
+        assert!(design[0].1["messages"][0]["content"][0]["text"].as_str().unwrap().contains("Scope (zoom out)"), "each goldfish holds only its own lens");
+        assert!(!design[0].1["messages"][0]["content"][0]["text"].as_str().unwrap().contains("First-time reader"));
 
-        let req = workshop::review_request(&Embedded, &json!({ "stage": "build" }), &f).unwrap();
-        let brief = req["messages"][0]["content"][0]["text"].as_str().unwrap();
-        assert!(brief.contains("<input id=rate>") && brief.contains("Stage: build") && !brief.contains("<asked>"), "{brief}");
-        assert!(!brief.contains("w-input-library") && !brief.contains("<file path=\"logo.png\">"), "not the library's copies or binaries");
+        let build = workshop::review_requests(&Embedded, &json!({ "stage": "build" }), &f).unwrap();
+        assert_eq!(build.iter().map(|(l, _)| l.as_str()).collect::<Vec<_>>(), ["built as planned", "quality checklist"]);
+        let ask = build[0].1["messages"][0]["content"][0]["text"].as_str().unwrap();
+        assert!(ask.contains("<input id=rate>") && ask.contains("Stage: build") && !ask.contains("<asked>"), "{ask}");
+        assert!(!ask.contains("w-input-library") && !ask.contains("<file path=\"logo.png\">"), "not the library's copies or binaries");
 
-        let design = json!({ "stage": "design" });
-        let out = workshop::review_outcome(&design, &json!({ "content": [{ "type": "text", "text": "## Verdict\nready after the fixes below" }], "stop_reason": "end_turn" }));
-        assert!(!out.is_error && out.text.contains("## Verdict") && out.text.contains("in README.md before you write code"), "{}", out.text);
-        assert_eq!(out.shown.as_deref(), Some("a fresh reviewer checked the plan"));
-        let build = workshop::review_outcome(&json!({ "stage": "build" }), &json!({ "content": [{ "type": "text", "text": "## Verdict" }], "stop_reason": "max_tokens" }));
-        assert!(build.text.contains("in the files") && build.text.contains("cut off"), "{}", build.text);
-        assert!(workshop::review_outcome(&design, &json!({ "content": [], "stop_reason": "refusal" })).is_error);
+        // The replies: each report under its reviewer; a reviewer that fails is named; none at all is an error.
+        let report = |t: &str| Ok(json!({ "content": [{ "type": "text", "text": t }], "stop_reason": "end_turn" }));
+        let d = json!({ "stage": "design" });
+        let out = workshop::review_outcome(&d, &[("scope".into(), report("## Findings\n1. **must** too big")), ("design".into(), Err("HTTP 529".into()))]);
+        assert!(!out.is_error && out.text.contains("# The scope reviewer") && out.text.contains("too big"), "{}", out.text);
+        assert!(out.text.contains("design could not answer") && out.text.contains("STOP and end your turn with the approval message"), "{}", out.text);
+        assert_eq!(out.shown.as_deref(), Some("1 goldfish reviewers checked the plan"));
+        let b = workshop::review_outcome(&json!({ "stage": "build" }), &[("built as planned".into(), report("## Findings\nNone."))]);
+        assert!(b.text.contains("Then check and finish") && b.text.contains("tell the user in your reply after finish"), "{}", b.text);
+        assert!(workshop::review_outcome(&d, &[("scope".into(), Ok(json!({ "content": [], "stop_reason": "refusal" })))]).is_error);
         assert!(run(workshop::REVIEW_TOOL, json!({ "stage": "design" }), &mut f, None).is_error, "the host dispatches it, not run");
+    }
+
+    /// ADR-2610281200: the gates hold the method whatever the model does. A new app's code waits
+    /// for a reviewed plan and the person's answer; finish waits for a build review after the last change.
+    #[test]
+    fn workshop_flow_gates_code_on_an_approved_plan_and_finish_on_a_build_review() {
+        use crate::domain::studio::{Flow, Stage};
+        let r = workshop::REVIEW_TOOL;
+        let w = |p: &str| json!({ "path": p, "content": "x" });
+        let mut f = Flow::start(true);
+        assert_eq!(f.stage, Stage::Plan);
+        assert!(f.refuse("write_file", &w("README.md"), r).is_none() && f.refuse("write_file", &w("./suite.json"), r).is_none(), "the plan may be written");
+        assert!(f.refuse("write_file", &w("index.html"), r).unwrap().contains("plan first"));
+        assert!(f.refuse("add_components", &json!({ "components": ["button"] }), r).is_some() && f.refuse("finish", &json!({}), r).is_some());
+        assert!(f.refuse("read_file", &w("README.md"), r).is_none() && f.refuse(r, &json!({ "stage": "design" }), r).is_none());
+        f.person_said();
+        assert_eq!(f.stage, Stage::Plan, "an answer before the plan is reviewed approves nothing");
+        f.ran(r, &json!({ "stage": "build" }), r, false);
+        assert_eq!(f.stage, Stage::Plan, "only a design review puts the plan to the person");
+        f.ran(r, &json!({ "stage": "design" }), r, false);
+        assert_eq!(f.stage, Stage::Approval);
+        assert!(f.waiting());
+        assert!(f.refuse("write_file", &w("apps/a/app.js"), r).unwrap().contains("not approved"));
+        assert!(f.refuse("write_file", &w("README.md"), r).is_none(), "the reviewers' fixes go into the plan");
+        f.person_said();
+        assert_eq!(f.stage, Stage::Build);
+        assert!(!f.waiting() && f.refuse("write_file", &w("index.html"), r).is_none());
+        assert!(f.refuse("finish", &json!({}), r).unwrap().contains("stage \"build\""));
+        f.ran(r, &json!({ "stage": "build" }), r, false);
+        assert!(f.refuse("finish", &json!({}), r).is_none());
+        f.ran("write_file", &w("index.html"), r, false);
+        assert!(f.refuse("finish", &json!({}), r).is_none(), "the fixes after a build review are its resolution: no review loop");
+        f.person_said();
+        assert!(f.refuse("finish", &json!({}), r).is_some(), "the person's next request needs a build review of its own");
+        f.ran(r, &json!({ "stage": "build" }), r, true);
+        assert!(f.refuse("finish", &json!({}), r).is_none(), "a build review that failed does not block the save");
+        let change = Flow::start(false);
+        assert_eq!(change.stage, Stage::Build, "a change to a saved app builds; finish still needs a build review");
+        assert!(change.refuse("finish", &json!({}), r).is_some());
     }
 }
 

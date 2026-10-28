@@ -107,6 +107,7 @@ const DOCS: &[DocPage] = &[
     doc!("", "examples/number-lab", "Number lab", "apps/number-lab/README.md"),
     doc!("", "examples/splunk-table", "Splunk table", "apps/splunk-table/README.md"),
     doc!("", "examples/text-tools", "Text tools", "apps/text-tools/README.md"),
+    doc!("", "examples/trip-cost-splitter", "Trip cost splitter", "apps/trip-cost-splitter/README.md"),
     doc!("", "examples/unit-converter", "Unit converter", "apps/unit-converter/README.md"),
     doc!("", "examples/usl-lab", "USL lab as little apps", "apps/usl-lab/README.md"),
     doc!("", "decisions/ADR-2609121400", "ADR-2609121400: hexa is a scaffolding system with two gates", "docs/adrs/ADR-2609121400-hexa-is-a-scaffolding-system-with-two-gates.md"),

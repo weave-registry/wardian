@@ -14,13 +14,15 @@ Wardian 1.0") is done or written down there as left out.
 
 ### Added
 
-- Make an app gets a fresh-eyes review, in the way of the Elephant-Goldfish Model (egm.dev,
-  ADR-2610281000). After the plan is written, and again before the app is saved, a reviewer who has
-  not seen the chat reads only the package and the user's request, and reports what is missing,
-  unclear or bigger than the job as must, should or could. The builder fixes them, and after saving
-  says in plain words which trade-offs it decided, so they can be reversed. The new builder tool
-  `fresh_review` runs in Wardian and, through `wasm/workshop`'s `reviewRequest` and
-  `reviewOutcome`, in the hosted builder. The app-factory skill runs the same review for suites and
+- Make an app works in the Elephant-Goldfish Model (egm.dev, ADR-2610281000, ADR-2610281200).
+  The builder writes the plan; four goldfish reviewers, each its own request with none of the chat
+  (scope, first-time reader, design, ready to build), check it; the builder fixes it and stops to
+  show you the plan, what changed and the decisions to make, and writes no code until you answer.
+  Before the save, two more goldfish (built as planned, quality checklist) check the files against
+  the plan. Wardian enforces the steps: a new app's code is refused before the reviewed plan is
+  approved, and finish before a build review for the latest request. A plan waiting for you is kept
+  between messages. The builder tool `fresh_review` runs in Wardian and, through `wasm/workshop`'s
+  `reviewRequest`, `reviewOutcome` and `flow`, in the hosted builder. The app-factory skill runs the same review for suites and
   apps with AI, with the EGM plugin when it is installed. With thanks to Google's EGM team for the
   method (egm.dev, Apache-2.0); `NOTICE.md` credits them.
 

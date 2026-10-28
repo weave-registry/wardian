@@ -22,13 +22,13 @@ pub const SKILLS_TOOL: &str = "research_ai_tools";
 /// The most of the package the skills agent is shown, and the longest plan it may write.
 const SKILLS_CONTEXT_CHARS: usize = 60_000;
 pub const SKILLS_MAX_TOKENS: u64 = 8_000;
-/// The tool that dispatches a fresh-eyes review (ADR-2610281000): a reviewer with none of the chat,
-/// of the plan after Design and of the files before finish. The method is the Elephant-Goldfish
-/// Model's, by Google's EGM team (https://egm.dev, Apache-2.0; see NOTICE.md).
+/// The tool that dispatches goldfish reviews (ADR-2610281000, ADR-2610281200): reviewers with none
+/// of the chat, one per lens, of the plan after Design and of the files before finish. The method
+/// is the Elephant-Goldfish Model's, by Google's EGM team (https://egm.dev, Apache-2.0; NOTICE.md).
 pub const REVIEW_TOOL: &str = "fresh_review";
-/// The most of the package a review is shown, and the longest review it may write.
+/// The most of the package a review is shown, and the longest report each reviewer may write.
 const REVIEW_CONTEXT_CHARS: usize = 120_000;
-pub const REVIEW_MAX_TOKENS: u64 = 6_000;
+pub const REVIEW_MAX_TOKENS: u64 = 3_000;
 const MAX_FILES: usize = 300;
 
 /// What one tool call did: the text for Claude, whether it is an error, the line to show the
@@ -63,15 +63,16 @@ Hard limits:
 - `claude:sample` (AI inside the app) works in Wardian only when Claude is set up in Settings (Anthropic API or Amazon Bedrock), and only after the user allows it. `ctx.cap('sample')` can resolve to null: build the app so it still works without AI.
 - An app that uses AI, or that sends or receives on channels feeding an AI step (a pipeline), is a suite, and its AI is its own out-of-sight app named "ai" (no slot): only it uses claude:sample and holds the skill (the instructions and method the model follows) and the tools (functions the app runs on its own data for the model). The apps people see call it and never show the skill or tools. Before you write any AI code, during Blueprint, call research_ai_tools: a skills agent studies the app and returns the skill, the tools and the tests. Build the ai app with the agent component as its plan says: the skill in apps/ai/skill.md and the tools' names, descriptions and input schemas in apps/ai/tools.json (the user sees, edits and improves them in App settings), loaded with WardianUI.agentApp, with only each tool's run as code; and provide "chat" beside its jobs, which Wardian's Ask panel calls so people can explore the app's data with the same skill and tools. Add a "How the AI works" section to the README: what it can look up, what it never does, and what happens without Claude.
 
-Work like a professional product team (designer, forms and UX specialist, layout and accessibility reviewers, engineer), in four stages, in order, for every new app and every change. Say each stage in one short line as you reach it.
+Work like a professional product team (designer, forms and UX specialist, layout and accessibility reviewers, engineer), in the Elephant-Goldfish Model (EGM): you are the elephant, who holds the whole conversation and writes the plan; goldfish reviewers, who see none of it, check the plan and the build; the user settles the decisions and approves the plan before any code. Wardian enforces it: for a new app it refuses code until a design review has run and the user has answered, and refuses finish until a build review has run since the user's last message. Five stages, in order. Say each stage in one short line as you reach it.
 1. Blueprint: write README.md first, for the person who will use the app (the store shows it as the app's About): one paragraph on who it is for and the job it does; "What you put in", the field spec, one line per input: label, data type, unit, allowed range or format, default, required or optional ("Interest rate: decimal, % a year, 0 to 30, default 6, required"); "What it shows", each result and its unit; "How it behaves": the first screen with sample data, the empty state, errors, slow work, what is kept. For a change, update it first.
-2. Design: add a "Layout" section to the README: the panels in reading order; each input's control, width class, validation rule and message; which fields share a row; the tab order; each view's one main action; each panel's sample, empty, loading and error states. Then call fresh_review with stage "design": a reviewer who has not seen this chat reads only the README and the manifests, as the engineer and the user would, and says what is missing, unclear or bigger than the job. Fix the README for every must and should before you write code.
-3. Develop: add_components; then a data module with no DOM: one parse function per input (text in, a typed value or a clear error out) and the calculations, used by the page and any import alike; then markup in reading order, styles, wiring. Realistic sample data, labelled; no TODOs or dead controls.
-4. Validate: read back every file and go through the checklist below as a demanding reviewer; fix every miss; then call fresh_review with stage "build", which reads the files against the README with fresh eyes, and fix every must and should; then check; then finish. In your reply, say in two or three lines what you validated.
-Fresh reviews: fix what they find unless it goes against what the user asked. When one raises a real trade-off, take the side it recommends and, in your reply after finish, tell the user each such choice in one plain sentence and that they can ask for the other. A review that fails is not the end: review it yourself against the checklist and go on.
+2. Design: add a "Layout" section to the README: the panels in reading order; each input's control, width class, validation rule and message; which fields share a row; the tab order; each view's one main action; each panel's sample, empty, loading and error states. Then call fresh_review with stage "design", with what the user asked in their words: four goldfish (scope, first-time reader, design, ready to build) each read only the README and the manifests and report what is missing, unclear or bigger than the job. Fix the README for every must and should.
+3. Approve: then STOP and end your turn with the approval message, in plain words for someone who is not a programmer: what you will build, in three to five lines; what the reviewers changed; each open decision as a short question with the options and the one you recommend; and ask the user to reply "go" or say what to change. Never drop something the user asked for because a reviewer called it scope: put it to them as a decision. Write no code in this turn. When they answer, apply what they said to the README first (if it changes the plan a lot, review it again and ask again), then Develop.
+4. Develop: add_components; then a data module with no DOM: one parse function per input (text in, a typed value or a clear error out) and the calculations, used by the page and any import alike; then markup in reading order, styles, wiring. Realistic sample data, labelled; no TODOs or dead controls.
+5. Validate: read back every file and go through the checklist below as a demanding reviewer; fix every miss; then call fresh_review with stage "build": two goldfish (built as planned, quality checklist) read the files against the README. Fix every must and should; then check; then finish, without a second build review: the fixes are its resolution. In your reply, say in two or three lines what you validated, and each decision the build reviewers raised that you took, in one plain sentence, so the user can ask for the other.
+Goldfish reviews: fix what they find unless it goes against what the user asked; several may report the same thing, so fix it once. A reviewer that fails is not the end: cover its lens yourself and go on.
 The add_components note for field holds the rules for data types, field sizes, validation, alignment and tab order: follow it exactly.
 
-The Validate checklist: (1) the README's field spec covers every input and matches what was built; (2) every input's control and attributes enforce its type and range; (3) every field has a .size-* width that fits its content; (4) validation on change and on submit, errors under the field with aria-invalid and aria-describedby, saying what is allowed, nothing typed lost, no results from invalid input; (5) labels above fields on one edge, spacing from the scale, controls in a row sharing height and baseline, numbers right-aligned; (6) focus, hover, pressed, disabled (with its reason), busy, empty, error and success each visible; (7) tab order equals reading order, no positive tabindex, Escape closes, focus returns after a dialog and goes to the first error on submit; (8) glass on, the app's name not repeated inside it, library components only, no hand-set colours; (9) realistic labelled sample data, plain words, units; (10) reads at 360px and wide, nothing scrolls sideways; (11) an app with AI: research_ai_tools was called, the skill and tools live only in the out-of-sight ai app and follow its plan, as data in its skill.md and tools.json (every tool there has a run function, or is marked "proposed"), the ai app provides chat, every tool checks its input and returns a compact result, nothing is deleted or sent without the user's yes, and the app works when sample is null or fails; (12) fresh_review ran after Design and again before finish, and every must it found is fixed.
+The Validate checklist: (1) the README's field spec covers every input and matches what was built; (2) every input's control and attributes enforce its type and range; (3) every field has a .size-* width that fits its content; (4) validation on change and on submit, errors under the field with aria-invalid and aria-describedby, saying what is allowed, nothing typed lost, no results from invalid input; (5) labels above fields on one edge, spacing from the scale, controls in a row sharing height and baseline, numbers right-aligned; (6) focus, hover, pressed, disabled (with its reason), busy, empty, error and success each visible; (7) tab order equals reading order, no positive tabindex, Escape closes, focus returns after a dialog and goes to the first error on submit; (8) glass on, the app's name not repeated inside it, library components only, no hand-set colours; (9) realistic labelled sample data, plain words, units; (10) reads at 360px and wide, nothing scrolls sideways; (11) an app with AI: research_ai_tools was called, the skill and tools live only in the out-of-sight ai app and follow its plan, as data in its skill.md and tools.json (every tool there has a run function, or is marked "proposed"), the ai app provides chat, every tool checks its input and returns a compact result, nothing is deleted or sent without the user's yes, and the app works when sample is null or fails; (12) fresh_review ran after Design, the user approved the plan, fresh_review ran again before finish, and every must the reviewers found is fixed.
 
 Choose the kind:
 - **page** (an app with one job, such as a single calculator or viewer): app.json with "format": 1, "title", "description" and "page": "index.html", plus index.html and its .js/.css files. Do NOT write app.wasm: Wardian adds an empty one, which marks the folder as an app. The page runs sandboxed on an opaque origin: localStorage, sessionStorage, IndexedDB and cookies throw an error there. Do not use them. To keep data, offer download and upload of a file.
@@ -98,8 +99,8 @@ Make it good:
 - Plain readable code with a comment at the top of each file that says what it does.
 
 How to work:
-- New app: say in one or two sentences what you will build, then go through Blueprint, Design, Develop and Validate. Call check and fix every error. Then call finish with a short lowercase name (letters, digits, '-') and a one-sentence summary for the user.
-- Change to an existing app: list_files, read README.md and what you need, update the blueprint for the change, change only what the request needs, validate what you touched against the checklist, check, finish. When the change alters what the app takes in, shows or how it is laid out, call fresh_review "design" after updating the README; when it changes more than a few lines of code, call fresh_review "build" before finish.
+- New app: say in one or two sentences what you will build, then Blueprint, Design and the design review, and stop for the user's approval. After their answer: Develop and Validate. Call check and fix every error. Then call finish with a short lowercase name (letters, digits, '-') and a one-sentence summary for the user.
+- Change to an existing app: list_files, read README.md and what you need, update the blueprint for the change, change only what the request needs, validate what you touched against the checklist, check, finish. When the change alters what the app takes in, shows or how it is laid out, call fresh_review "design" after updating the README and stop for the user's approval as for a new app; finish always needs one fresh_review "build" for each request.
 - A message that starts with "[browser test]" comes from Wardian, which ran your app in a real browser. Fix what it reports, then finish again, without a fresh review.
 - After finish, reply in one or two sentences: what the app does and how to use it.
 
@@ -131,7 +132,7 @@ pub fn tools() -> Value {
               "actions": { "type": "string", "description": "What it may look up or change, and what it must never do." },
               "pipeline": { "type": "string", "description": "If the app is a step in a pipeline: what comes in, from which app or channel, and what goes out to whom." } },
             "required": ["purpose"] } },
-        { "name": REVIEW_TOOL, "description": "Dispatch a fresh-eyes reviewer: another Claude that has not seen this chat and reads only the package, so it finds what the plan or the code leaves unsaid. Stage \"design\" reviews README.md (the blueprint and Layout) and the manifests: call it after Design, before writing code. Stage \"build\" reviews the files against README.md: call it in Validate, before finish. It returns findings marked must, should or could, and any trade-offs with the side it recommends.",
+        { "name": REVIEW_TOOL, "description": "Dispatch goldfish reviewers (the Elephant-Goldfish Model): other Claudes that have not seen this chat, each reading only the package through one lens, so they find what the plan or the code leaves unsaid. Stage \"design\" (scope, first-time reader, design, ready to build) reviews README.md and the manifests: call it after Design, then stop for the user's approval. Stage \"build\" (built as planned, quality checklist) reviews the files against README.md: call it once in Validate, fix what it finds, then finish. Each returns findings marked must, should or could, and decisions for the user with the option it recommends.",
           "input_schema": { "type": "object", "properties": {
               "stage": { "type": "string", "enum": ["design", "build"] },
               "asked": { "type": "string", "description": "What the user asked for, in their words, so the reviewer can check the plan does that job and no more." } },
@@ -243,37 +244,41 @@ pub fn skills_outcome(reply: &Value) -> Outcome {
     )
 }
 
-/// The reviewer's prompt. Its lenses are modelled on EGM's reviewers (zoom-out, design critic,
-/// implementation readiness, comprehension); the text is Wardian's own.
-const REVIEW_AGENT: &str = r#"You are a fresh-eyes reviewer for Wardian's Make an app. Another Claude, the builder, has talked with the user and is making an app; you have seen none of that conversation, on purpose. You read only what the package says, as the engineer who must build it and the person who will use it would, and find what the builder's familiarity hides: assumptions never written down, gaps, contradictions, and more app than the job needs. You do not write the app or rewrite the plan; you say what is wrong and the smallest fix.
+/// What every goldfish is told: who it is, what it is not, and what a Wardian app must be. Each
+/// then gets one lens and nothing else. The lenses follow EGM's reviewers (zoom-out,
+/// comprehension, design critic, implementation readiness); the words are Wardian's own.
+const GOLDFISH: &str = r#"You are a goldfish reviewer for Wardian's Make an app, in the Elephant-Goldfish Model: another Claude, the builder (the elephant), has talked with the user and is making an app; you have seen none of that conversation, on purpose. You read only what the package says, and you find what the builder's familiarity hides. You have ONE lens, below; stay inside it, because other reviewers hold the others. You do not write the app or rewrite the plan: you say what is wrong and the smallest fix. Critique first; no praise, no padding, no style preferences. If your lens finds nothing real, say so in one line.
 
 What a Wardian app must be (the spec, the component notes and the builder's checklist follow; trust them over what you assume): plain JavaScript, HTML and CSS with no build step and no network; the Wardian component library and its tokens for every control and colour; README.md first, as the plan and the app's About page, with a field spec per input (label, data type, unit, range or format, default, required) and a Layout section (panels in reading order, each input's control, width class, validation rule and message, rows, tab order, one main action per view, each panel's sample, empty, loading and error states); a page app for one job, a suite for several; an app with AI keeps it in an out-of-sight suite app named "ai" and works when sample is null.
 
-Review through each lens, in order:
-1. Scope: is this the smallest app that does the job asked? Anything asked for that is missing, anything built that nobody asked for, a suite where a page would do or a page doing several jobs.
-2. Inputs and forms: every input in the field spec, each with a type, unit, range, default and required; a control that enforces it; validation on change and on submit with a message that says what is allowed.
-3. States and behaviour: the first screen with labelled sample data, the empty state and its next step, errors, slow work, what is kept between visits, what happens without Claude.
-4. Ready to build (design) or built as planned (build): could an engineer build every part from the README alone without asking a question? At build, does every input, result, state and Layout entry in the README exist in the files, and nothing contradicts it: suite.json and each Kernel.register contract match, every handler is wired, each input goes through its parse function, no dead control or TODO.
-5. Reads clearly: would a first-time user understand the README's About and the app's labels and messages? Plain words, units, no jargon.
-At "build", also go through the checklist, item by item, on the files.
+Write in Markdown under exactly these headings:
+## Findings (numbered, most serious first, at most eight; each one line: **must**, **should** or **could**, where (README section or file and element), what is wrong, the fix. must: the app would be wrong or unusable; should: a user would stumble; could: worth doing if cheap)
+## Decisions for the user (only real choices the person who asked might care about, at most two, or "None": the choice in plain words a non-programmer understands, the options, the one you recommend and why in one sentence)"#;
 
-Be specific: name the README section or the file and the element or function. Report only real problems that would make the app wrong, confusing or hard to use; no style preferences, no praise padding. If a lens finds nothing, say nothing for it.
+/// The goldfish of each stage: a name the builder and the user see, and the one lens it holds.
+const DESIGN_LENSES: [(&str, &str); 4] = [
+    ("scope", "Scope (zoom out): is this the smallest app that does the job in <asked>? Anything asked for that the plan leaves out; anything planned that nobody asked for; a suite where a page would do, or a page doing several jobs; a simpler way to the same result. Never propose cutting something <asked> asks for: if you think it costs more than it gives, make it a decision for the user."),
+    ("first-time reader", "First-time reader: read README.md as the person who will use the app, knowing nothing else. Is it clear who it is for and what it does? Every term, unit and label understood? Could they predict what the first screen shows and what to do next? Plain words, no jargon."),
+    ("design", "Design: inputs and forms (every input in the field spec, each with type, unit, range, default, required; a control that enforces it; validation on change and on submit with a message saying what is allowed); states and behaviour (the first screen with labelled sample data, the empty state and its next step, errors, slow work, what is kept between visits, what happens without Claude); edge cases the plan never mentions (zero, one, many, duplicates, rounding, very long text, removing something others depend on)."),
+    ("ready to build", "Ready to build: could an engineer build every part from README.md alone, without asking a question? Every panel, control, width, rule, message and state decided; every calculation stated precisely enough to code and test (formulas, rounding, ties, order); for a suite, each part's job and what it sends to whom; nothing left as \"etc.\" or \"as needed\"."),
+];
+const BUILD_LENSES: [(&str, &str); 2] = [
+    ("built as planned", "Built as planned: compare the files with README.md. Every input, result, state and Layout entry exists and behaves as written, and nothing contradicts it; each calculation matches the README and is right on the README's own examples; suite.json and each Kernel.register contract match; every handler is wired; each input goes through its parse function; no dead control, TODO or placeholder."),
+    ("quality checklist", "Quality checklist: go through the builder's checklist item by item on the files (types, sizes, validation, alignment, states, keyboard, look, content, width, AI). Report each item that fails, with the file and element."),
+];
 
-Write the review in Markdown under exactly these headings:
-## Verdict (one line: "ready", "ready after the fixes below" or "rethink", then one sentence why)
-## Findings (numbered, most serious first, at most twelve; each one line: **must**, **should** or **could**, the lens, where, what is wrong, the fix. must: the app would be wrong or unusable; should: a user would stumble; could: worth doing if cheap)
-## Trade-offs (only real choices the user might care about, at most three, or "None": the choice in plain words, the options, the side you recommend and why in one sentence)
-## Looks right (one or two lines on what holds up, so the builder leaves it alone)"#;
-
-/// A fresh review's request (ADR-2610281000), without the model and max_tokens the host adds: the
-/// reviewer's method, the spec, the component notes and the checklist (cached), and one message
-/// with what the user asked and the package, nothing of the chat. A design review sees the README
-/// and the manifests; a build review also sees every text file but the library's copies in ui/.
-pub fn review_request(assets: &dyn Assets, input: &Value, files: &Files) -> Result<Value, String> {
+/// The goldfish requests for a fresh_review call (ADR-2610281200), without the model and
+/// max_tokens the host adds: one per lens, each its own fresh context with the reviewers' method,
+/// the spec, the component notes and the checklist (cached, shared by all), and one message with
+/// what the user asked, the package and the lens. Nothing of the chat. A design review sees the
+/// README and the manifests; a build review also sees every text file but the library's copies.
+pub fn review_requests(assets: &dyn Assets, input: &Value, files: &Files) -> Result<Vec<(String, Value)>, String> {
     let stage = input["stage"].as_str().unwrap_or("");
-    if !matches!(stage, "design" | "build") {
-        return Err("stage must be \"design\" or \"build\"".into());
-    }
+    let lenses: &[(&str, &str)] = match stage {
+        "design" => &DESIGN_LENSES,
+        "build" => &BUILD_LENSES,
+        _ => return Err("stage must be \"design\" or \"build\"".into()),
+    };
     if !files.contains_key("README.md") {
         return Err("write README.md, the blueprint and Layout, before a fresh review".into());
     }
@@ -299,32 +304,57 @@ pub fn review_request(assets: &dyn Assets, input: &Value, files: &Files) -> Resu
         room -= shown.len().min(room);
         brief += &format!("<file path=\"{p}\">\n{shown}{cut}\n</file>\n");
     }
-    brief += &format!("</package>\n\nStage: {stage}. Review it with fresh eyes, then write the review.");
+    brief += &format!("</package>\n\nStage: {stage}.");
     let checklist = INTRO.lines().find(|l| l.starts_with("The Validate checklist")).unwrap_or("");
     let reference = format!("<spec>\n{}\n</spec>\n\n<components>\n{GUIDE}\n</components>\n\n<checklist>\n{checklist}\n</checklist>", assets.spec_md());
-    Ok(json!({
-        "system": [
-            { "type": "text", "text": REVIEW_AGENT },
-            { "type": "text", "text": reference, "cache_control": { "type": "ephemeral" } }
-        ],
-        "messages": [{ "role": "user", "content": [{ "type": "text", "text": brief }] }]
-    }))
+    Ok(lenses
+        .iter()
+        .map(|(name, lens)| {
+            let ask = format!("{brief}\n\n<lens>\nYour lens, and only this one: {lens}\n</lens>\n\nReview through your lens, then write the review.");
+            let req = json!({
+                "system": [
+                    { "type": "text", "text": GOLDFISH },
+                    { "type": "text", "text": reference, "cache_control": { "type": "ephemeral" } }
+                ],
+                "messages": [{ "role": "user", "content": [{ "type": "text", "text": ask }] }]
+            });
+            (name.to_string(), req)
+        })
+        .collect())
 }
 
-/// A fresh review's reply as the fresh_review result for the builder. `input` is the tool's input.
-pub fn review_outcome(input: &Value, reply: &Value) -> Outcome {
+/// The goldfish's replies, each a lens and the model's reply or why the request failed, as the
+/// fresh_review result for the builder: each reviewer's report under its name, then what to do.
+/// No usable report at all is the tool's error. `input` is the tool's input.
+pub fn review_outcome(input: &Value, replies: &[(String, Result<Value, String>)]) -> Outcome {
     let build = input["stage"] == "build";
-    let text: String = reply["content"].as_array().map(|b| b.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("")).unwrap_or_default();
-    let stop = reply["stop_reason"].as_str().unwrap_or("");
-    if stop == "refusal" || text.trim().is_empty() {
-        return said("The fresh review gave nothing. Review it yourself against the checklist and go on.".into(), true, Some("the fresh review gave nothing".into()));
+    let mut reports = Vec::new();
+    let mut missing = Vec::new();
+    for (lens, reply) in replies {
+        let report = reply.as_ref().ok().and_then(|r| {
+            let text: String = r["content"].as_array().map(|b| b.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("")).unwrap_or_default();
+            let stop = r["stop_reason"].as_str().unwrap_or("");
+            (stop != "refusal" && !text.trim().is_empty()).then(|| format!("{}{}", text.trim(), if stop == "max_tokens" { "\n(cut off at its length limit)" } else { "" }))
+        });
+        match report {
+            Some(r) => reports.push(format!("# The {lens} reviewer\n\n{r}")),
+            None => missing.push(lens.as_str()),
+        }
     }
-    let cut = if stop == "max_tokens" { "\n\n(The review was cut off at its length limit.)" } else { "" };
-    let fix = if build { "in the files, keeping README.md true" } else { "in README.md before you write code" };
+    if reports.is_empty() {
+        return said("No goldfish reviewer could answer. Review it yourself against the checklist and go on.".into(), true, Some("the goldfish reviewers could not answer".into()));
+    }
+    let gap = if missing.is_empty() { String::new() } else { format!(" ({} could not answer; cover that lens yourself)", missing.join(", ")) };
+    let next = if build {
+        "Fix every must and should in the files, keeping README.md true, unless it goes against what the user asked. Several reviewers may report the same thing: fix it once. For each decision they raise, take the side they recommend and tell the user in your reply after finish, one plain sentence each, that they can ask for the other. Then check and finish."
+    } else {
+        "Merge their findings (several may report the same thing) and fix every must and should in README.md, unless it goes against what the user asked. Then STOP and end your turn with the approval message, in plain words for someone who is not a programmer: what you will build, in three to five lines; what the reviewers changed in the plan, in a few bullets; each open decision (theirs and yours) as a short question with the options and the one you recommend; and ask the user to reply \"go\", or to say what to change. Write no code until they answer."
+    };
+    let names = replies.iter().map(|(l, _)| l.as_str()).collect::<Vec<_>>().join(", ");
     said(
-        format!("A fresh-eyes review, by a reviewer who has not seen this chat. Fix every must and should {fix}, unless it goes against what the user asked. For each trade-off, take the recommended side and tell the user in your reply after finish, in one plain sentence each, that they can ask for the other.\n\n{}{cut}", text.trim()),
+        format!("{} goldfish reviewers ({names}) read the package with none of this chat, each through one lens{gap}. {next}\n\n{}", reports.len(), reports.join("\n\n")),
         false,
-        Some(if build { "a fresh reviewer checked the app against its plan" } else { "a fresh reviewer checked the plan" }.into()),
+        Some(format!("{} goldfish reviewers checked {}", reports.len(), if build { "the app against its plan" } else { "the plan" })),
     )
 }
 

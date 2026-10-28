@@ -3,7 +3,7 @@
 
 # Example apps
 
-Sixteen working apps ship with Wardian. Each one teaches one thing well, and each one is a
+Seventeen working apps ship with Wardian. Each one teaches one thing well, and each one is a
 package you can open, read and copy. On the website, each one's page runs it in your browser when it
 needs no server, and every one can be downloaded and imported. They are built into Wardian and in the
 app list from the first start, however you installed it, and in
@@ -24,6 +24,7 @@ example's `README.md` first: it explains each file and how the data moves.
 | [`life`](#life) | page | a WebAssembly simulation drawn on a canvas |
 | [`mandelbrot`](#mandelbrot) | page | heavy number work in one WebAssembly call |
 | [`focus-timer`](#focus-timer) | page | sending on a channel to another package |
+| [`trip-cost-splitter`](#trip-cost-splitter) | page | made by Make an app in the Elephant-Goldfish Model, untouched |
 | [`loan-planner`](#loan-planner) | suite | small parts, retained topics, WebAssembly through `asset` |
 | [`habit-tracker`](#habit-tracker) | suite | `storage`, one owner per piece of state, backup and restore |
 | [`csv-explorer`](#csv-explorer) | suite | `db`: 100,000 rows, paged, sorted and filtered in SQL |
@@ -94,6 +95,21 @@ A Pomodoro timer with focus, short and long breaks, a dial and a soft chime. Whe
 ends, it sends the session on the channel `focus.session`, if you allow it, and says why when it
 cannot. It is half of a pair with [`focus-log`](#focus-log), and shows how a
 page uses `/sdk/wardian.js`. [How it works](/docs/examples/focus-timer) · [Source](https://github.com/weave-registry/wardian/tree/main/apps/focus-timer)
+
+### trip-cost-splitter
+
+Add the people on a trip and the expenses, who paid and who shared each one, and see each person's
+balance, the payments that settle everyone up, a breakdown per person and a Markdown summary to
+paste in a group chat. Nobody wrote this one by hand: Make an app built it from one paragraph, in
+the [Elephant-Goldfish Model](/docs/components#fresh-reviews) (ADR-2610281200), and its files are
+as the builder saved them. The builder wrote the README as the plan; four goldfish reviewers, who
+had not seen the chat, checked it; the builder stopped to show the plan and three decisions, and
+the person kept the per-person breakdown a reviewer had wanted cut; two more goldfish checked the
+build before the save. Trying it found three bugs the reviewers had not, names missing in the
+settlement, negative balances shown only by colour and a page wider than a phone, which the person
+reported in the same chat and the builder fixed, with another build review. Its settlement settles
+the largest debt against the largest credit each time: few payments, not always the fewest.
+[How it works](/docs/examples/trip-cost-splitter) · [Source](https://github.com/weave-registry/wardian/tree/main/apps/trip-cost-splitter)
 
 ## Suites
 

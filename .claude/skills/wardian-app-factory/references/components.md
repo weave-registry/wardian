@@ -220,35 +220,45 @@ team works.
 2. **Design.** A **Layout** section in the README: the panels in reading order (inputs, results,
    details); each input's control, width, validation rule and message; which fields share a row;
    the tab order; each view's one main action; every panel's sample, empty, loading and error
-   states. Then a **fresh review** of the plan (below), and the README fixed before any code.
-3. **Develop.** Add the components; then a data module with no DOM: one parse function per input,
+   states. Then **goldfish reviews** of the plan (below), and the README fixed.
+3. **Approve.** The builder stops and shows you the plan: what it will build, what the reviewers
+   changed, and each open decision with the option it recommends. Nothing is coded until you
+   answer "go" or say what to change.
+4. **Develop.** Add the components; then a data module with no DOM: one parse function per input,
    turning text into a typed value or a clear error, and the calculations, shared by the page and
    any import; then markup in reading order, styles, wiring. Realistic sample data, said to be
    sample data; no TODOs or dead controls.
-4. **Validate.** Read every file back against the checklist below, fix every miss, get a fresh
-   review of the files against the README and fix what it finds, run `wardian check`, and say what
-   was validated.
+5. **Validate.** Read every file back against the checklist below, fix every miss, get goldfish
+   reviews of the files against the README and fix what they find, run `wardian check`, and say
+   what was validated.
 
 ### Fresh reviews
 
-Whoever wrote the plan knows too much to see its gaps. So a reviewer who has none of the
-conversation, only the package, checks the work twice (ADR-2610281000), the way the
-[Elephant-Goldfish Model](https://egm.dev) does: the builder that talked with you is the elephant,
-the reviewer the goldfish. The method and the idea behind the review's lenses come from EGM, by
+Whoever wrote the plan knows too much to see its gaps. So Make an app works in the
+[Elephant-Goldfish Model](https://egm.dev) (ADR-2610281000, ADR-2610281200): the builder that
+talked with you is the elephant and writes the plan; goldfish reviewers, who have none of the
+conversation, only the package, each check it through one lens; and you settle the decisions and
+approve the plan before any code is written. The method and the idea behind the review's lenses come from EGM, by
 Google's EGM team ([github.com/google/elephant-goldfish-model](https://github.com/google/elephant-goldfish-model),
 Apache-2.0), after Dave Rensin's essay "Elephants, Goldfish, and the New Golden Age of Software
 Engineering"; thank you to them.
 
-- **After Design**, it reads the README and the manifests, as the engineer and the user would.
-- **Before finish**, it reads every file against the README and the checklist.
+- **After Design**, four goldfish, each its own request, read the README and the manifests:
+  **scope** (the smallest app that does the job asked), **first-time reader** (would the person
+  using it follow it), **design** (inputs, forms, states and edge cases) and **ready to build**
+  (could an engineer build it from the README alone). The builder fixes the plan, then stops for
+  your approval.
+- **Before finish**, two goldfish read every file against the README: **built as planned** and
+  the **quality checklist**.
 
-It looks through five lenses: scope (the smallest app that does the job asked), inputs and forms,
-states and behaviour, whether it can be built from the README alone (or was built as planned), and
-whether a first-time user would follow it. Each finding is a **must**, **should** or **could**; the
-builder fixes every must and should. When the review raises a real trade-off, the builder takes the
-side it recommends and says so in one plain sentence after the app is saved, so you can ask for the
-other. In Make an app the builder calls the `fresh_review` tool; with Claude Code, the app-factory
-skill uses the EGM plugin's review for suites and apps with AI.
+Each finding is a **must**, **should** or **could**; the builder fixes every must and should. The
+decisions they raise come to you with the plan; those raised by the build review, the builder
+takes as recommended and tells you after the save, so you can ask for the other.
+
+Wardian holds the method whatever the model does: for a new app it refuses to write code until the
+plan has been reviewed and you have answered, and refuses to save until a build review has run
+for your latest request; the fixes after it are its resolution, not a reason to review again. In Make an app the builder calls the `fresh_review` tool; with Claude Code,
+the app-factory skill uses the EGM plugin's review for suites and apps with AI.
 
 ### Forms: types, sizes and validation
 

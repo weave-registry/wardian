@@ -1,0 +1,14 @@
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..500;1,6..72,300..500&display=swap");
+/* <h1 class="w-display">…</h1> <h2 class="w-heading">…</h2> <p class="w-lede">…</p>
+   <p class="w-figure">10,970<small>req/s</small></p>
+   A light serif with optical sizes (Newsreader) for display text, beside the theme's sans for the
+   rest. The font comes from Google Fonts; offline, or outside Wardian with no network, the theme's
+   --w-font-display falls back to Georgia and the page still reads well. */
+.w-display { margin: 0; font: 300 clamp(2.25rem, 1.4rem + 3.2vw, 4.5rem)/1.02 var(--w-font-display);
+  letter-spacing: -.025em; font-optical-sizing: auto; text-wrap: balance; }
+.w-heading { margin: 0; font: 400 clamp(1.375rem, 1.1rem + 1vw, 1.875rem)/1.15 var(--w-font-display);
+  letter-spacing: -.012em; font-optical-sizing: auto; text-wrap: balance; }
+.w-lede { margin: 0; max-width: 60ch; font: 400 var(--w-text-lg)/1.6 var(--w-font); color: var(--w-muted); text-wrap: pretty; }
+.w-figure { margin: 0; font: 300 clamp(2.5rem, 2rem + 2vw, 3.5rem)/1 var(--w-font-display);
+  font-variant-numeric: lining-nums tabular-nums; letter-spacing: -.02em; }
+.w-figure small { margin-left: .4em; font: 500 var(--w-text-sm)/1.2 var(--w-font); letter-spacing: 0; color: var(--w-muted); }

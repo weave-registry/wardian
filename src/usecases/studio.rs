@@ -58,6 +58,7 @@ fn api_error(e: LlmError) -> String {
 }
 
 /// The model, the key, and what the build loop needs to call it.
+#[derive(Clone)]
 struct Api {
     llm: Arc<dyn Llm>,
     auth: LlmAuth,
@@ -76,6 +77,8 @@ struct Api {
     checks: Arc<KeyChecks>,
     provider_id: &'static str,
     clock: Arc<dyn Clock>,
+    /// Where the goldfish reviewers run, side by side.
+    tasks: Arc<dyn Tasks>,
 }
 
 impl Api {
@@ -120,26 +123,35 @@ impl Api {
         }
     }
 
-    /// A fresh review (ADR-2610281000): fresh_review as its own request, with none of the chat and
-    /// no tools, on Make an app's meter and cap. Like the skills agent, a failure is the tool's
-    /// error and the builder goes on; only a stop ends the turn.
-    fn review(&self, input: &Value, files: &Files, cancel: &AtomicBool) -> Result<workshop::Outcome, String> {
-        let mut body = match workshop::review_request(&*self.assets, input, files) {
-            Ok(b) => b,
+    /// Goldfish reviews (ADR-2610281000, ADR-2610281200): fresh_review as one request per lens, at
+    /// once, each with none of the chat and no tools, on Make an app's meter and cap. Like the
+    /// skills agent, a failure is the tool's error and the builder goes on; only a stop ends the turn.
+    fn review(&self, input: &Value, files: &Files, cancel: &Arc<AtomicBool>) -> Result<workshop::Outcome, String> {
+        let requests = match workshop::review_requests(&*self.assets, input, files) {
+            Ok(r) => r,
             Err(e) => return Ok(workshop::Outcome { text: e, is_error: true, ..Default::default() }),
         };
-        body["model"] = json!(self.model);
-        body["max_tokens"] = json!(self.max_tokens.min(workshop::REVIEW_MAX_TOKENS));
-        match self.send(&body, cancel) {
-            Ok(reply) => Ok(workshop::review_outcome(input, &reply)),
-            Err(e) if e == "stopped" => Err(e),
-            Err(e) => Ok(workshop::Outcome {
-                text: format!("The fresh review could not answer ({e}). Review it yourself against the checklist and go on."),
-                is_error: true,
-                shown: Some("the fresh review could not answer".into()),
-                saved: None,
-            }),
+        // Each goldfish is its own request, all at once on the tasks port: none sees another's report.
+        let (done, replies_in) = std::sync::mpsc::channel();
+        let lenses: Vec<String> = requests.iter().map(|(l, _)| l.clone()).collect();
+        for (i, (_, mut body)) in requests.into_iter().enumerate() {
+            body["model"] = json!(self.model);
+            body["max_tokens"] = json!(self.max_tokens.min(workshop::REVIEW_MAX_TOKENS));
+            let (api, cancel, done) = (self.clone(), Arc::clone(cancel), done.clone());
+            self.tasks.spawn(Box::new(move || {
+                let _ = done.send((i, api.send(&body, &cancel)));
+            }));
         }
+        drop(done);
+        let mut got: Vec<Option<Result<Value, String>>> = lenses.iter().map(|_| None).collect();
+        for (i, reply) in replies_in {
+            got[i] = Some(reply);
+        }
+        let replies: Vec<(String, Result<Value, String>)> = lenses.into_iter().zip(got).map(|(l, r)| (l, r.unwrap_or_else(|| Err("the reviewer stopped".into())))).collect();
+        if replies.iter().any(|(_, r)| r.as_ref().is_err_and(|e| e == "stopped")) {
+            return Err("stopped".into());
+        }
+        Ok(workshop::review_outcome(input, &replies))
     }
 
     /// Sends one request of Make an app, under its daily cap, retrying rate limits and overloads.
@@ -501,6 +513,7 @@ impl Studio {
             checks: Arc::clone(&self.checks),
             provider_id: id,
             clock: Arc::clone(&self.clock),
+            tasks: Arc::clone(&self.tasks),
             llm,
             auth,
             assets: Arc::clone(&self.assets),
@@ -829,6 +842,9 @@ impl Studio {
             _ => s.messages.push(json!({ "role": "user", "content": [{ "type": "text", "text": said }] })),
         }
         let kind = if text.starts_with("[browser test]") { "test" } else { "user" };
+        if kind == "user" {
+            s.flow.person_said();
+        }
         s.events.push(json!({ "kind": kind, "text": text }));
         s.busy = true;
         s.last_used = self.clock.now();
@@ -1000,6 +1016,16 @@ impl Workshop<'_> {
     /// Runs one tool. Returns the text for Claude, whether it is an error, and
     /// the line to show the user (if any).
     fn run_tool(&self, name: &str, input: &Value, files: &mut Files, session: &Mutex<Session>, cancel: &AtomicBool) -> (String, bool, Option<String>) {
+        // The Elephant-Goldfish gates (ADR-2610281200): asked before the tool, told after it.
+        if let Some(why) = session.lock().unwrap().flow.refuse(name, input, workshop::REVIEW_TOOL) {
+            return (why, true, None);
+        }
+        let out = self.run_ungated(name, input, files, session, cancel);
+        session.lock().unwrap().flow.ran(name, input, workshop::REVIEW_TOOL, out.1);
+        out
+    }
+
+    fn run_ungated(&self, name: &str, input: &Value, files: &mut Files, session: &Mutex<Session>, cancel: &AtomicBool) -> (String, bool, Option<String>) {
         match name {
             workshop::SKILLS_TOOL => {
                 push_event(session, json!({ "kind": "tool", "text": "asked the skills agent how to give the app's AI its skill and tools" }));
@@ -1010,8 +1036,9 @@ impl Workshop<'_> {
             }
             workshop::REVIEW_TOOL => {
                 let what = if input["stage"] == "build" { "the app against its plan" } else { "the plan" };
-                push_event(session, json!({ "kind": "tool", "text": format!("asked a fresh reviewer, who has not seen this chat, to check {what}") }));
-                match self.api.review(input, files, cancel) {
+                push_event(session, json!({ "kind": "tool", "text": format!("asked goldfish reviewers, who have not seen this chat, to check {what}") }));
+                let cancel = Arc::clone(&session.lock().unwrap().cancel);
+                match self.api.review(input, files, &cancel) {
                     Ok(out) => (out.text, out.is_error, out.shown),
                     Err(e) => (e, true, None),
                 }
@@ -1024,6 +1051,7 @@ impl Workshop<'_> {
                     Ok((name, replaced, version)) => {
                         let mut s = session.lock().unwrap();
                         s.app = Some(name.clone());
+                        s.draft = None;
                         s.events.push(json!({ "kind": "saved", "app": name, "replaced": replaced, "version": version, "text": summary }));
                         (format!("Saved as \"{name}\". The user can open it now."), false, None)
                     }
@@ -1042,18 +1070,22 @@ impl Workshop<'_> {
 
 /// One turn: Claude works until it stops calling tools, with a limit on steps.
 fn run_turn(shop: &Workshop, session: &Mutex<Session>, cancel: &AtomicBool) -> Result<(), String> {
-    let (mut messages, app) = {
+    let (mut messages, app, draft) = {
         let s = session.lock().unwrap();
-        (s.messages.clone(), s.app.clone())
+        (s.messages.clone(), s.app.clone(), s.draft.clone())
     };
-    // Start from the app as it is on disk now, so edits made by hand are kept.
+    // Start from work not yet saved, such as a plan waiting for approval; otherwise from the app as
+    // it is on disk now, so edits made by hand are kept.
     let mut files = Files::new();
-    if let Some(app) = &app {
+    let unsaved = draft.is_some();
+    if let Some(d) = draft {
+        files = d;
+    } else if let Some(app) = &app {
         files = load(shop.fs, &shop.hub.local_root().join(app));
         files.retain(|p, b| !(p == "app.wasm" && b.as_slice() == EMPTY_WASM));
     }
     let start_len = messages.len();
-    let mut saved_since_change = true;
+    let mut saved_since_change = !unsaved;
     let mut nudged = false;
     let result = (|| {
         for _ in 0..shop.api.max_steps {
@@ -1088,7 +1120,7 @@ fn run_turn(shop: &Workshop, session: &Mutex<Session>, cancel: &AtomicBool) -> R
                     messages.push(json!({ "role": "user", "content": [{ "type": "text", "text": "Your reply was cut off at the length limit. Continue, and write large files in parts with append." }] }));
                     continue;
                 }
-                if !saved_since_change && !nudged {
+                if !saved_since_change && !nudged && !session.lock().unwrap().flow.waiting() {
                     nudged = true;
                     messages.push(json!({ "role": "user", "content": [{ "type": "text", "text": "You changed files but did not call finish, so nothing is saved. Call finish now, or say what stops you." }] }));
                     continue;
@@ -1120,6 +1152,8 @@ fn run_turn(shop: &Workshop, session: &Mutex<Session>, cancel: &AtomicBool) -> R
     // Keep the conversation only up to a complete exchange, so the next
     // message always follows a valid history.
     let mut s = session.lock().unwrap();
+    // Unsaved work is kept for the next message, unless the user stopped the turn.
+    s.draft = (!saved_since_change && result.as_ref().err().is_none_or(|e| e != "stopped")).then_some(files);
     if result.is_ok() || messages.last().is_some_and(|m| m["role"] == "user" && m["content"][0]["type"] == "tool_result") {
         s.messages = messages;
     } else if messages.len() > start_len {

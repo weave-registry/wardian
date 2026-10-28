@@ -3,6 +3,7 @@
 
 use super::package::safe_segment;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::sync::{atomic::AtomicBool, Arc};
 
 /// How long a tab may hold a test before another tab may take it over (the tab may have closed).
@@ -10,6 +11,81 @@ const TEST_CLAIM_SECS: u64 = 90;
 /// The smallest valid WebAssembly module: the marker for a page app with no
 /// WebAssembly of its own.
 pub const EMPTY_WASM: &[u8] = b"\0asm\x01\0\0\0";
+
+/// Make an app's Elephant-Goldfish gates (ADR-2610281200; EGM, egm.dev, by Google's EGM team).
+/// The builder (the elephant) writes the plan; goldfish reviewers check it; the person approves it
+/// before any code is written; goldfish check the build before it is saved. Both builders keep one
+/// of these per chat and ask it before every tool runs, so the method holds whatever the model does.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Flow {
+    pub stage: Stage,
+    /// A build review ran since the person's last message. The fixes after it are its resolution,
+    /// not new work, so they need no other review: reviewing until nothing is found never ends.
+    pub build_reviewed: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Stage {
+    /// Only the plan may be written: README.md, suite.json, app.json. A design review moves on.
+    Plan,
+    /// The plan was reviewed; it waits for the person's answer, which moves on to Build.
+    Approval,
+    /// Code may be written; finish needs a build review since the person's last message.
+    Build,
+}
+
+/// The files a plan is made of, which may be written before the person approves it.
+const PLAN_FILES: [&str; 3] = ["README.md", "suite.json", "app.json"];
+
+impl Flow {
+    /// A new app starts at the plan. A change to an app starts building: the builder's prompt asks
+    /// it to plan and ask first when the change is large, and finish still needs a build review.
+    pub fn start(new_app: bool) -> Flow {
+        Flow { stage: if new_app { Stage::Plan } else { Stage::Build }, build_reviewed: false }
+    }
+
+    /// The person answered. A reviewed plan is approved; their answer may also ask for changes,
+    /// which the builder makes to the plan before it writes code. What they ask for next is new
+    /// work, so its finish needs a build review of its own.
+    pub fn person_said(&mut self) {
+        if self.stage == Stage::Approval {
+            self.stage = Stage::Build;
+        }
+        self.build_reviewed = false;
+    }
+
+    /// Why a tool may not run now, or None. `review` is the tool that dispatches goldfish reviews.
+    pub fn refuse(&self, tool: &str, input: &Value, review: &str) -> Option<String> {
+        let path = input["path"].as_str().unwrap_or("").trim_start_matches("./");
+        let code = matches!(tool, "write_file" | "delete_file" | "add_components") && !(tool != "add_components" && PLAN_FILES.contains(&path));
+        match self.stage {
+            Stage::Plan if code => Some(format!("Not yet: plan first. Write README.md (the blueprint and Layout), then call {review} with stage \"design\". No code until the plan is reviewed and the user approves it.")),
+            Stage::Approval if code => Some("Not yet: the user has not approved the plan. End your turn now with the approval message: what you will build, what the reviewers changed, and each open decision as a question with the option you recommend; ask them to reply \"go\" or say what to change.".into()),
+            Stage::Plan | Stage::Approval if tool == "finish" => Some("Not yet: nothing is built. The plan must be reviewed and approved first.".into()),
+            Stage::Build if tool == "finish" && !self.build_reviewed => Some(format!("Not yet: call {review} with stage \"build\" first, so reviewers who have not seen this chat check the files against README.md; fix what they find, then finish (once: no second review).")),
+            _ => None,
+        }
+    }
+
+    /// After a tool ran. A design review, even a failed one, puts the plan to the person; a build
+    /// review, even a failed one, lets finish save.
+    pub fn ran(&mut self, tool: &str, input: &Value, review: &str, _is_error: bool) {
+        if tool == review {
+            match input["stage"].as_str() {
+                Some("design") if self.stage == Stage::Plan => self.stage = Stage::Approval,
+                Some("build") if self.stage == Stage::Build => self.build_reviewed = true,
+                _ => {}
+            }
+        }
+    }
+
+    /// The turn may end without a save: the plan waits for the person's answer.
+    pub fn waiting(&self) -> bool {
+        self.stage != Stage::Build
+    }
+}
 
 /// One chat. It lives in memory only; the apps it saves are ordinary folders.
 pub struct Session {
@@ -25,11 +101,17 @@ pub struct Session {
     /// Any tab may run the test, so the chat goes on while you work elsewhere; the claim keeps two
     /// tabs from testing the same save. A claim older than TEST_CLAIM_SECS is given up.
     pub test_claim: Option<(usize, u64)>,
+    /// The Elephant-Goldfish gates (ADR-2610281200).
+    pub flow: Flow,
+    /// Files written but not yet saved, kept between turns: a new app's plan waits for the
+    /// person's approval before anything is saved. None once saved.
+    pub draft: Option<BTreeMap<String, Vec<u8>>>,
 }
 
 impl Session {
     pub fn new(app: Option<String>, now: u64) -> Session {
-        Session { app, messages: Vec::new(), events: Vec::new(), busy: false, cancel: Arc::new(AtomicBool::new(false)), last_used: now, test_claim: None }
+        let flow = Flow::start(app.is_none());
+        Session { app, messages: Vec::new(), events: Vec::new(), busy: false, cancel: Arc::new(AtomicBool::new(false)), last_used: now, test_claim: None, flow, draft: None }
     }
 
     /// A tab asks to test save number `saved`. Yes only for the latest save, untested, and not
