@@ -143,6 +143,8 @@ Design the tools before the code:
 
 Make an app does this for you: when the app uses AI, the builder first sends a skills agent to
 research the skill, the tools and their tests, then builds the `ai` app to that plan (ADR-2610131000).
+A fresh reviewer, who has not seen the chat, then checks the plan and the built app against each
+other ([Fresh reviews](/docs/components#fresh-reviews), ADR-2610281000).
 
 ## An app's skill and tools, in its settings
 

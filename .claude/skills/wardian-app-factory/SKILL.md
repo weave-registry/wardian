@@ -162,12 +162,35 @@ change. `references/components.md` (Design an app) has the full rules and the ch
    sample data, empty state, errors, slow work, what is kept). For a change, update it first.
 2. **Design.** A *Layout* section in the README: panels in reading order; each input's control,
    width class, validation rule and message; which fields share a row; tab order; each view's one
-   main action; every panel's sample, empty, loading and error states.
+   main action; every panel's sample, empty, loading and error states. For a suite or an app with
+   AI, then run the **goldfish review** below on the README and fix it before writing code.
 3. **Develop.** `wardian add` the components; then a data module with no DOM, one parse function per
    input (text in, typed value or a clear error out) and the calculations; then markup in reading
    order, styles, wiring. Realistic, labelled sample data; no TODOs or dead controls.
 4. **Validate.** Read back every file against the checklist in `references/components.md`, fix
-   every miss, then `wardian check`, then prove it works (section 4). Report what you validated.
+   every miss; for a suite or an app with AI, run the goldfish review on the files against the
+   README and fix what it finds; then `wardian check`, then prove it works (section 4). Report what
+   you validated.
+
+### Goldfish reviews (the Elephant-Goldfish Model)
+EGM is by Google's EGM team (https://egm.dev, github.com/google/elephant-goldfish-model, Apache-2.0).
+You hold the whole conversation, so you cannot see what the README leaves unsaid. For a **suite**
+or an **app with AI**, get it checked by reviewers with none of it (`references/components.md`,
+Fresh reviews). A page app with one job keeps the fast path: your own read-back is enough.
+
+- **With the EGM plugin** (skills `egm:egm-brainstorm`, `egm:egm-review`; install with
+  `claude plugin marketplace add google/elephant-goldfish-model` then `claude plugin install egm@egm`):
+  when the idea is still vague or has real trade-offs, start with `egm:egm-brainstorm` and build
+  the Blueprint from its `concepts_brief.md`. After Design, run `egm:egm-review` on `README.md`.
+  In Validate, review again with the package's code as the source material.
+- **Without it:** start one subagent with a fresh context. Give it only the package path, what the
+  user asked in their words, `references/spec.md` and `references/components.md`, never your
+  conclusions. Ask it to review through five lenses: scope, inputs and forms, states and behaviour,
+  ready to build (or built as planned), and reads clearly. It should return findings marked
+  **must**, **should** or **could**, and at most three trade-offs, each with the side it recommends.
+
+Fix every must and should. Put real trade-offs to the user, each with the side you recommend; if
+the user said to go ahead without asking, take the recommended side and say so in your report.
 
 ### Design: every app looks like Wardian
 Full markup in `references/components.md` (Design an app); the short form:

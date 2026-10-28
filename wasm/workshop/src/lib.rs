@@ -17,6 +17,9 @@
 //! The skills agent (ADR-2610131000) is a model call the host makes: "skillsRequest" gives its
 //! {"system","messages","maxTokens"} (the host adds the model), or {"error"} for a bad brief, which is
 //! the tool's error; "skillsOutcome" turns the model's reply into {"text","isError","line"?}.
+//! A fresh review (ADR-2610281000) is one too, the same way: {"op":"reviewRequest","input":{stage,
+//! asked?},"files":{…}} gives {"system","messages","maxTokens"} or {"error"}, and
+//! {"op":"reviewOutcome","input":{…},"reply":{…}} gives {"text","isError","line"?}.
 //! An AI app's skill and tools (ADR-2610131300): {"op":"aiTools","files":{…}} gives what App settings
 //! shows; {"op":"aiToolsApply","files":{…},"repository":{…}} gives {"changes":{"path":"text",…}}, the
 //! ai app's skill.md and tools.json to write (the caller saves through finish, which checks), or
@@ -89,6 +92,21 @@ pub fn handle(request: &str) -> Vec<u8> {
             }
             reply
         }
+        Some("reviewRequest") => match workshop::review_request(&Embedded, &req["input"], &files_of(&req)) {
+            Ok(mut r) => {
+                r["maxTokens"] = json!(workshop::REVIEW_MAX_TOKENS);
+                r
+            }
+            Err(e) => json!({ "error": e }),
+        },
+        Some("reviewOutcome") => {
+            let out = workshop::review_outcome(&req["input"], &req["reply"]);
+            let mut reply = json!({ "text": out.text, "isError": out.is_error });
+            if let Some(line) = out.shown {
+                reply["line"] = json!(line);
+            }
+            reply
+        }
         Some("aiTools") => usecases::ai_tools::view(&files_of(&req)),
         Some("aiToolsApply") => {
             let before = files_of(&req);
@@ -115,7 +133,7 @@ pub fn handle(request: &str) -> Vec<u8> {
             Err(e) => json!({ "error": e }),
         },
         Some("sampleOutcome") => domain::studio::sample_answer(&req["reply"], req["json"].as_bool().unwrap_or(false)).unwrap_or_else(|e| json!({ "error": e })),
-        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest, skillsOutcome, aiTools, aiToolsApply, aiImproveRequest, aiImproveOutcome, sampleRequest or sampleOutcome" }),
+        _ => json!({ "error": "op must be tools, system, run, package, preview, skillsRequest, skillsOutcome, reviewRequest, reviewOutcome, aiTools, aiToolsApply, aiImproveRequest, aiImproveOutcome, sampleRequest or sampleOutcome" }),
     };
     reply.to_string().into_bytes()
 }

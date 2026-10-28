@@ -120,6 +120,28 @@ impl Api {
         }
     }
 
+    /// A fresh review (ADR-2610281000): fresh_review as its own request, with none of the chat and
+    /// no tools, on Make an app's meter and cap. Like the skills agent, a failure is the tool's
+    /// error and the builder goes on; only a stop ends the turn.
+    fn review(&self, input: &Value, files: &Files, cancel: &AtomicBool) -> Result<workshop::Outcome, String> {
+        let mut body = match workshop::review_request(&*self.assets, input, files) {
+            Ok(b) => b,
+            Err(e) => return Ok(workshop::Outcome { text: e, is_error: true, ..Default::default() }),
+        };
+        body["model"] = json!(self.model);
+        body["max_tokens"] = json!(self.max_tokens.min(workshop::REVIEW_MAX_TOKENS));
+        match self.send(&body, cancel) {
+            Ok(reply) => Ok(workshop::review_outcome(input, &reply)),
+            Err(e) if e == "stopped" => Err(e),
+            Err(e) => Ok(workshop::Outcome {
+                text: format!("The fresh review could not answer ({e}). Review it yourself against the checklist and go on."),
+                is_error: true,
+                shown: Some("the fresh review could not answer".into()),
+                saved: None,
+            }),
+        }
+    }
+
     /// Sends one request of Make an app, under its daily cap, retrying rate limits and overloads.
     fn send(&self, body: &Value, cancel: &AtomicBool) -> Result<Value, String> {
         if let Some(cap) = self.cap.filter(|&c| self.meter.used_today(&self.payer) >= c) {
@@ -982,6 +1004,14 @@ impl Workshop<'_> {
             workshop::SKILLS_TOOL => {
                 push_event(session, json!({ "kind": "tool", "text": "asked the skills agent how to give the app's AI its skill and tools" }));
                 match self.api.skills(input, files, cancel) {
+                    Ok(out) => (out.text, out.is_error, out.shown),
+                    Err(e) => (e, true, None),
+                }
+            }
+            workshop::REVIEW_TOOL => {
+                let what = if input["stage"] == "build" { "the app against its plan" } else { "the plan" };
+                push_event(session, json!({ "kind": "tool", "text": format!("asked a fresh reviewer, who has not seen this chat, to check {what}") }));
+                match self.api.review(input, files, cancel) {
                     Ok(out) => (out.text, out.is_error, out.shown),
                     Err(e) => (e, true, None),
                 }

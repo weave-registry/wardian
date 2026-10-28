@@ -12,6 +12,18 @@ From 0.4.0 on, each version is a tagged GitHub Release with downloads for macOS 
 Aimed at **1.0.0**. Wardian 1.0 ships when everything in ADR-2610072033 ("what must be true before
 Wardian 1.0") is done or written down there as left out.
 
+### Added
+
+- Make an app gets a fresh-eyes review, in the way of the Elephant-Goldfish Model (egm.dev,
+  ADR-2610281000). After the plan is written, and again before the app is saved, a reviewer who has
+  not seen the chat reads only the package and the user's request, and reports what is missing,
+  unclear or bigger than the job as must, should or could. The builder fixes them, and after saving
+  says in plain words which trade-offs it decided, so they can be reversed. The new builder tool
+  `fresh_review` runs in Wardian and, through `wasm/workshop`'s `reviewRequest` and
+  `reviewOutcome`, in the hosted builder. The app-factory skill runs the same review for suites and
+  apps with AI, with the EGM plugin when it is installed. With thanks to Google's EGM team for the
+  method (egm.dev, Apache-2.0); `NOTICE.md` credits them.
+
 ## [0.4.25] - 2026-10-23
 
 ### Added

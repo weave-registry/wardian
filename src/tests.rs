@@ -2309,6 +2309,48 @@ fn studio_dispatches_the_skills_agent_and_hands_its_plan_to_the_builder() {
     let _ = fs::remove_dir_all(base);
 }
 
+/// ADR-2610281000: Make an app sends fresh_review as its own request with none of the chat, on
+/// Make an app's meter, and hands the review back as the tool's result.
+#[test]
+fn studio_dispatches_a_fresh_review_without_the_chat() {
+    use serde_json::json;
+    let base = tmp("fresh-review");
+    let fake = Arc::new(FakeClaude::default());
+    let usage = json!({ "input_tokens": 100, "output_tokens": 50 });
+    fake.script.lock().unwrap().extend([
+        json!({ "content": [{ "type": "tool_use", "id": "w1", "name": "write_file", "input": { "path": "README.md", "content": "# Tips\nSplits a bill." } }], "stop_reason": "tool_use", "usage": usage }),
+        json!({ "content": [{ "type": "tool_use", "id": "r1", "name": "fresh_review", "input": { "stage": "design", "asked": "split a bill" } }], "stop_reason": "tool_use", "usage": usage }),
+        json!({ "content": [{ "type": "text", "text": "## Verdict\nready after the fixes below\n## Findings\n1. **must** Inputs: no people count." }], "stop_reason": "end_turn", "usage": usage }),
+        json!({ "content": [{ "type": "text", "text": "I fixed the plan." }], "stop_reason": "end_turn", "usage": usage }),
+    ]);
+    let (studio, _, _) = studio_on(&fake, &base);
+    studio.set_key(GOOD_KEY, None).unwrap();
+    let secret = "a bill splitter, and my secret word is pelican";
+    let id = studio.send(&json!({ "message": secret })).unwrap()["session"].as_str().unwrap().to_string();
+    for _ in 0..200 {
+        if studio.events(&id, 0).unwrap()["busy"] == false {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let events = studio.events(&id, 0).unwrap();
+    assert_eq!(events["busy"], false, "{events}");
+    let bodies = fake.bodies.lock().unwrap().clone();
+    assert_eq!(bodies.len(), 5, "the builder twice, the reviewer, the builder again, nudged to finish");
+    let review = &bodies[2];
+    assert!(review.get("tools").is_none() && review["system"][0]["text"].as_str().unwrap().contains("fresh-eyes reviewer"));
+    assert!(!review.to_string().contains("pelican"), "the reviewer never sees the chat");
+    let brief = review["messages"][0]["content"][0]["text"].as_str().unwrap();
+    assert!(brief.contains("Splits a bill.") && brief.contains("split a bill"), "{brief}");
+    assert!(review["max_tokens"].as_u64().unwrap() <= crate::usecases::workshop::REVIEW_MAX_TOKENS);
+    let last = bodies[3]["messages"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["content"][0]["tool_use_id"], "r1");
+    assert!(last["content"][0]["content"].as_str().unwrap().contains("no people count"), "{last}");
+    assert!(events.to_string().contains("a fresh reviewer checked the plan"), "{events}");
+    assert_eq!(studio.usage()["totals"][crate::domain::agent::BUILDER]["requests"], 5, "the review is on Make an app's meter");
+    let _ = fs::remove_dir_all(base);
+}
+
 /// ADR-2610081500 #5 and #6: each app's `claude:sample` tokens are counted, by day and by app,
 /// and past its cap the app gets `over_budget` without a request being sent. Another app is not
 /// stopped, and the counts survive a restart.
@@ -3742,7 +3784,7 @@ mod workshop {
     #[test]
     fn workshop_offers_its_tools_and_a_prompt_with_the_spec_and_an_example() {
         let names: Vec<String> = workshop::tools().as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-        assert_eq!(names, ["list_files", "read_file", "write_file", "delete_file", "add_components", "research_ai_tools", "check", "finish"]);
+        assert_eq!(names, ["list_files", "read_file", "write_file", "delete_file", "add_components", "research_ai_tools", "fresh_review", "check", "finish"]);
         let system = workshop::system(&Embedded).to_string();
         assert!(system.contains("You build apps for Wardian"));
         assert!(system.contains("<spec>") && system.contains("<example-suite>"));
@@ -3932,6 +3974,56 @@ mod workshop {
         g.insert("suite.json".into(), br#"{"format":1,"title":"T","apps":[{"name":"chat","slot":"main"}]}"#.to_vec());
         let out = run("add_components", json!({ "components": ["agent"] }), &mut g, None);
         assert!(out.text.contains("not wired") && !String::from_utf8_lossy(&g["suite.json"]).contains("agent.js"), "{}", out.text);
+    }
+
+    /// ADR-2610281000: a fresh reviewer, who has none of the chat, checks the plan after Design and
+    /// the files before finish; the builder fixes what it finds and tells the user its trade-offs.
+    #[test]
+    fn workshop_fresh_review_sees_the_package_and_not_the_chat() {
+        let intro = workshop::system(&Embedded)[0]["text"].as_str().unwrap().to_string();
+        for must in ["fresh_review with stage \"design\"", "fresh_review with stage \"build\"", "(12) fresh_review", "tell the user each such choice", "without a fresh review"] {
+            assert!(intro.contains(must), "the prompt does not teach {must}");
+        }
+        let tool = workshop::tools().as_array().unwrap().iter().find(|t| t["name"] == workshop::REVIEW_TOOL).cloned().unwrap();
+        assert_eq!(tool["input_schema"]["required"], json!(["stage"]));
+        assert_eq!(tool["input_schema"]["properties"]["stage"]["enum"], json!(["design", "build"]));
+
+        let mut f = Files::new();
+        assert!(workshop::review_request(&Embedded, &json!({ "stage": "design" }), &f).unwrap_err().contains("README.md"), "no plan, nothing to review");
+        f.insert("README.md".into(), b"# Loan\n## What you put in\nRate: decimal".to_vec());
+        f.insert("app.json".into(), br#"{"format":1,"title":"Loan","page":"index.html"}"#.to_vec());
+        f.insert("index.html".into(), b"<input id=rate>".to_vec());
+        f.insert("ui/field.css".into(), b".w-input-library{}".to_vec());
+        f.insert("logo.png".into(), vec![0x89, 0x50, 0xff, 0xfe]);
+        assert!(workshop::review_request(&Embedded, &json!({ "stage": "later" }), &f).unwrap_err().contains("stage"));
+
+        let req = workshop::review_request(&Embedded, &json!({ "stage": "design", "asked": "a loan calculator" }), &f).unwrap();
+        let system = req["system"].to_string();
+        for must in ["fresh-eyes reviewer", "<spec>", "<components>", "The Validate checklist"] {
+            assert!(system.contains(must), "the reviewer lacks {must}");
+        }
+        assert_eq!(req["system"][1]["cache_control"], json!({ "type": "ephemeral" }));
+        assert!(req.get("tools").is_none() && req.get("model").is_none(), "the host adds the model; the reviewer has no tools");
+        assert_eq!(req["messages"].as_array().unwrap().len(), 1, "one message: none of the chat");
+        let brief = req["messages"][0]["content"][0]["text"].as_str().unwrap();
+        for must in ["<asked>\na loan calculator", "<file path=\"README.md\">", "<file path=\"app.json\">", "index.html", "Stage: design"] {
+            assert!(brief.contains(must), "the design brief lacks {must}");
+        }
+        assert!(!brief.contains("<input id=rate>"), "a design review reads the plan, not the code");
+
+        let req = workshop::review_request(&Embedded, &json!({ "stage": "build" }), &f).unwrap();
+        let brief = req["messages"][0]["content"][0]["text"].as_str().unwrap();
+        assert!(brief.contains("<input id=rate>") && brief.contains("Stage: build") && !brief.contains("<asked>"), "{brief}");
+        assert!(!brief.contains("w-input-library") && !brief.contains("<file path=\"logo.png\">"), "not the library's copies or binaries");
+
+        let design = json!({ "stage": "design" });
+        let out = workshop::review_outcome(&design, &json!({ "content": [{ "type": "text", "text": "## Verdict\nready after the fixes below" }], "stop_reason": "end_turn" }));
+        assert!(!out.is_error && out.text.contains("## Verdict") && out.text.contains("in README.md before you write code"), "{}", out.text);
+        assert_eq!(out.shown.as_deref(), Some("a fresh reviewer checked the plan"));
+        let build = workshop::review_outcome(&json!({ "stage": "build" }), &json!({ "content": [{ "type": "text", "text": "## Verdict" }], "stop_reason": "max_tokens" }));
+        assert!(build.text.contains("in the files") && build.text.contains("cut off"), "{}", build.text);
+        assert!(workshop::review_outcome(&design, &json!({ "content": [], "stop_reason": "refusal" })).is_error);
+        assert!(run(workshop::REVIEW_TOOL, json!({ "stage": "design" }), &mut f, None).is_error, "the host dispatches it, not run");
     }
 }
 
