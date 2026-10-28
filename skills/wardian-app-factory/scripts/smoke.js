@@ -65,18 +65,29 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   if (app.suite) {
     console.log(`suite ${name}`);
+    const t0 = Date.now();
     await page.goto(`${base}/run/${encodeURIComponent(name)}/`);
-    await sleep(3000);
-    const r = await page.evaluate(() => ({
+    // Wait for every part to start, up to the 15 s the kernel holds a call for a part not yet
+    // started: a cold load on a busy machine can take more than a few seconds. Then watch at least
+    // 3 s from the load, and 1 s after the last start, for faults from the parts' init.
+    // Kernel.started() rather than the trace's boot events: the trace keeps only the last 400.
+    const state = () => page.evaluate(() => typeof Kernel === 'undefined' ? null : ({
       apps: Kernel.apps().map(a => a.name),
-      booted: Kernel.trace().filter(t => t.kind === 'boot').map(t => t.app),
+      booted: Kernel.started(),
       faults: Kernel.faults(),
       events: Kernel.trace().length,
-    }));
+    })).catch(() => null);
+    let r = await state();
+    while (!(r && r.booted.length >= r.apps.length) && Date.now() - t0 < 15000) { await sleep(100); r = await state(); }
+    const waited = Date.now() - t0;
+    await sleep(Math.max(1000, t0 + 3000 - Date.now()));
+    r = await state();
+    if (!r) { console.log('FAIL: the suite page has no kernel'); process.exit(1); }
     const missing = r.apps.filter(a => !r.booted.includes(a));
     console.log(`  apps:    ${r.apps.join(', ')}`);
     console.log(`  started: ${r.booted.length}/${r.apps.length}${missing.length ? ' (not started: ' + missing.join(', ') + ')' : ''}`);
     console.log(`  events:  ${r.events}`);
+    console.log(`  waited:  ${waited} ms for the parts to start`);
     r.faults.forEach(f => problems.push(`fault in ${f.app}: ${f.message}`));
     if (missing.length) problems.push('apps that never started: ' + missing.join(', '));
     for (const f of page.frames().filter(f => f !== page.mainFrame())) {

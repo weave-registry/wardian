@@ -24,6 +24,15 @@ Wardian 1.0") is done or written down there as left out.
   apps with AI, with the EGM plugin when it is installed. With thanks to Google's EGM team for the
   method (egm.dev, Apache-2.0); `NOTICE.md` credits them.
 
+### Fixed
+
+- The app-factory skill's smoke test no longer fails a suite whose parts start slowly. It waited a
+  fixed 3 seconds; it now waits for every part to start, up to 15 seconds (the time the kernel holds
+  a call for a part not yet started), still watches at least 3 seconds for faults, and says how long
+  the parts took. It reads `Kernel.started()`, not the trace's boot events, which the trace can drop
+  after 400 events. A cold load can take 2 to 3 seconds, so the examples test failed now and then
+  on a busy CI runner, each time in a different suite.
+
 ## [0.4.25] - 2026-10-23
 
 ### Added
